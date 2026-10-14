@@ -175,46 +175,41 @@ async function loadMCPSelectionData(
   return { selection, origins };
 }
 
-export function useMCPSelectionEditor(
-  scope: MCPSelectionScope,
-  ownerId: string | null | undefined,
-  workspaceId: string | null | undefined,
-  inheritedScopes: MCPSelectionScopeRef[] = EMPTY_MCP_SELECTION_SCOPES,
-) {
-  const [selection, setSelection] = useState<MCPSelectionResponse | null>(null);
-  const [inheritedOrigins, setInheritedOrigins] = useState<MCPSelectionOrigins>({});
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [loadError, setLoadError] = useState<unknown>(null);
-  const [saveError, setSaveError] = useState<unknown>(null);
-  const requestRef = useRef(0);
-  const saveRequestRef = useRef(0);
-  const scopesRef = useRef(inheritedScopes);
-  scopesRef.current = inheritedScopes;
-
-  const inheritedKey = inheritedScopes
-    .filter((item) => item.ownerId)
-    .map((item) => `${item.scope}:${item.ownerId}`)
-    .sort()
-    .join(",");
-  const contextKey = `${scope}:${ownerId ?? ""}:${workspaceId ?? ""}:${inheritedKey}`;
-  const contextRef = useRef(contextKey);
-  contextRef.current = contextKey;
-
-  useEffect(() => {
-    resetMCPSelectionEditor({
-      requestRef,
-      saveRequestRef,
-      setSelection,
-      setInheritedOrigins,
-      setLoadError,
-      setSaveError,
-      setLoading,
-      setSaving,
-    });
-  }, [contextKey]);
-
+function useMCPSelectionReload({
+  scope,
+  ownerId,
+  workspaceId,
+  contextKey,
+  contextRef,
+  requestRef,
+  scopesRef,
+  loadedContextRef,
+  savingRef,
+  setLoading,
+  setRefreshing,
+  setLoadedContext,
+  setSelection,
+  setInheritedOrigins,
+  setLoadError,
+}: {
+  scope: MCPSelectionScope;
+  ownerId: string | null | undefined;
+  workspaceId: string | null | undefined;
+  contextKey: string;
+  contextRef: { current: string };
+  requestRef: { current: number };
+  scopesRef: { current: MCPSelectionScopeRef[] };
+  loadedContextRef: { current: string | null };
+  savingRef: { current: boolean };
+  setLoading: (value: boolean) => void;
+  setRefreshing: (value: boolean) => void;
+  setLoadedContext: (value: string) => void;
+  setSelection: (value: MCPSelectionResponse | null) => void;
+  setInheritedOrigins: (value: MCPSelectionOrigins) => void;
+  setLoadError: (value: unknown) => void;
+}) {
   const reload = useCallback(async () => {
+    if (savingRef.current) return null;
     const requestID = ++requestRef.current;
     const requestContext = contextKey;
     const isCurrent = () =>
@@ -226,7 +221,10 @@ export function useMCPSelectionEditor(
       }
       return null;
     }
-    if (isCurrent()) setLoading(true);
+    if (isCurrent()) {
+      setLoading(loadedContextRef.current !== requestContext);
+      setRefreshing(loadedContextRef.current === requestContext);
+    }
     try {
       const { selection: next, origins } = await loadMCPSelectionData(
         scope,
@@ -235,6 +233,8 @@ export function useMCPSelectionEditor(
         scopesRef.current,
       );
       if (!isCurrent()) return null;
+      loadedContextRef.current = requestContext;
+      setLoadedContext(requestContext);
       setSelection(next);
       setInheritedOrigins(origins);
       setLoadError(null);
@@ -243,13 +243,99 @@ export function useMCPSelectionEditor(
       if (isCurrent()) setLoadError(cause);
       return null;
     } finally {
-      if (isCurrent()) setLoading(false);
+      if (isCurrent()) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [contextKey, ownerId, scope, workspaceId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  return reload;
+}
+
+function inheritedScopesKey(inheritedScopes: MCPSelectionScopeRef[]) {
+  return inheritedScopes
+    .filter((item) => item.ownerId)
+    .map((item) => `${item.scope}:${item.ownerId}`)
+    .sort()
+    .join(",");
+}
+
+export function useMCPSelectionEditor(
+  scope: MCPSelectionScope,
+  ownerId: string | null | undefined,
+  workspaceId: string | null | undefined,
+  inheritedScopes: MCPSelectionScopeRef[] = EMPTY_MCP_SELECTION_SCOPES,
+) {
+  const [selection, setSelection] = useState<MCPSelectionResponse | null>(null);
+  const [inheritedOrigins, setInheritedOrigins] = useState<MCPSelectionOrigins>({});
+  const [loading, setLoading] = useState(false);
+  const [saving, setSavingState] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadedContext, setLoadedContext] = useState<string | null>(null);
+  const loadedContextRef = useRef<string | null>(null);
+  const savingRef = useRef(false);
+  const setSaving = useCallback((value: boolean) => {
+    savingRef.current = value;
+    if (value) {
+      setLoading(false);
+      setRefreshing(false);
+    }
+    setSavingState(value);
+  }, []);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [saveError, setSaveError] = useState<unknown>(null);
+  const requestRef = useRef(0);
+  const saveRequestRef = useRef(0);
+  const scopesRef = useRef(inheritedScopes);
+  scopesRef.current = inheritedScopes;
+
+  const inheritedKey = inheritedScopesKey(inheritedScopes);
+  const contextKey = `${scope}:${ownerId ?? ""}:${workspaceId ?? ""}:${inheritedKey}`;
+  const contextRef = useRef(contextKey);
+  contextRef.current = contextKey;
+
+  useEffect(() => {
+    loadedContextRef.current = null;
+    setLoadedContext(null);
+    setRefreshing(false);
+    resetMCPSelectionEditor({
+      requestRef,
+      saveRequestRef,
+      setSelection,
+      setInheritedOrigins,
+      setLoadError,
+      setSaveError,
+      setLoading,
+      setSaving,
+    });
+    return () => {
+      requestRef.current += 1;
+      saveRequestRef.current += 1;
+    };
+  }, [contextKey, setSaving]);
+
+  const reload = useMCPSelectionReload({
+    scope,
+    ownerId,
+    workspaceId,
+    contextKey,
+    contextRef,
+    requestRef,
+    scopesRef,
+    loadedContextRef,
+    savingRef,
+    setLoading,
+    setRefreshing,
+    setLoadedContext,
+    setSelection,
+    setInheritedOrigins,
+    setLoadError,
+  });
 
   const save = useMCPSelectionSave({
     ownerId,
@@ -259,15 +345,21 @@ export function useMCPSelectionEditor(
     requestRef,
     saveRequestRef,
     contextRef,
-    setSelection,
+    setSelection: (next) => {
+      loadedContextRef.current = contextKey;
+      setLoadedContext(contextKey);
+      setSelection(next);
+    },
     setSaveError,
     setSaving,
   });
 
+  const ready = loadedContext === contextKey;
   return {
-    selection,
-    inheritedOrigins,
+    selection: ready ? selection : null,
+    inheritedOrigins: ready ? inheritedOrigins : {},
     loading,
+    refreshing,
     saving,
     error: loadError ?? saveError,
     loadError,

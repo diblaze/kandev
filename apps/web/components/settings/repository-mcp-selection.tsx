@@ -9,6 +9,7 @@ import { IconChevronDown } from "@tabler/icons-react";
 import { MCPSelectionPicker } from "@/components/mcp/mcp-selection-picker";
 import { useSettingsSaveContributor } from "@/components/settings/settings-save-provider";
 import { useMCPWorkspaceDefinitions } from "@/hooks/domains/workspace/use-mcp-workspace-settings";
+import { isHandledApiError } from "@/lib/api/client";
 import { useMCPSelectionEditor } from "@/hooks/domains/workspace/use-mcp-selection-editor";
 
 function sameSelection(left: string[], right: string[]): boolean {
@@ -99,7 +100,7 @@ export function RepositoryMCPSelectionSection({
             onSelectedIdsChange={setSelectedIds}
             disabled={Boolean(definitions.error || editor.loadError)}
             label={t("settings:mcpServers")}
-            description={t("settings:mcpSelectionDescription")}
+            description={t("settings:mcpRepositorySelectionDescription")}
             testId="repository-mcp-selection-picker"
           />
         )}
@@ -108,9 +109,9 @@ export function RepositoryMCPSelectionSection({
             {t("settings:mcpLoadFailed")}
           </p>
         )}
-        {Boolean(editor.saveError) && (
+        {Boolean(editor.saveError) && !isHandledApiError(editor.saveError) && (
           <p className="mt-2 text-sm text-destructive" role="alert">
-            {t("settings:mcpSaveFailed")}
+            {t("settings:mcpSelectionSaveFailed")}
           </p>
         )}
       </CollapsibleContent>

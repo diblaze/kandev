@@ -30,6 +30,10 @@ const AgentCtlPort = ports.AgentCtl
 
 // AgentExecution represents a running agent execution
 type AgentExecution struct {
+	mcpSetupMu                   sync.Mutex
+	mcpSetup                     *mcpconfig.MCPSetupSnapshot
+	mcpSetupRevision             int64
+	mcpSetupCaptured             bool
 	RequiredNativeConversationID string
 	ID                           string
 	// ResumeAttemptID identifies the immutable recovery attempt that created or

@@ -2,6 +2,7 @@
 status: active
 system: agents
 created: 2026-09-01
+updated: 2026-10-14
 owners:
   - kandev
 ---
@@ -42,9 +43,6 @@ provider capabilities, and the runtime configuration sent to an agent.
 **Intent:** Let workspace members configure reusable MCP servers without
 editing agent-specific JSON.
 
-**User story:** As a workspace member, I want to configure an MCP server once,
-so that I can reuse it across agent contexts.
-
 #### Acceptance criteria
 
 - **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-001.1:** An authorized workspace
@@ -70,9 +68,6 @@ so that I can reuse it across agent contexts.
 
 **Intent:** Provide useful curated starting points and searchable public
 discovery without treating registry metadata as trusted code.
-
-**User story:** As a workspace member, I want to find and review published MCP
-servers, so that I can configure one without reconstructing its metadata.
 
 #### Acceptance criteria
 
@@ -112,9 +107,6 @@ servers, so that I can configure one without reconstructing its metadata.
 **Intent:** Let each execution context contribute capabilities without
 silently removing capabilities selected by another context.
 
-**User story:** As a workspace member, I want scope-specific MCP selections, so
-that agents receive the required capabilities.
-
 #### Acceptance criteria
 
 - **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-003.1:** A member can select enabled
@@ -136,6 +128,9 @@ that agents receive the required capabilities.
 - **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-003.7:** The selection UI distinguishes
   inherited MCP servers from additions at the current scope without providing
   subtraction or per-scope overrides.
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-003.8:** Inherited-origin summaries
+  show the profile, repository, task, or session name when available. Missing
+  names use a localized scope label without exposing an internal identifier.
 
 ### REQ-AGENTS-WORKSPACE-MCP-CONFIGURATION-004: Effective MCP attachment
 
@@ -175,9 +170,6 @@ agent attachment attempt.
 
 **Intent:** Apply MCP selection changes to an existing task agent session when
 the provider can safely reconnect that session.
-
-**User story:** As a task participant, I want to change an idle agent's MCP
-servers, so that the same conversation can use new tools.
 
 #### Acceptance criteria
 
@@ -242,6 +234,87 @@ and mobile.
 - **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.8:** Task creation places its MCP
   selector inside collapsed Advanced settings. The summary appears only after
   the user expands that section.
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.9:** Session MCP selection has one
+  composer MCP plug entry point and does not reserve a separate bar above the
+  conversation. Clicking or keyboard activation opens a desktop dialog with
+  connection and customization views; touch activation opens those views in
+  one sheet. Hover is not required to modify the selection.
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.10:** While saved session changes
+  await idle, the plug displays a clock marker and a readable pending status in
+  its hover/focus summary and customization view. The marker remains visible
+  when the overlay is closed or the toolbar is compact. Applied state removes
+  it; next-start deferral and application failure remain distinguishable. The
+  marker does not claim a change to any server's connection health.
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.11:** After the current selection
+  loads, background refreshes retain the choices, search, focus, and scroll
+  position rather than replacing them with a loading screen. Initial load and
+  failed refresh remain distinguishable, and a context change does not expose
+  the previous session or workspace's choices.
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.12:** The plug preserves access to
+  connection evidence and tool inspection alongside customization. A rejected
+  selection write leaves saved selection and application state authoritative;
+  ordinary errors stay within customization and shared reload recovery remains
+  visible outside the closed overlay.
+
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.13:** Session customization shall
+  identify additions as belonging to this session and distinguish inherited
+  choices without implying they can be removed here. Application timing shall
+  agree with the saved provider state: no unconditional idle promise when changes
+  require the next agent start. Primary customization shall not expose internal
+  revision counters; a forbidden save shall explain that this connection cannot
+  save and that previous choices remain unchanged, without a false reload.
+
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.14:** Customize shall separate
+  application status, inherited selections and session choices with semantic
+  headings and neutral surfaces. Origins shall be explicit without relying on
+  per-row badges. Its bounded body shall reach the final choice on desktop,
+  phone and touch tablet. Background application updates shall retain row
+  order, focus, search and scroll.
+
+
+#### Pending-change comparison extension
+
+Implemented through the [pending-change plan](../../../plans/mcp-pending-changes/plan.md).
+
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.15:** With an authoritative
+  comparison, Customize shall name every server to add, remove, or update in
+  Changes waiting to apply, with idle, next-start or failed timing distinct from
+  connection health. Unchecked/deleted servers and search filtering shall not
+  hide pending actions.
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.16:** Affected rows shall identify
+  their pending action. Unchecking shall not imply immediate removal from the
+  agent. Servers retained by another scope shall not show removal; inherited
+  entries remain read-only.
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.17:** Reloading/reopening shall
+  restore session-specific comparison of latest saved choices and last accepted
+  setup. Rejected saves/failed applications shall preserve that baseline; older
+  successful applications shall not clear newer saved changes.
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.18:** Unavailable comparison shall
+  explain why exact changes cannot be shown, without invented actions/counts.
+  Known-empty shall differ from unavailable and pending acknowledgment.
+  Successful application shall clear accepted actions without claiming verified
+  connections.
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.19:** Desktop/touch shall show the
+  same actions before selections, retain search/focus/scroll on refresh, and
+  explain actions/timing without hover or color alone. Phone retains fixed
+  header/views, one scroller, safe-area clearance and 44px controls.
+
+#### Origin sections
+
+Implemented: [origin sections plan](../../../plans/mcp-customize-origins/plan.md).
+
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.20:** Customize shall show only
+  populated task, repository and profile sections. Each inherited definition
+  appears once, grouped by task first, repository second, profile third without
+  runtime precedence. All contributors and available names remain explicit,
+  including multiple repositories. Unknown names use scope labels; unattributed
+  inherited selections remain visible without an invented source.
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.21:** Additional choices shall show
+  name, runtime alias, nonblank description, mode, transport and known catalog
+  source. Metadata is readable and passive, distinct from origins, disabled
+  state and pending actions. Details wrap on phones; the final choice remains
+  reachable. Inherited rows remain read-only and excluded from choices;
+  disabled choices cannot be newly selected.
 
 ### REQ-AGENTS-WORKSPACE-MCP-CONFIGURATION-007: Legacy profile compatibility
 
@@ -278,3 +351,11 @@ to workspace definitions and selections.
   overrides for one definition.
 - Changing MCP servers inside an active agent turn.
 - Using marketplace entries without first installing a workspace definition.
+
+## Implementation plans
+
+- [Original workspace MCP package](../../../plans/workspace-mcp-configuration/plan.md)
+- [User-test feedback repair](../../../plans/workspace-mcp-feedback/plan.md)
+- [Composer MCP customization](../../../plans/composer-mcp-customization/plan.md)
+- [Exact pending changes](../../../plans/mcp-pending-changes/plan.md)
+- [Customize origin sections](../../../plans/mcp-customize-origins/plan.md)

@@ -78,6 +78,10 @@ vi.mock("@/lib/i18n", async (original) => ({
   t: (key: string) => key,
 }));
 
+vi.mock("@/hooks/domains/session/use-task-session-mcp-selection", () => ({
+  useTaskSessionMCPSelection: () => null,
+}));
+
 const baseProps = {
   onSubmit: vi.fn(),
   sessionId: "session-1",

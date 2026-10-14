@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@kandev/ui/button";
+import { controlSizingClassName } from "@kandev/ui/control-sizing";
 import { Badge } from "@kandev/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@kandev/ui/card";
 import {
@@ -28,6 +29,10 @@ import { MCPMarketplace } from "./mcp-marketplace";
 
 type MCPSettingsProps = { workspaceId: string };
 
+const STANDARD_ACTION_CLASS = controlSizingClassName("standard", "cursor-pointer");
+const METADATA_BADGE_CLASS =
+  "h-auto min-h-6 max-w-full whitespace-normal border-border bg-muted px-2 py-0.5 text-xs font-medium leading-4 text-foreground dark:bg-muted";
+
 function modeLabel(mode: string, t: (key: string) => string): string {
   if (mode === "remote") return t("settings:mcpModeRemote");
   if (mode === "managed_package") return t("settings:mcpModeManagedPackage");
@@ -52,10 +57,10 @@ function SelectionImpact({ impact }: { impact?: MCPSelectionImpact }) {
     <p className="text-xs text-muted-foreground" data-testid="mcp-selection-impact">
       {total > 0
         ? t("settings:mcpSelectionImpact", {
-            profile: impact?.profile ?? 0,
-            repository: impact?.repository ?? 0,
-            task: impact?.task ?? 0,
-            taskSession: impact?.task_session ?? 0,
+            profile: t("settings:mcpProfileUsage", { count: impact?.profile ?? 0 }),
+            repository: t("settings:mcpRepositoryUsage", { count: impact?.repository ?? 0 }),
+            task: t("settings:mcpTaskUsage", { count: impact?.task ?? 0 }),
+            taskSession: t("settings:mcpSessionUsage", { count: impact?.task_session ?? 0 }),
           })
         : t("settings:mcpSelectionImpactNone")}
     </p>
@@ -89,14 +94,18 @@ function ServerCard({
         <p className="text-sm text-muted-foreground">
           {server.description || t("settings:mcpNoDescription")}
         </p>
-        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <span>{modeLabel(server.execution_mode, t)}</span>
-          <span>{transportLabel(server.transport, t)}</span>
-          <span>
+        <div data-testid="mcp-definition-badges" className="flex flex-wrap gap-1.5">
+          <Badge variant="outline" className={METADATA_BADGE_CLASS}>
+            {modeLabel(server.execution_mode, t)}
+          </Badge>
+          <Badge variant="outline" className={METADATA_BADGE_CLASS}>
+            {transportLabel(server.transport, t)}
+          </Badge>
+          <Badge variant="outline" className={METADATA_BADGE_CLASS}>
             {server.source === "registry"
               ? t("settings:mcpSourceRegistry")
               : t("settings:mcpSourceCustom")}
-          </span>
+          </Badge>
         </div>
         <SelectionImpact impact={server.selection_impact} />
         <div className="flex flex-wrap gap-2">
@@ -104,7 +113,7 @@ function ServerCard({
             type="button"
             size="sm"
             variant="outline"
-            className="min-h-11 cursor-pointer md:min-h-8"
+            className={STANDARD_ACTION_CLASS}
             onClick={onEdit}
           >
             {t("common:edit")}
@@ -113,7 +122,7 @@ function ServerCard({
             type="button"
             size="sm"
             variant="outline"
-            className="min-h-11 cursor-pointer md:min-h-8"
+            className={STANDARD_ACTION_CLASS}
             onClick={onToggle}
           >
             {server.enabled ? t("settings:mcpDisable") : t("settings:mcpEnable")}
@@ -122,7 +131,7 @@ function ServerCard({
             type="button"
             size="sm"
             variant="ghost"
-            className="min-h-11 min-w-11 cursor-pointer text-destructive md:min-h-8 md:min-w-8"
+            className={controlSizingClassName("icon", "cursor-pointer text-destructive")}
             onClick={onDelete}
             aria-label={t("settings:deleteMcpServer")}
           >
@@ -141,7 +150,11 @@ function EmptyCatalog({ onAdd }: { onAdd: () => void }) {
       <CardContent className="py-12 text-center">
         <IconServer className="mx-auto mb-3 size-8 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">{t("settings:mcpCatalogEmpty")}</p>
-        <Button type="button" className="mt-4 min-h-11 cursor-pointer" onClick={onAdd}>
+        <Button
+          type="button"
+          className={controlSizingClassName("standard", "mt-4 cursor-pointer")}
+          onClick={onAdd}
+        >
           <IconPlus className="mr-2 size-4" />
           {t("settings:addMcpServer")}
         </Button>
@@ -220,17 +233,13 @@ function MCPViewTabs({
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className="flex gap-2 border-b"
-      role="tablist"
-      aria-label={t("settings:workspaceMcpServers")}
-    >
+    <div className="flex gap-2 border-b" role="tablist" aria-label={t("settings:mcpServers")}>
       <Button
         type="button"
         role="tab"
         aria-selected={view === "configured"}
         variant={view === "configured" ? "secondary" : "ghost"}
-        className="min-h-11 cursor-pointer md:min-h-8"
+        className={STANDARD_ACTION_CLASS}
         onClick={() => onChange("configured")}
       >
         {t("settings:mcpConfigured")}
@@ -240,7 +249,7 @@ function MCPViewTabs({
         role="tab"
         aria-selected={view === "marketplace"}
         variant={view === "marketplace" ? "secondary" : "ghost"}
-        className="min-h-11 cursor-pointer md:min-h-8"
+        className={STANDARD_ACTION_CLASS}
         onClick={() => onChange("marketplace")}
       >
         {t("settings:mcpMarketplace")}
@@ -277,7 +286,7 @@ function DeleteMCPServerDialog({
           <Button
             type="button"
             variant="outline"
-            className="min-h-11 cursor-pointer"
+            className={STANDARD_ACTION_CLASS}
             onClick={onClose}
           >
             {t("common:cancel")}
@@ -285,7 +294,7 @@ function DeleteMCPServerDialog({
           <Button
             type="button"
             variant="destructive"
-            className="min-h-11 cursor-pointer"
+            className={STANDARD_ACTION_CLASS}
             onClick={onConfirm}
             disabled={deleting}
           >
@@ -352,12 +361,12 @@ export function MCPSettings({ workspaceId }: MCPSettingsProps) {
   return (
     <div className="space-y-6 overflow-x-hidden" data-testid="workspace-mcp-settings">
       <SettingsPageHeader
-        title={t("settings:workspaceMcpServers")}
+        title={t("settings:mcpServers")}
         description={t("settings:workspaceMcpServersDescription")}
         actions={
           <Button
             type="button"
-            className="min-h-11 w-full cursor-pointer md:min-h-8 md:w-auto"
+            className={controlSizingClassName("standard", "w-full cursor-pointer md:w-auto")}
             onClick={() => setEditor(null)}
           >
             <IconPlus className="mr-2 size-4" />

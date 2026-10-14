@@ -62,3 +62,26 @@ func validateMCPTaskSessionOwner(ctx context.Context, p routeParams, workspaceID
 	}
 	return nil
 }
+
+func mcpSessionResolutionContext(p routeParams) func(context.Context, string, string) (mcpconfig.ResolutionContext, error) {
+	return func(ctx context.Context, workspaceID, sessionID string) (mcpconfig.ResolutionContext, error) {
+		if p.lifecycleMgr != nil {
+			if execution, ok := p.lifecycleMgr.GetExecutionBySessionID(sessionID); ok && execution.WorkspaceID == workspaceID {
+				return mcpconfig.ResolutionContext{WorkspaceID: workspaceID, SessionID: sessionID, TaskID: execution.TaskID, ProfileID: execution.AgentProfileID, RepositoryIDs: execution.RepositoryIDs}, nil
+			}
+		}
+		session, err := p.taskSvc.GetTaskSession(ctx, sessionID)
+		if err != nil || session == nil {
+			return mcpconfig.ResolutionContext{}, fmt.Errorf("session context unavailable")
+		}
+		task, err := p.taskSvc.GetTask(ctx, session.TaskID)
+		if err != nil || task == nil || task.WorkspaceID != workspaceID {
+			return mcpconfig.ResolutionContext{}, fmt.Errorf("task context unavailable")
+		}
+		rc := mcpconfig.ResolutionContext{WorkspaceID: workspaceID, SessionID: sessionID, TaskID: task.ID, ProfileID: session.AgentProfileID}
+		for _, repository := range task.Repositories {
+			rc.RepositoryIDs = append(rc.RepositoryIDs, repository.RepositoryID)
+		}
+		return rc, nil
+	}
+}

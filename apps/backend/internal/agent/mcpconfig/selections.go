@@ -40,7 +40,8 @@ const (
 )
 
 // SessionMCPSelectionState is safe to expose to the UI. It contains only
-// revisions, sanitized failure text, and the backend-owned attachment attempt.
+// revisions, sanitized failure text and setup descriptors. SessionState removes
+// the persisted accepted setup and exposes only its safe comparison.
 type SessionMCPSelectionState struct {
 	DesiredRevision     int64                `json:"desired_revision"`
 	AppliedRevision     int64                `json:"applied_revision"`
@@ -48,6 +49,8 @@ type SessionMCPSelectionState struct {
 	FailureCode         string               `json:"failure_code,omitempty"`
 	FailureSummary      string               `json:"failure_summary,omitempty"`
 	AttachmentAttemptID string               `json:"attachment_attempt_id,omitempty"`
+	AcceptedSetup       *MCPSetupSnapshot    `json:"accepted_setup,omitempty"`
+	Comparison          *MCPSetupComparison  `json:"comparison,omitempty"`
 }
 
 // SessionMCPSelectionStateRepository persists desired/applied session state.
@@ -126,13 +129,14 @@ type SelectionOwnerValidator func(context.Context, SelectionScope, string, strin
 // SelectionService validates workspace ownership and atomically replaces
 // scope selections. It deliberately has no resolver or runtime side effects.
 type SelectionService struct {
-	repo           SelectionRepository
-	catalog        CatalogRepository
-	authorizer     WorkspaceAuthorizer
-	ownerValidator SelectionOwnerValidator
-	stateRepo      SessionMCPSelectionStateRepository
-	stateNotifier  func(context.Context, string)
-	stateMu        sync.Mutex
+	repo              SelectionRepository
+	catalog           CatalogRepository
+	authorizer        WorkspaceAuthorizer
+	ownerValidator    SelectionOwnerValidator
+	stateRepo         SessionMCPSelectionStateRepository
+	stateNotifier     func(context.Context, string)
+	resolutionContext func(context.Context, string, string) (ResolutionContext, error)
+	stateMu           sync.Mutex
 }
 
 func NewSelectionService(repo SelectionRepository, catalog CatalogRepository) *SelectionService {
@@ -182,7 +186,13 @@ func (s *SelectionService) SessionState(
 	if s.stateRepo == nil {
 		return SessionMCPSelectionState{}, ErrMCPSelectionStateNotFound
 	}
-	return s.stateRepo.GetMCPSelectionState(ctx, sessionID)
+	state, err := s.stateRepo.GetMCPSelectionState(ctx, sessionID)
+	if err != nil {
+		return state, err
+	}
+	state.Comparison = s.sessionSetupComparison(ctx, workspaceID, sessionID, state)
+	state.AcceptedSetup = nil
+	return state, nil
 }
 
 func (s *SelectionService) List(ctx context.Context, scope SelectionScope, workspaceID, ownerID string) ([]string, error) {

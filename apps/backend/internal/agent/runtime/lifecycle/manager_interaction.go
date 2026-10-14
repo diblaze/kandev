@@ -1070,6 +1070,8 @@ func (m *Manager) ResetAgentContext(ctx context.Context, executionID string) err
 		return nil
 	}
 
+	setup, revision, captured := execution.capturedMCPSetup()
+
 	// Try session-level reset (only ACP adapters support this). The provider
 	// request has its own bound so an unanswered response cannot hold the
 	// execution lifecycle lock indefinitely.
@@ -1105,6 +1107,9 @@ func (m *Manager) ResetAgentContext(ctx context.Context, executionID string) err
 		err := errors.New("agent session reset returned an empty session ID")
 		execution.failContextReset(true, err.Error())
 		return err
+	}
+	if captured {
+		m.recordAcceptedMCPSetupOperation(ctx, execution, setup, revision)
 	}
 
 	// Success — update execution state without restarting process
@@ -1682,6 +1687,7 @@ func (m *Manager) initializeACPSessionForRestart(
 	agentConfig agents.Agent,
 	mcpServers []agentctltypes.McpServer,
 ) error {
+	setup, revision, captured := execution.capturedMCPSetup()
 	// Connect WebSocket streams
 	if m.streamManager != nil {
 		updatesReady := make(chan struct{})
@@ -1714,6 +1720,9 @@ func (m *Manager) initializeACPSessionForRestart(
 	}
 
 	execution.ACPSessionID = result.SessionID
+	if captured {
+		m.recordAcceptedMCPSetupOperation(ctx, execution, setup, revision)
+	}
 
 	if m.sessionManager.eventPublisher != nil {
 		m.sessionManager.eventPublisher.PublishACPSessionCreatedWithAttempt(

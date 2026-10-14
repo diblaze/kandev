@@ -1,5 +1,7 @@
 "use client";
 
+import type { TaskSessionMCPSelection } from "@/hooks/domains/session/use-task-session-mcp-selection";
+
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kandev/ui/tooltip";
@@ -38,6 +40,7 @@ export type ChatInputEditorAreaProps = {
   planModeAvailable: boolean;
   mcpServers: string[];
   mcpAttachmentHistory?: MCPAttachmentHistory;
+  mcpSelection?: TaskSessionMCPSelection | null;
   submitKey: "enter" | "cmd_enter";
   setIsInputFocused: (focused: boolean) => void;
   sessionId: string | null;
@@ -193,7 +196,6 @@ export function ChatInputEditorArea(p: ChatInputEditorAreaProps) {
   const { isSending, onCancel, contextCount, contextPopoverOpen, setContextPopoverOpen } = p;
   const { contextFiles, onImplementPlan, onEnhancePrompt, isEnhancingPrompt } = p;
   const { isUtilityConfigured, hideSessionsDropdown, minimalToolbar, hideAgentControls } = p;
-  const { hidePlanMode } = p;
   // Exclude auto-added plan context from the count — it's always present in plan mode
   // and shouldn't by itself enable the send button.
   const userContextCount = planContextEnabled ? Math.max(0, contextCount - 1) : contextCount;
@@ -251,6 +253,7 @@ export function ChatInputEditorArea(p: ChatInputEditorAreaProps) {
         planModeAvailable={planModeAvailable}
         mcpServers={mcpServers}
         mcpAttachmentHistory={p.mcpAttachmentHistory}
+        mcpSelection={p.mcpSelection}
         onPlanModeChange={onPlanModeChange}
         sessionId={sessionId}
         taskId={taskId}
@@ -282,7 +285,7 @@ export function ChatInputEditorArea(p: ChatInputEditorAreaProps) {
         hideSessionsDropdown={hideSessionsDropdown}
         minimalToolbar={minimalToolbar}
         hideAgentControls={hideAgentControls}
-        hidePlanMode={hidePlanMode}
+        hidePlanMode={p.hidePlanMode}
       />
     </div>
   );

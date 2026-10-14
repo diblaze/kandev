@@ -18,6 +18,16 @@ legacy_specs: []
 
 ## Overview
 
+The completed implementation record below describes the original package.
+User testing led to the completed
+[workspace MCP test-feedback package](../workspace-mcp-feedback/plan.md).
+The later [composer customization package](../composer-mcp-customization/plan.md)
+tracks the requested entry-point redesign and stable background refresh.
+The [final testing guide](testing-guide.md) covers the current local PR surfaces
+and known gaps before merge.
+The [UX consistency review](ux-consistency-review.md) records later terminology
+and control-size fixes plus the remaining global-profile catalog-picker gap.
+
 Replace raw profile MCP JSON with a workspace-owned catalog, typed scope
 selections, and one effective-set resolver. Build the storage and API contract
 first, then connect Registry discovery, runtime delivery, responsive settings,

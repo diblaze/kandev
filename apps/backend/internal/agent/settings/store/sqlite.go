@@ -207,6 +207,7 @@ func (r *sqliteRepository) initSchema() error {
 		failure_code TEXT NOT NULL DEFAULT '',
 		failure_summary TEXT NOT NULL DEFAULT '',
 		attachment_attempt_id TEXT NOT NULL DEFAULT '',
+		accepted_setup_json TEXT DEFAULT NULL,
 		updated_at TIMESTAMP NOT NULL
 	);
 
@@ -267,6 +268,9 @@ func (r *sqliteRepository) initSchema() error {
 	}
 
 	r.migrate.Apply("agents.tui_config", `ALTER TABLE agents ADD COLUMN tui_config TEXT DEFAULT NULL`)
+	if err := r.migrate.Apply("mcp_task_session_apply_state.accepted_setup_json", `ALTER TABLE mcp_task_session_apply_state ADD COLUMN accepted_setup_json TEXT DEFAULT NULL`); err != nil {
+		return err
+	}
 	r.migrate.Apply("agent_profiles.mode", `ALTER TABLE agent_profiles ADD COLUMN mode TEXT DEFAULT NULL`)
 	r.migrate.Apply("agent_profiles.migrated_from", `ALTER TABLE agent_profiles ADD COLUMN migrated_from TEXT DEFAULT NULL`)
 	// Rows where cli_flags IS NULL are backfilled on first read - see scanAgentProfile.

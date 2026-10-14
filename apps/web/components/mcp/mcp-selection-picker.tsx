@@ -1,7 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
+import { useAppStore } from "@/components/state-provider";
+import { formatMCPOriginLabel, type MCPOriginContext } from "./mcp-origin-labels";
+import { cn } from "@/lib/utils";
+import { mcpSelectionErrorKey } from "./mcp-selection-feedback";
+import { McpDefinitionDetails } from "./mcp-definition-details";
+import { McpOriginSections, McpSectionHeading } from "./mcp-origin-sections";
 import { Badge } from "@kandev/ui/badge";
 import { Button } from "@kandev/ui/button";
 import { Checkbox } from "@kandev/ui/checkbox";
@@ -24,25 +31,76 @@ import type {
 export type { MCPInheritedSelection } from "@/lib/types/http-mcp";
 
 type MCPSelectionPickerProps = {
+  workspaceId?: string | null;
   definitions: MCPServerDefinition[];
   selectedIds: string[];
   onSelectedIdsChange: (ids: string[]) => void;
   inherited?: MCPInheritedSelection[];
   disabled?: boolean;
+  error?: unknown;
   label?: string;
   description?: string;
+  sectionLabel?: string;
   testId?: string;
+  renderServerAnnotation?: (id: string) => ReactNode;
 };
 
-function originLabel(origin: MCPSelectionOrigin, t: (key: string) => string): string {
+function InheritedServers({
+  inherited,
+  context,
+  sessionPresentation,
+  renderServerAnnotation,
+}: {
+  inherited: MCPInheritedSelection[];
+  context: MCPOriginContext;
+  renderServerAnnotation?: (id: string) => ReactNode;
+  sessionPresentation?: boolean;
+}) {
+  const { t } = useTranslation();
   const labels: Record<MCPSelectionOrigin["scope"], string> = {
     profile: t("settings:mcpOriginProfile"),
     repository: t("settings:mcpOriginRepository"),
     task: t("settings:mcpOriginTask"),
     task_session: t("settings:mcpOriginSession"),
   };
-  const scope = labels[origin.scope];
-  return `${scope}: ${origin.owner_id}`;
+  if (inherited.length === 0) return null;
+  if (sessionPresentation)
+    return (
+      <McpOriginSections
+        inherited={inherited}
+        context={context}
+        renderServerAnnotation={renderServerAnnotation}
+      />
+    );
+  return (
+    <section data-testid="mcp-inherited-group" className="space-y-2">
+      <p className="text-xs font-medium text-muted-foreground">{t("settings:mcpInherited")}</p>
+      <div className="space-y-2">
+        {inherited.map((item) => (
+          <div
+            key={item.definition.id}
+            data-testid={`mcp-inherited-server-${item.definition.id}`}
+            className="rounded-md border border-dashed p-3"
+          >
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                {item.definition.display_name}
+              </span>
+              <Badge variant="secondary">{t("settings:mcpInheritedBadge")}</Badge>
+            </div>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              {item.origins.map((origin) => (
+                <span className="wrap-anywhere" key={`${origin.scope}:${origin.owner_id}`}>
+                  {formatMCPOriginLabel(origin, labels[origin.scope], context)}
+                </span>
+              ))}
+            </div>
+            {renderServerAnnotation?.(item.definition.id)}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function ServerRow({
@@ -50,38 +108,112 @@ function ServerRow({
   checked,
   disabled,
   onChange,
+  sessionPresentation,
+  annotation,
 }: {
   server: MCPServerDefinition;
+  annotation?: ReactNode;
   checked: boolean;
   disabled?: boolean;
   onChange: (checked: boolean) => void;
+  sessionPresentation?: boolean;
 }) {
   const { t } = useTranslation();
+  const nameId = useId();
+  const detailsId = useId();
   return (
-    <label className="flex min-h-11 items-center gap-3 rounded-md border p-3 cursor-pointer hover:bg-muted/40">
+    <label
+      data-testid={`mcp-choice-${server.id}`}
+      className={cn(
+        "flex gap-3 cursor-pointer hover:bg-muted/40",
+        sessionPresentation ? "items-start" : "items-center",
+        sessionPresentation
+          ? "min-h-7 px-3 py-2.5 max-md:min-h-11 [@media(pointer:coarse)]:min-h-11"
+          : "min-h-11 rounded-md border p-3",
+        sessionPresentation && checked && "bg-primary/5",
+      )}
+    >
       <Checkbox
+        className={sessionPresentation ? "mt-0.5 shrink-0" : undefined}
+        aria-labelledby={nameId}
+        aria-describedby={sessionPresentation ? detailsId : undefined}
         checked={checked}
         disabled={disabled || !server.enabled}
         onCheckedChange={(value) => onChange(value === true)}
       />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{server.display_name}</span>
+        <span
+          id={nameId}
+          className={cn(
+            "block font-medium",
+            sessionPresentation ? "break-words text-[13px]" : "truncate text-sm",
+          )}
+        >
+          {server.display_name}
+        </span>
         <span className="block truncate text-xs text-muted-foreground">{server.runtime_name}</span>
+        {sessionPresentation && (
+          <span id={detailsId} className="block">
+            <McpDefinitionDetails definition={server} />
+          </span>
+        )}
+        {annotation}
       </span>
       {!server.enabled && <Badge variant="outline">{t("settings:mcpDisabled")}</Badge>}
     </label>
   );
 }
 
-function PickerBody({
+function AdditionalServersHeading({
+  sessionPresentation,
+  sectionLabel,
+}: {
+  sessionPresentation?: boolean;
+  sectionLabel?: string;
+}) {
+  const { t } = useTranslation();
+  return sessionPresentation ? (
+    <McpSectionHeading
+      title={t("settings:mcpAdditionalServers")}
+      description={t("settings:mcpAdditionalServersDescription")}
+    />
+  ) : (
+    <p className="text-xs font-medium text-muted-foreground">
+      {sectionLabel ?? t("settings:mcpAdditionalServers")}
+    </p>
+  );
+}
+
+export function MCPSelectionContent({
+  workspaceId,
   definitions,
   selectedIds,
   onSelectedIdsChange,
-  inherited,
+  inherited = [],
   disabled,
-}: Omit<MCPSelectionPickerProps, "label" | "description" | "testId">) {
+  error,
+  sectionLabel,
+  sessionPresentation,
+  query,
+  onQueryChange,
+  testId,
+  renderServerAnnotation,
+}: Omit<MCPSelectionPickerProps, "label" | "description"> & {
+  sessionPresentation?: boolean;
+  query: string;
+  onQueryChange: (query: string) => void;
+}) {
   const { t } = useTranslation();
-  const [query, setQuery] = useState("");
+  const context = useAppStore(
+    useShallow((state) => ({
+      workspaceId: workspaceId ?? definitions[0]?.workspace_id ?? state.workspaces.activeId,
+      profiles: state.agentProfiles.items,
+      repositories: state.repositories.itemsByWorkspaceId,
+      tasks: state.kanban.tasks,
+      workflows: state.workflows.items,
+      sessions: state.taskSessions.items,
+    })),
+  );
   const inheritedIds = useMemo(
     () => new Set((inherited ?? []).map((item) => item.definition.id)),
     [inherited],
@@ -98,84 +230,127 @@ function PickerBody({
     const next = checked ? [...selectedIds, id] : selectedIds.filter((item) => item !== id);
     onSelectedIdsChange([...new Set(next)]);
   };
+  const errorKey = mcpSelectionErrorKey(error);
 
   return (
-    <div className="min-h-0 space-y-4">
-      {(inherited?.length ?? 0) > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">{t("settings:mcpInherited")}</p>
-          {inherited?.map((item) => (
-            <div key={item.definition.id} className="rounded-md border border-dashed p-3">
-              <div className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                  {item.definition.display_name}
-                </span>
-                <Badge variant="secondary">{t("settings:mcpInheritedBadge")}</Badge>
-              </div>
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                {item.origins.map((origin) => (
-                  <span key={`${origin.scope}:${origin.owner_id}`}>{originLabel(origin, t)}</span>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+    <div
+      className={cn("min-h-0", sessionPresentation ? "space-y-6" : "space-y-4")}
+      data-testid={testId}
+    >
+      {errorKey && (
+        <p className="text-sm text-destructive" role="alert">
+          {t(errorKey)}
+        </p>
       )}
-      <div className="space-y-2">
-        <p className="text-xs font-medium text-muted-foreground">{t("settings:mcpCurrentScope")}</p>
+      <InheritedServers
+        inherited={inherited}
+        context={context}
+        renderServerAnnotation={renderServerAnnotation}
+        sessionPresentation={sessionPresentation}
+      />
+      <section className={sessionPresentation ? "space-y-3" : "space-y-2"}>
+        <AdditionalServersHeading
+          sessionPresentation={sessionPresentation}
+          sectionLabel={sectionLabel}
+        />
         <div className="relative">
           <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => onQueryChange(event.target.value)}
             placeholder={t("settings:searchMcpServers")}
             aria-label={t("settings:searchMcpServers")}
             className="pl-9"
           />
         </div>
-        {additions.length === 0 ? (
-          <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-            {t("settings:mcpSelectionEmpty")}
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {additions.map((server) => (
-              <ServerRow
-                key={server.id}
-                server={server}
-                checked={selectedIds.includes(server.id)}
-                disabled={disabled}
-                onChange={(checked) => setChecked(server.id, checked)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+        <ServerChoices
+          servers={additions}
+          selectedIds={selectedIds}
+          disabled={disabled}
+          sessionPresentation={sessionPresentation}
+          onChange={setChecked}
+          renderServerAnnotation={renderServerAnnotation}
+        />
+      </section>
+    </div>
+  );
+}
+
+function ServerChoices({
+  servers,
+  selectedIds,
+  disabled,
+  sessionPresentation,
+  onChange,
+  renderServerAnnotation,
+}: {
+  servers: MCPServerDefinition[];
+  renderServerAnnotation?: (id: string) => ReactNode;
+  selectedIds: string[];
+  disabled?: boolean;
+  sessionPresentation?: boolean;
+  onChange: (id: string, checked: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  if (servers.length === 0)
+    return (
+      <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+        {t("settings:mcpSelectionEmpty")}
+      </p>
+    );
+  return (
+    <div
+      className={
+        sessionPresentation
+          ? "divide-y divide-border/60 overflow-hidden rounded-lg border border-border/70"
+          : "space-y-2"
+      }
+    >
+      {servers.map((server) => (
+        <ServerRow
+          key={server.id}
+          server={server}
+          annotation={renderServerAnnotation?.(server.id)}
+          sessionPresentation={sessionPresentation}
+          checked={selectedIds.includes(server.id)}
+          disabled={disabled}
+          onChange={(checked) => onChange(server.id, checked)}
+        />
+      ))}
     </div>
   );
 }
 
 export function MCPSelectionPicker({
+  workspaceId,
   definitions,
   selectedIds,
   onSelectedIdsChange,
   inherited = [],
   disabled,
+  error,
   label,
   description,
+  sectionLabel,
   testId,
 }: MCPSelectionPickerProps) {
   const { t } = useTranslation();
   const { isMobile } = useResponsiveBreakpoint();
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const title = label ?? t("settings:mcpServers");
   const pickerBody = (
-    <PickerBody
+    <MCPSelectionContent
+      workspaceId={workspaceId}
+      query={query}
+      onQueryChange={setQuery}
       definitions={definitions}
       selectedIds={selectedIds}
       onSelectedIdsChange={onSelectedIdsChange}
       inherited={inherited}
       disabled={disabled}
+      error={error}
+      sectionLabel={sectionLabel}
     />
   );
   return (
@@ -183,8 +358,8 @@ export function MCPSelectionPicker({
       <Button
         type="button"
         variant="outline"
-        className="flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 px-3 md:min-h-8"
-        onClick={() => setOpen(true)}
+        className="flex w-full cursor-pointer items-center justify-between gap-3 px-3"
+        onClick={() => setOpen(!open)}
         disabled={disabled}
         aria-expanded={open}
       >

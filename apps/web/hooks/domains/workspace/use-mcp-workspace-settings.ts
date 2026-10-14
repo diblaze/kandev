@@ -20,7 +20,10 @@ import type {
 
 export function useMCPWorkspaceDefinitions(workspaceId: string | null | undefined) {
   const [definitions, setDefinitions] = useState<MCPServerDefinition[]>([]);
+  const [loadedWorkspace, setLoadedWorkspace] = useState<string | null>(null);
+  const loadedWorkspaceRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const requestRef = useRef(0);
   const workspaceRef = useRef(workspaceId);
@@ -30,17 +33,14 @@ export function useMCPWorkspaceDefinitions(workspaceId: string | null | undefine
     const requestID = ++requestRef.current;
     const isCurrent = () =>
       requestRef.current === requestID && workspaceRef.current === workspaceId;
-    if (!workspaceId) {
-      if (isCurrent()) {
-        setDefinitions([]);
-        setError(null);
-      }
-      return [];
-    }
-    if (isCurrent()) setLoading(true);
+    if (!workspaceId) return [];
+    setLoading(loadedWorkspaceRef.current !== workspaceId);
+    setRefreshing(loadedWorkspaceRef.current === workspaceId);
     try {
       const next = await listMCPServers(workspaceId, { cache: "no-store" });
       if (!isCurrent()) return [];
+      loadedWorkspaceRef.current = workspaceId;
+      setLoadedWorkspace(workspaceId);
       setDefinitions(next);
       setError(null);
       return next;
@@ -48,15 +48,33 @@ export function useMCPWorkspaceDefinitions(workspaceId: string | null | undefine
       if (isCurrent()) setError(cause);
       return [];
     } finally {
-      if (isCurrent()) setLoading(false);
+      if (isCurrent()) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [workspaceId]);
 
   useEffect(() => {
+    loadedWorkspaceRef.current = null;
+    setLoadedWorkspace(null);
+    setDefinitions([]);
+    setError(null);
+    setLoading(false);
+    setRefreshing(false);
     void reload();
+    return () => {
+      requestRef.current += 1;
+    };
   }, [reload]);
 
-  return { definitions, loading, error, reload };
+  return {
+    definitions: loadedWorkspace === workspaceId ? definitions : [],
+    loading,
+    refreshing,
+    error,
+    reload,
+  };
 }
 
 export function useMCPWorkspaceSettings(workspaceId: string) {

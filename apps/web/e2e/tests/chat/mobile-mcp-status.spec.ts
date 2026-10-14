@@ -1,3 +1,4 @@
+import { checkMCPStatusClarity } from "../../helpers/mcp-status-clarity";
 import { type Locator } from "@playwright/test";
 import { test, expect } from "../../fixtures/test-base";
 import { SessionPage } from "../../pages/session-page";
@@ -111,4 +112,14 @@ test("mobile MCP explorer uses servers, tools, and tool detail pages", async ({
     ),
   ).toBe(true);
   prCapture.flush();
+});
+
+// @covers AC-PLATFORM-MCP-SESSION-OBSERVABILITY-001.13, AC-PLATFORM-MCP-SESSION-OBSERVABILITY-001.14, AC-PLATFORM-MCP-SESSION-OBSERVABILITY-001.15, AC-PLATFORM-MCP-SESSION-OBSERVABILITY-001.17, AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.14
+test("explains mixed connections and saved changes with stable customization", async ({
+  testPage,
+  apiClient,
+  seedData,
+}) => {
+  test.setTimeout(150_000);
+  await checkMCPStatusClarity({ page: testPage, apiClient, seedData, mobile: true });
 });

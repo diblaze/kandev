@@ -57,7 +57,7 @@ export const WORKSPACE_SETTINGS_TABS: ReadonlyArray<WorkspaceTabSpec> = [
   { tab: "integrations", labelKey: "common:integrations", icon: IconPlugConnected },
   { tab: "automations", labelKey: "common:automations", icon: IconBolt },
   { tab: "secrets", labelKey: "settings:secrets", icon: IconKey },
-  { tab: "mcp-servers", labelKey: "settings:workspaceMcpServers", icon: IconServer },
+  { tab: "mcp-servers", labelKey: "settings:mcpServers", icon: IconServer },
 ];
 
 /**

@@ -1,4 +1,9 @@
+import { checkMCPOriginSections } from "../../helpers/mcp-origin-sections";
+import { openMCPComposerCustomization } from "../../helpers/mcp-composer";
+import { checkMCPSessionClarity } from "../../helpers/mcp-session-clarity";
+import { checkMCPSelectionRefresh } from "../../helpers/mcp-selection-refresh";
 import { expect, test } from "../../fixtures/test-base";
+import { checkMCPSelectionRejection } from "../../helpers/mcp-selection-feedback";
 import type { ApiClient } from "../../helpers/api-client";
 import {
   assertLocatorWithinViewportX,
@@ -23,7 +28,73 @@ async function cleanupMCPServers(apiClient: ApiClient, workspaceId: string) {
 }
 
 test.describe("Task MCP selection on mobile", () => {
+  test("groups MCP origins and enriches session choices", async ({
+    testPage,
+    apiClient,
+    seedData,
+  }) => {
+    test.setTimeout(120_000);
+    await checkMCPOriginSections({ page: testPage, apiClient, seedData, mobile: true });
+  });
+
+  // @covers AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.13
+  test("clarifies deferred session customization", async ({ testPage, apiClient, seedData }) => {
+    await checkMCPSessionClarity({ page: testPage, apiClient, seedData });
+  });
+  // @covers AC-PLATFORM-BACKEND-RESTART-PAGE-RECOVERY-001.9, AC-PLATFORM-BACKEND-RESTART-PAGE-RECOVERY-001.11
+  for (const stale of [false, true]) {
+    test(
+      stale
+        ? "shows one recovery surface for stale MCP selections"
+        : "keeps ordinary MCP authorization failures local",
+      async ({ testPage, apiClient, seedData }) => {
+        test.setTimeout(120_000);
+        await checkMCPSelectionRejection({
+          page: testPage,
+          apiClient,
+          seedData,
+          stale,
+          mobile: true,
+        });
+      },
+    );
+  }
+
+  test("retains focused MCP choices through pending background refreshes", async ({
+    testPage,
+    apiClient,
+    seedData,
+  }) => {
+    await checkMCPSelectionRefresh({ page: testPage, apiClient, seedData, mobile: true });
+  });
+
+  let baseline: { profile: string[]; repository: string[] };
+  test.beforeEach(async ({ apiClient, seedData, testPage }) => {
+    void testPage;
+    baseline = {
+      profile: (
+        await apiClient.getMCPSelections("profile", seedData.agentProfileId, seedData.workspaceId)
+      ).definition_ids,
+      repository: (
+        await apiClient.getMCPSelections("repository", seedData.repositoryId, seedData.workspaceId)
+      ).definition_ids,
+    };
+  });
   test.afterEach(async ({ apiClient, seedData }) => {
+    if (baseline) {
+      await apiClient.replaceMCPSelections(
+        "profile",
+        seedData.agentProfileId,
+        seedData.workspaceId,
+        baseline.profile,
+      );
+      await apiClient.replaceMCPSelections(
+        "repository",
+        seedData.repositoryId,
+        seedData.workspaceId,
+        baseline.repository,
+      );
+    }
     await cleanupMCPServers(apiClient, seedData.workspaceId);
   });
 
@@ -69,13 +140,25 @@ test.describe("Task MCP selection on mobile", () => {
     await expect(mcpSelection).toBeVisible();
     await expect(mcpSelection).toContainText("MCP servers");
 
-    const pickerTrigger = mcpSelection.getByRole("button");
+    const pickerTrigger = mcpSelection.getByRole("button", { name: "MCP servers", exact: true });
+    const priorityBox = (await dialog.getByTestId("task-create-priority-select").boundingBox())!;
+    expect((await pickerTrigger.boundingBox())!.width).toBeLessThanOrEqual(priorityBox.width + 1);
+    await expect(mcpSelection.locator(":scope > p")).toHaveCount(0);
+    await mcpSelection.getByRole("button", { name: "About MCP servers", exact: true }).tap();
+    const help = testPage.locator('[data-slot="drawer-content"][data-state="open"]');
+    await expect(help).toHaveCount(1);
+    await expect(help).toContainText(
+      "Servers selected in its agent profile or repositories are included automatically.",
+    );
+    await help.getByRole("button", { name: "Close", exact: true }).tap();
+    await expect(dialog).toBeVisible();
     const pickerTriggerBox = await pickerTrigger.boundingBox();
     expect(pickerTriggerBox).not.toBeNull();
     expect(pickerTriggerBox!.height).toBeGreaterThanOrEqual(44);
     await pickerTrigger.tap();
 
-    const drawer = testPage.locator('[data-slot="drawer-content"][data-state="open"]').last();
+    const drawer = testPage.getByTestId("task-create-mcp-options");
+    await expect(drawer).toHaveCount(1);
     await expect(drawer).toBeVisible();
     await assertLocatorWithinViewportX(drawer, "mobile task MCP drawer");
     await assertNoDocumentHorizontalOverflow(testPage, "mobile task MCP drawer");
@@ -86,7 +169,12 @@ test.describe("Task MCP selection on mobile", () => {
     await taskRow.tap();
     await expect(mcpSelection).toContainText("1 selected");
 
-    await testPage.keyboard.press("Escape");
+    await drawer.getByRole("button", { name: "Close", exact: true }).tap();
+    await expect(dialog).toBeVisible();
+    await expect(pickerTrigger).toBeFocused();
+    await pickerTrigger.tap();
+    await expect(drawer.getByRole("checkbox", { name: /Mobile task MCP/ })).toBeChecked();
+    await drawer.getByRole("button", { name: "Close", exact: true }).tap();
     const taskTitle = "Mobile MCP task";
     await dialog.getByTestId("task-title-input").fill(taskTitle);
     await dialog.getByTestId("task-description-input").fill("Persist the mobile MCP selection.");
@@ -124,6 +212,24 @@ test.describe("Task MCP selection on mobile", () => {
       configuration: { url: "https://mcp.example.test/mobile-session" },
       source: "custom",
     });
+    const inheritedMCP = await apiClient.createMCPServer(seedData.workspaceId, {
+      runtime_name: `${TEST_RUNTIME_PREFIX}inherited`,
+      display_name: "Mobile inherited documentation",
+      description: "Readable profile and repository origins.",
+      execution_mode: "remote",
+      transport: "streamable_http",
+      configuration: { url: "https://mcp.example.test/mobile-inherited" },
+      source: "custom",
+    });
+    await apiClient.replaceMCPSelections("profile", seedData.agentProfileId, seedData.workspaceId, [
+      inheritedMCP.id,
+    ]);
+    await apiClient.replaceMCPSelections(
+      "repository",
+      seedData.repositoryId,
+      seedData.workspaceId,
+      [inheritedMCP.id],
+    );
     const task = await apiClient.createTaskWithAgent(
       seedData.workspaceId,
       "Mobile MCP session task",
@@ -143,20 +249,38 @@ test.describe("Task MCP selection on mobile", () => {
     await session.waitForLoad();
     await session.waitForChatIdle({ timeout: 30_000 });
 
-    const settings = testPage.getByTestId("task-session-mcp-settings");
-    await expect(settings).toBeVisible();
-    const sessionTrigger = settings.getByRole("button", { name: "Session MCP additions" });
-    await sessionTrigger.tap();
-    const picker = settings.getByTestId("task-session-mcp-settings-picker");
-    await picker.getByRole("button").tap();
+    await expect(testPage.getByTestId("task-session-mcp-settings")).toHaveCount(0);
+    const sessionTrigger = testPage.getByTestId("mcp-status-trigger");
+    const triggerBox = await sessionTrigger.boundingBox();
+    expect(triggerBox!.height).toBeGreaterThanOrEqual(44);
+    await openMCPComposerCustomization(testPage);
 
     const drawer = testPage.locator('[data-slot="drawer-content"][data-state="open"]').last();
     await expect(drawer).toBeVisible();
-    await expect(drawer.locator(".overflow-y-auto")).toHaveCount(1);
+    await expect(
+      drawer.getByRole("tabpanel", { name: "Customize", exact: true }).locator(".overflow-y-auto"),
+    ).toHaveCount(1);
     await assertLocatorWithinViewportX(drawer, "mobile session MCP drawer");
     await assertNoDocumentHorizontalOverflow(testPage, "mobile session MCP drawer");
-    await drawer.getByText("Mobile session MCP", { exact: true }).tap();
-    await testPage.keyboard.press("Escape");
+    await expect(drawer).toHaveCount(1);
+    const profile = await apiClient.getAgentProfile(seedData.agentProfileId);
+    const repository = await apiClient.getRepository(seedData.repositoryId);
+    await expect(drawer).toContainText(profile.name);
+    await expect(drawer).toContainText(`Repository: ${repository.name}`);
+    await expect(drawer).not.toContainText(seedData.agentProfileId);
+    await expect(drawer).not.toContainText(seedData.repositoryId);
+    const close = drawer.getByRole("button", { name: "Close", exact: true });
+    const closeBox = await close.boundingBox();
+    expect(closeBox!.height).toBeGreaterThanOrEqual(44);
+    expect(closeBox!.width).toBeGreaterThanOrEqual(44);
+    const search = drawer.getByRole("textbox", { name: "Search MCP servers" });
+    await search.fill("Mobile session");
+    const checkbox = drawer
+      .locator("label")
+      .filter({ hasText: "Mobile session MCP" })
+      .getByRole("checkbox");
+    await checkbox.focus();
+    await testPage.keyboard.press("Space");
 
     await expect
       .poll(async () =>
@@ -166,6 +290,22 @@ test.describe("Task MCP selection on mobile", () => {
         definition_ids: [sessionMCP.id],
         mcp_state: expect.objectContaining({ apply_state: "applied" }),
       });
-    await expect(settings).toContainText("Applied");
+    await expect(drawer).toContainText("Setup up to date");
+    await expect(checkbox).toBeChecked();
+    await close.click();
+    await expect(drawer).toHaveCount(0);
+    await expect(sessionTrigger).toBeFocused();
+    await expect(testPage.getByTestId("mcp-selection-marker")).toHaveCount(0);
+    await openMCPComposerCustomization(testPage);
+    await expect(search).toHaveValue("Mobile session");
+    await expect(checkbox).toBeChecked();
+    await testPage.keyboard.press("Escape");
+    await expect(drawer).toHaveCount(0);
+    await testPage.reload();
+    await expect(testPage.getByTestId("mcp-selection-marker")).toHaveCount(0);
+    await openMCPComposerCustomization(testPage);
+    await expect(
+      drawer.locator("label").filter({ hasText: "Mobile session MCP" }).getByRole("checkbox"),
+    ).toBeChecked();
   });
 });

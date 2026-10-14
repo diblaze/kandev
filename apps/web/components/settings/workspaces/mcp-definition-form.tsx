@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@kandev/ui/button";
+import { controlSizingClassName } from "@kandev/ui/control-sizing";
 import { Input } from "@kandev/ui/input";
 import { Label } from "@kandev/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@kandev/ui/select";
@@ -270,7 +271,7 @@ function MCPDefinitionFormHeader({
         type="button"
         variant="ghost"
         size="icon"
-        className="h-11 w-11 cursor-pointer md:h-8 md:w-8"
+        className={controlSizingClassName("icon", "cursor-pointer")}
         onClick={onClose}
         aria-label={t("settings:mcpBackToList")}
       >

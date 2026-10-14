@@ -88,6 +88,7 @@ session-activity authority remain with Tasks and Platform.
 - [Subagent context persistence System Design Part 8](system-design/subagent-context-persistence-08.md)
 - [Profile-backed Utility Agents](system-design/utility-agent-profiles.md)
 - [Workspace MCP Configuration](system-design/workspace-mcp-configuration.md)
+- [Workspace MCP pending comparison](system-design/workspace-mcp-pending-changes.md)
 
 ## Migration record
 

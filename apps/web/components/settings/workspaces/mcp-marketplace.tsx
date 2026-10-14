@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@kandev/ui/button";
+import { controlSizingClassName } from "@kandev/ui/control-sizing";
 import { Card, CardContent, CardHeader, CardTitle } from "@kandev/ui/card";
 import {
   Dialog,
@@ -75,7 +76,7 @@ function MarketplaceSearchControls({
       <Button
         type="button"
         variant="outline"
-        className="min-h-11 cursor-pointer md:min-h-8"
+        className={controlSizingClassName("standard", "cursor-pointer")}
         onClick={onRefresh}
         disabled={loading}
       >
@@ -117,7 +118,7 @@ function MarketplaceEntryCard({
         <Button
           type="button"
           size="sm"
-          className="min-h-11 shrink-0 cursor-pointer md:min-h-8"
+          className={controlSizingClassName("standard", "shrink-0 cursor-pointer")}
           onClick={onReview}
         >
           {t("settings:reviewMcpEntry")}
@@ -205,11 +206,11 @@ function MarketplaceReviewDialog({
         <DialogFooter>
           <Button
             type="button"
-            className="min-h-[44px] cursor-pointer"
+            className={controlSizingClassName("standard", "cursor-pointer")}
             onClick={onInstall}
             disabled={!choice?.selectable || installing}
           >
-            {installing ? t("settings:mcpInstalling") : t("settings:saveMcpSetup")}
+            {installing ? t("settings:mcpInstalling") : t("settings:addMcpServer")}
           </Button>
         </DialogFooter>
       </DialogContent>

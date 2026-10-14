@@ -2,6 +2,7 @@ package mcpconfig
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 )
@@ -53,6 +54,25 @@ func TestResolverComposesSelectionsAndAccumulatesOrigins(t *testing.T) {
 	}
 	if result.Servers[0].DefinitionID != first.ID || result.Servers[0].DefinitionRevision != first.Revision {
 		t.Fatalf("first identity = %#v", result.Servers[0])
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var safe struct {
+		Setup struct {
+			Version int `json:"version"`
+			Servers []struct {
+				ID   string `json:"definition_id"`
+				Name string `json:"display_name"`
+			} `json:"servers"`
+		} `json:"setup"`
+	}
+	if err := json.Unmarshal(encoded, &safe); err != nil {
+		t.Fatal(err)
+	}
+	if safe.Setup.Version != 1 || len(safe.Setup.Servers) != 2 || safe.Setup.Servers[0].ID == "" || safe.Setup.Servers[0].Name == "" {
+		t.Fatalf("missing safe setup descriptors: %s", encoded)
 	}
 }
 

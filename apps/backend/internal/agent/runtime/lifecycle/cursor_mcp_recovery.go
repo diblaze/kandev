@@ -24,15 +24,18 @@ const cursorMCPAuthenticationWindowsShell = "windows"
 var ErrCursorMCPAuthenticationUnsupported = errors.New("cursor MCP authentication terminal is unsupported on this shell")
 
 type cursorMCPRecoveryTarget struct {
-	execution   *AgentExecution
-	agentConfig agents.Agent
-	profile     *AgentProfileInfo
-	candidate   mcpconfig.DiscoveredServerCandidate
-	serverID    string
-	fingerprint string
-	cursorHome  string
-	sourceRepo  string
-	acpServers  []agentctltypes.McpServer
+	execution     *AgentExecution
+	agentConfig   agents.Agent
+	profile       *AgentProfileInfo
+	candidate     mcpconfig.DiscoveredServerCandidate
+	serverID      string
+	fingerprint   string
+	cursorHome    string
+	sourceRepo    string
+	acpServers    []agentctltypes.McpServer
+	setup         *mcpconfig.MCPSetupSnapshot
+	setupRevision int64
+	setupCaptured bool
 }
 
 // CursorMCPAuthenticationSpec resolves a selected, owned native server into
@@ -136,11 +139,12 @@ func (m *Manager) resolveCursorMCPRecoveryTarget(ctx context.Context, sessionID,
 	if err != nil {
 		return nil, ErrCursorMCPRecoveryUnavailable
 	}
+	setup, revision, captured := execution.capturedMCPSetup()
 	return &cursorMCPRecoveryTarget{
 		execution: execution, agentConfig: agentConfig, profile: profile,
 		candidate: *selected, serverID: serverID, fingerprint: fingerprint,
 		cursorHome: filepath.Join(home, ".cursor"), sourceRepo: sourceRepo,
-		acpServers: acpServers,
+		acpServers: acpServers, setup: setup, setupRevision: revision, setupCaptured: captured,
 	}, nil
 }
 
@@ -389,6 +393,9 @@ func (m *Manager) reloadCursorMCPACPSession(ctx context.Context, target *cursorM
 	}
 	if err := m.validateCursorMCPRecoveryTarget(ctx, target, workspaceKey, generation); err != nil {
 		return ErrCursorMCPRecoveryUnavailable
+	}
+	if target.setupCaptured {
+		m.recordAcceptedMCPSetupOperation(ctx, target.execution, target.setup, target.setupRevision)
 	}
 	if err := m.restoreSessionRuntimeConfig(ctx, target.execution, target.execution.ACPSessionID, runtimeConfig); err != nil {
 		return ErrCursorMCPRecoveryUnavailable

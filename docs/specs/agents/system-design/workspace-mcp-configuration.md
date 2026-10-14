@@ -21,9 +21,9 @@ repository, task, and session identities. The workspace secret service owns
 secret values. Session-owned MCP observability remains governed by
 [ADR-2026-07-30](../../../decisions/2026-07-30-session-owned-mcp-observability.md).
 
-This design extends `apps/backend/internal/agent/mcpconfig`. It replaces the
-raw profile-only configuration path with workspace definitions and explicit
-associations. It does not create a second MCP configuration subsystem.
+This design extends `apps/backend/internal/agent/mcpconfig` with workspace
+definitions and explicit associations. Pending comparison is specified in
+[the capability continuation](workspace-mcp-pending-changes.md).
 
 ## Requirement mapping
 
@@ -39,32 +39,11 @@ associations. It does not create a second MCP configuration subsystem.
 
 ## Existing boundaries
 
-The current implementation has these relevant paths:
-
-- `internal/agent/mcpconfig` resolves one `AgentProfileMcpConfig` and adapts it
-  to ACP or provider-specific passthrough configuration.
-- `internal/agent/settings/models/mcp.go` and the
-  `agent_profile_mcp_configs` table store raw server maps by profile.
-- `internal/agent/runtime/lifecycle/manager_profile.go` resolves MCP servers
-  from the effective profile before an agent starts.
-- `internal/agentctl/server/adapter/transport/acp/adapter_session.go` already
-  accepts an MCP server list on both `NewSession` and `LoadSession`, filters it
-  through `filterMcpServersWithDecisions`, and emits attachment evidence for
-  every included and filtered server. It has no `session/resume` request.
-- `internal/agentctl/server/instance` resolves stdio MCP commands with
-  `exec.LookPath` in `buildMcpServerConfigs` and drops unresolvable entries with
-  a warn log.
-- `internal/agent/mcpconfig/passthrough.go` holds the per-CLI strategies. Claude,
-  Cursor, Pi, and OpenCode write MCP configuration files; Codex passes each
-  server as `-c mcp_servers.*` process arguments.
-- `types/streams/mcp_attachment.go` projects session-owned delivery and
-  attachment evidence.
-- `profile-mcp-config-card.tsx` is the raw JSON profile editor that this design
-  retires after migration. `profile-edit/mcp-policy-card.tsx` (transport policy),
-  `mcp-task-agent-profile-default-settings.tsx`, and `custom-tui-mcp-card.tsx`
-  are separate profile surfaces that this design keeps.
-- `app/settings/external-mcp` exposes Kandev's own MCP server to outside clients.
-  It is the opposite direction from this design and is not replaced.
+Catalog composition and delivery belong to `internal/agent/mcpconfig` and agent
+lifecycle. Attachment/tool evidence remains session owned. Passthrough follows
+the related ADRs. Legacy profile JSON remains the migration fallback. Profile
+transport policy, task-agent defaults and custom TUI settings remain separate.
+External MCP settings expose Kandev to outside clients, not this catalog.
 
 ## Components and responsibilities
 
@@ -180,18 +159,103 @@ A shared `MCPSelectionPicker` serves:
 - repository settings.
 - task creation.
 - new task agent session creation.
-- idle task-session settings.
+- existing task-session customization inside the composer MCP explorer.
 
 Repository settings renders the picker inside a collapsed section. The closed
 section shows its selected count. It does not reserve the height of the picker.
 
-Task creation renders the picker inside collapsed Advanced settings. The main
-task form does not show an MCP summary before the user opens Advanced settings.
-The expanded section shows inherited origins and task-level additions.
+Advanced settings contains a compact MCP label/count/help row matching priority.
+Opening it shows inherited origins and task additions in a bounded desktop
+popover or touch drawer. Keep the main form free of persistent helper text.
 
 The picker separates inherited rows from additions at the current scope. Each
 inherited row lists its origins. It does not show a misleading checkbox that
 implies subtraction.
+
+Origin identities remain stable IDs in selection and attachment contracts.
+Presentation resolves names from existing workspace-contextual profile options,
+repository records, and task/session records. Missing names fall back to the
+localized scope label, never the internal ID. Presentation must not fetch a
+broader inventory or resolve a name from another workspace.
+
+The shared picker exposes selection content independently from disclosure.
+Existing sessions render it inside the composer MCP explorer, replacing the
+`TaskSessionMCPSettings` bar above the transcript. New-session creation keeps
+`MCPSessionSelector` in its creation form.
+
+#### Composer selection ownership and refresh
+
+Extract the controller into one session-contextual hook in `ChatInputContainer`,
+above the responsive toolbar branch. Pass its result to `McpIndicator` through
+`ChatInputBody` and the toolbar. Viewport transitions must not create independent
+editors or pollers. Bound task/session/workspace/profile identities are required;
+without them the plug remains an evidence viewer without customization.
+
+Keep a committed snapshot separate from an in-flight reload in
+`useMCPSelectionEditor`: initial `loading` applies only until a successful load
+for the current context; subsequent reloads expose `refreshing`. A successful
+empty selection is still loaded. Refresh failures retain the current snapshot
+and expose the load error. Switching context immediately masks old data and
+invalidates load/save completions before loading the new context. Preserve the
+existing save-versus-reload request guards. A newer save must not be replaced
+by an older polling response or leave loading flags stuck.
+
+Pending-idle polling continues with the overlay closed, using one sequential
+timer. Stop on terminal state, handled recovery, unmount, or context change.
+Refresh errors retain the pending marker and permit later recovery. Load
+definitions once per controller workspace; opening or switching explorer views
+does not restart catalog loading. Keep selection content mounted during refresh.
+
+`McpServerExplorer` owns one Connections/Customize view selector in its existing
+dialog or drawer. Connections retains the server/tool drill-down and navigation
+state. Customize renders the shared selection content, inherited names,
+application notice, and retry in one scroll body without a nested selector
+trigger. Switching views preserves search and restores focus/scroll within the
+mounted context; reopening retains query. Unapplied changes open Customize by
+default so the pending, deferred, or failed notice is immediately actionable;
+otherwise the default is Connections. Context changes close/reset the overlay.
+
+Keep `McpIndicator` accessible in compact desktop toolbars rather than hiding it
+among collapsible actions. The neutral plug gets a small clock marker for
+`pending_idle`, a next-start marker for `deferred_restart`, and a failure marker
+for `failed`; `applied` removes the selection marker. Hover/focus summary includes
+the translated selection state alongside current server evidence. The marker
+represents saved selection application, not connection health, and never turns
+a rejected write into pending state. Connection colors stay in the evidence
+view, as required by the session-observability design.
+
+MCP selection presenters honor the shared API client's handled-error marker.
+A genuine stale-interlock failure uses the global reload surface without a
+duplicate local save error. The phone selection sheet closes on that handled
+failure so shared recovery remains visible. The desktop dialog follows the same
+rule. Ordinary authorization and save failures remain
+local, and a rejected write cannot be presented as saved or applied. Error
+classification follows the
+[backend restart recovery design](../../platform/system-design/backend-restart-page-recovery.md).
+
+For AC-006.13, label session additions explicitly, keep timing in the state
+notice, and omit revision counters from primary copy. Translate forbidden-save
+feedback separately; retain authoritative choices and shared recovery ownership.
+
+#### Customize origin sections
+
+AC-006.20/21: project `MCPInheritedSelection[]` once per definition, task before
+repository before profile. Preserve every contributor and row order; deduplicate
+workspace/scope/owner. Omit empty groups; unmatched rows use generic task setup.
+Grouping implies no override, inclusion or health change. Resolve names through
+the workspace-safe origin formatter, never IDs or broader inventory reads.
+
+Semantic headings replace origin badges. Rows name repositories/profiles in
+plain labelled text; Also selected by lists secondary contributors. Use shared
+nonblank descriptions and passive metadata from `mcpDefinitionBadgeKeys` on
+inherited and session-choice rows. Legacy import is not Custom. Retain aliases,
+disabled state, pending annotations, checkbox accessibility and existing search.
+No transport configuration is exposed. Inherited rows remain read-only.
+
+Keep dialog/drawer ownership, wrapped details, one scroller and touch targets.
+Status and pending changes precede groups, independent of search. No API,
+storage, polling, save or non-session-picker change. Implementation details and
+phone composition: [origin sections plan](../../../plans/mcp-customize-origins/plan.md).
 
 Only the raw JSON editor is retired. The profile transport policy card remains,
 because it configures the executor and provider filtering that runs after scope
@@ -506,8 +570,14 @@ header remains a 44-pixel disclosure target. Task creation keeps the whole MCP
 selector inside the existing Advanced settings disclosure on both viewports.
 
 Inherited origins wrap as text or chips. They never force the card width.
-Pending, deferred, and failed runtime application states remain next to the
-session-level control on desktop and mobile.
+The composer plug uses 28-pixel fine-pointer desktop controls and 44-pixel
+phone/coarse-pointer hit areas. Desktop click opens the existing dialog; hover
+remains a read-only summary. Phones use the existing full-height explorer
+drawer, with fixed header/view controls, safe-area padding, and one active
+scroll owner. Customize is a focused single-column list rather than a nested
+drawer. Coarse-pointer tablets use the existing bounded explorer drawer.
+Pending, deferred, and failed states remain visible on the plug when closed
+and as readable application notices inside customization.
 
 ## Observability
 
@@ -541,6 +611,10 @@ that every third-party MCP server connected.
   selection state, and responsive component behavior.
 - Playwright covers catalog setup, scoped union at task creation, idle-session
   changes, stale registry state, keyboard operation, and phone layouts.
+- Composer regressions hold sequential selection GET responses while retaining
+  focused choices through pending polling; cover empty loaded state, refresh
+  failure/recovery, late response suppression, compact toolbar reachability,
+  and pending-to-terminal markers with the overlay closed.
 
 ## Related decisions
 
@@ -555,3 +629,10 @@ that every third-party MCP server connected.
 - [ACP session setup](https://agentclientprotocol.com/protocol/v1/session-setup)
 - [MCP Registry aggregator guide](https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/registry-aggregators.mdx)
 - [MCP Registry preview](https://blog.modelcontextprotocol.io/posts/2025-09-08-mcp-registry-preview/)
+
+## Implementation plans
+
+- [Original workspace MCP package](../../../plans/workspace-mcp-configuration/plan.md)
+- [User-test feedback repair](../../../plans/workspace-mcp-feedback/plan.md)
+- [Composer MCP customization](../../../plans/composer-mcp-customization/plan.md)
+- [Customize origin sections](../../../plans/mcp-customize-origins/plan.md)

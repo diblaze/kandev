@@ -69,11 +69,16 @@ func (m *Manager) resolveMcpServers(ctx context.Context, execution *AgentExecuti
 		return nil, nil
 	}
 	if m.mcpResolver != nil && execution.WorkspaceID != "" {
-		return m.resolveEffectiveMcpServers(ctx, mcpconfig.ResolutionContext{
+		result, err := m.resolveEffectiveMCPResolution(ctx, mcpconfig.ResolutionContext{
 			WorkspaceID: execution.WorkspaceID, RepositoryIDs: execution.RepositoryIDs,
 			ProfileID: execution.AgentProfileID, TaskID: execution.TaskID,
 			SessionID: execution.SessionID,
 		}, execution.AgentProfileID, execution.MetadataSnapshot(), agentConfig, execution.RuntimeName)
+		if err != nil {
+			return nil, err
+		}
+		execution.rememberMCPSetup(result)
+		return mcpconfig.ToACPServers(result.Servers), nil
 	}
 	return m.resolveMcpServersWithParams(ctx, execution.AgentProfileID, execution.MetadataSnapshot(), agentConfig)
 }
@@ -93,15 +98,25 @@ func (m *Manager) resolveMcpServersForLaunch(ctx context.Context, req *LaunchReq
 }
 
 func (m *Manager) resolveEffectiveMcpServers(
+	ctx context.Context, resolutionContext mcpconfig.ResolutionContext, profileID string, metadata map[string]interface{}, agentConfig agents.Agent, runtime agentruntime.Runtime,
+) ([]agentctltypes.McpServer, error) {
+	result, err := m.resolveEffectiveMCPResolution(ctx, resolutionContext, profileID, metadata, agentConfig, runtime)
+	if err != nil {
+		return nil, err
+	}
+	return mcpconfig.ToACPServers(result.Servers), nil
+}
+
+func (m *Manager) resolveEffectiveMCPResolution(
 	ctx context.Context,
 	resolutionContext mcpconfig.ResolutionContext,
 	profileID string,
 	metadata map[string]interface{},
 	agentConfig agents.Agent,
 	runtime agentruntime.Runtime,
-) ([]agentctltypes.McpServer, error) {
+) (*mcpconfig.EffectiveMCPResolution, error) {
 	if agentConfig == nil {
-		return nil, nil
+		return &mcpconfig.EffectiveMCPResolution{}, nil
 	}
 	if runtime == "" {
 		runtime = agentruntime.RuntimeStandalone
@@ -120,9 +135,7 @@ func (m *Manager) resolveEffectiveMcpServers(
 			zap.String("profile_id", profileID), zap.String("executor_id", executorID),
 			zap.String("definition_id", decision.DefinitionID), zap.String("reason_code", decision.ReasonCode))
 	}
-	resolved := make([]mcpconfig.ResolvedServer, 0, len(result.Servers))
-	resolved = append(resolved, result.Servers...)
-	return mcpconfig.ToACPServers(resolved), nil
+	return result, nil
 }
 
 // applyExecutorMcpPolicy reads executor metadata and applies any executor-scoped MCP policy
@@ -275,8 +288,14 @@ func (m *Manager) initializeACPSession(ctx context.Context, execution *AgentExec
 	profileModel, profileMode, profileConfigOptions, policy := m.resolveProfileSessionConfigAndPolicy(ctx, execution.AgentProfileID)
 	runtimeModel, runtimeMode, runtimeConfigOptions := m.sessionRuntimeOverrides(ctx, execution)
 	startupGeneration := execution.startupAttemptSnapshot()
+	setup, revision, captured := execution.capturedMCPSetup()
 	markBootReady := func(executionID string) error {
 		return m.markBootReadyForStartup(context.Background(), executionID, startupGeneration)
+	}
+	setupAccepted := func() {
+		if captured && execution.startupAttemptSnapshot() == startupGeneration {
+			m.recordAcceptedMCPSetupOperation(context.Background(), execution, setup, revision)
+		}
 	}
 	// The effective runtime model (user-selected, persisted session state)
 	// takes precedence over the profile's start model for the session; the
@@ -287,7 +306,7 @@ func (m *Manager) initializeACPSession(ctx context.Context, execution *AgentExec
 		ctx, execution, agentConfig, taskDescription, attachments, mcpServers, markBootReady,
 		profileModel, profileMode, profileConfigOptions,
 		runtimeModel, runtimeMode, runtimeConfigOptions,
-		policy,
+		policy, setupAccepted,
 	)
 }
 

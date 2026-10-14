@@ -443,6 +443,7 @@ function NewSessionForm({
         isSummarizing={isSummarizing}
       />
       <MCPSessionSelector
+        workspaceId={workspaceId}
         definitions={mcp.definitions}
         definitionsLoading={mcp.definitionsLoading}
         selectedIds={mcpServerIds}

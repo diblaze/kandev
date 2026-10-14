@@ -13,7 +13,7 @@ function ExplorerCloseButton({ onClose }: { onClose: () => void }) {
       type="button"
       variant="ghost"
       size="icon"
-      className="h-11 w-11 shrink-0 cursor-pointer"
+      className="h-7 w-7 shrink-0 cursor-pointer [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 max-md:h-11 max-md:w-11"
       aria-label={t("task:mcpClose")}
       data-testid="mcp-explorer-close"
       onClick={onClose}
@@ -28,8 +28,10 @@ function HeaderCopy({ mobile }: { mobile: boolean }) {
   if (mobile) {
     return (
       <div className="min-w-0">
-        <DrawerTitle className="text-[13px] leading-5">{t("task:mcpExplorerTitle")}</DrawerTitle>
-        <DrawerDescription className="text-[13px] leading-5">
+        <DrawerTitle className="text-base font-semibold leading-6">
+          {t("task:mcpExplorerTitle")}
+        </DrawerTitle>
+        <DrawerDescription className="mt-1 text-pretty text-[13px] leading-5">
           {t("task:mcpExplorerDescription")}
         </DrawerDescription>
       </div>
@@ -37,8 +39,10 @@ function HeaderCopy({ mobile }: { mobile: boolean }) {
   }
   return (
     <div className="min-w-0">
-      <DialogTitle className="text-[13px] leading-5">{t("task:mcpExplorerTitle")}</DialogTitle>
-      <DialogDescription className="text-[13px] leading-5">
+      <DialogTitle className="text-base font-semibold leading-6">
+        {t("task:mcpExplorerTitle")}
+      </DialogTitle>
+      <DialogDescription className="mt-1 text-pretty text-[13px] leading-5">
         {t("task:mcpExplorerDescription")}
       </DialogDescription>
     </div>

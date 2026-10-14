@@ -1,5 +1,7 @@
 "use client";
 
+import { useTaskSessionMCPSelection } from "@/hooks/domains/session/use-task-session-mcp-selection";
+
 import { forwardRef, useCallback } from "react";
 import type { ContextFile } from "@/lib/state/context-files-store";
 import type { Message } from "@/lib/types/http";
@@ -180,6 +182,7 @@ function buildContextAreaProps(
 }
 
 type EnhancePromptExtras = {
+  mcpSelection?: ChatInputEditorAreaProps["mcpSelection"];
   onEnhancePrompt?: () => void;
   isEnhancingPrompt?: boolean;
   isUtilityConfigured?: boolean;
@@ -204,6 +207,7 @@ function buildEditorAreaProps(
     planModeAvailable: p.planModeAvailable ?? true,
     mcpServers: p.mcpServers ?? [],
     mcpAttachmentHistory: p.mcpAttachmentHistory,
+    mcpSelection: extras.mcpSelection,
     submitKey: p.submitKey,
     setIsInputFocused: s.setIsInputFocused,
     sessionId: p.sessionId,
@@ -327,6 +331,11 @@ export const ChatInputContainer = forwardRef<ChatInputContainerHandle, ChatInput
     const { sessionId, taskId, taskTitle, taskDescription, isAgentBusy, isStarting, isSending } =
       props;
     const p = normalizeChatInputProps(props);
+    const mcpSelection = useTaskSessionMCPSelection({
+      taskId,
+      sessionId,
+      workspaceId: props.workspaceId,
+    });
     const isMoving = props.isMoving ?? false;
     const executorUnavailable = props.executorUnavailable ?? false;
     const isBusyVisual = isStarting || isMoving;
@@ -450,6 +459,7 @@ export const ChatInputContainer = forwardRef<ChatInputContainerHandle, ChatInput
           ) : null
         }
         editorAreaProps={buildEditorAreaProps(s, p, {
+          mcpSelection,
           onEnhancePrompt: promptEnhancement.handleEnhancePrompt,
           isEnhancingPrompt: promptEnhancement.isEnhancingPrompt,
           isUtilityConfigured: promptEnhancement.isUtilityConfigured,

@@ -286,6 +286,16 @@ Marketplace entries come from Kandev-curated templates or cached public Registry
 
 Select configured definitions at the profile, repository, task, or task-session scope. Repository selection is collapsed by default. Task creation keeps its selector inside collapsed **Advanced** settings. The effective set is additive across every task repository, the workspace-contextual profile, task, and session. Duplicate definitions are delivered once with all contributing origins; inherited definitions cannot be removed at a narrower scope.
 
+In a session's **Customize** view, populated sections show servers selected for
+the task, inherited from repositories, or inherited from the agent profile.
+Each server appears once: task selections group first, then repositories, then
+the profile. This display order does not override another source. Rows list any
+other contributing sources under **Also selected by**. **Additional servers**
+contains choices from the workspace catalog for this session, with descriptions
+and setup mode, transport and catalog-source labels. A label such as **Custom**
+describes how the definition entered the catalog, not which scope selected it.
+
+
 An active turn keeps its current MCP list. Existing task sessions save a desired revision and apply it after the turn becomes idle. Providers that advertise safe ACP reconnection reuse the same session. Unsupported reconnection defers the change until the next start, and a failed reconnect keeps the previous applied revision active until retry.
 
 ## Task MCP

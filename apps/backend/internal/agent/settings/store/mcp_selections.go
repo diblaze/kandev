@@ -21,6 +21,8 @@ type mcpSelectionTable struct {
 	ownerColumn string
 }
 
+const mcpSelectionWorkspacePredicate = ` AND workspace_id = ?`
+
 func selectionTable(scope mcpconfig.SelectionScope) (mcpSelectionTable, error) {
 	switch scope {
 	case mcpconfig.SelectionScopeProfile:
@@ -48,7 +50,7 @@ func (r *sqliteRepository) ListMCPSelections(
 	query := `SELECT mcp_server_id FROM ` + table.name + ` WHERE ` + table.ownerColumn + ` = ?`
 	args := []any{ownerID}
 	if scope == mcpconfig.SelectionScopeProfile {
-		query += ` AND workspace_id = ?`
+		query += mcpSelectionWorkspacePredicate
 		args = append(args, workspaceID)
 	}
 	query += ` ORDER BY mcp_server_id`
@@ -112,18 +114,16 @@ func (r *sqliteRepository) ReplaceMCPSelectionsAndState(
 	_, err = tx.ExecContext(ctx, tx.Rebind(`
 		INSERT INTO mcp_task_session_apply_state
 		(task_session_id, desired_revision, applied_revision, apply_state,
-		 failure_code, failure_summary, attachment_attempt_id, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		 failure_code, failure_summary, attachment_attempt_id, updated_at, accepted_setup_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(task_session_id) DO UPDATE SET
 			desired_revision = excluded.desired_revision,
-			applied_revision = excluded.applied_revision,
 			apply_state = excluded.apply_state,
 			failure_code = excluded.failure_code,
 			failure_summary = excluded.failure_summary,
-			attachment_attempt_id = excluded.attachment_attempt_id,
 			updated_at = excluded.updated_at
 	`), ownerID, state.DesiredRevision, state.AppliedRevision, state.ApplyState,
-		state.FailureCode, state.FailureSummary, state.AttachmentAttemptID, time.Now().UTC())
+		state.FailureCode, state.FailureSummary, state.AttachmentAttemptID, time.Now().UTC(), encodeMCPSetup(state.AcceptedSetup))
 	if err != nil {
 		return err
 	}
@@ -142,11 +142,11 @@ func (r *sqliteRepository) CompareAndSwapMCPSelectionState(
 	result, err := r.db.ExecContext(ctx, r.db.Rebind(`
 		UPDATE mcp_task_session_apply_state
 		SET desired_revision = ?, applied_revision = ?, apply_state = ?,
-			failure_code = ?, failure_summary = ?, attachment_attempt_id = ?, updated_at = ?
-		WHERE task_session_id = ? AND desired_revision = ?
+			failure_code = ?, failure_summary = ?, attachment_attempt_id = ?, updated_at = ?, accepted_setup_json = ?
+		WHERE task_session_id = ? AND desired_revision = ? AND applied_revision <= ?
 	`), state.DesiredRevision, state.AppliedRevision, state.ApplyState,
 		state.FailureCode, state.FailureSummary, state.AttachmentAttemptID,
-		time.Now().UTC(), sessionID, expectedDesiredRevision)
+		time.Now().UTC(), encodeMCPSetup(state.AcceptedSetup), sessionID, expectedDesiredRevision, state.AppliedRevision)
 	if err != nil {
 		return false, err
 	}
@@ -239,7 +239,7 @@ func replaceMCPSelectionsTx(
 	deleteQuery := `DELETE FROM ` + table.name + ` WHERE ` + table.ownerColumn + ` = ?`
 	deleteArgs := []any{ownerID}
 	if scope == mcpconfig.SelectionScopeProfile {
-		deleteQuery += ` AND workspace_id = ?`
+		deleteQuery += mcpSelectionWorkspacePredicate
 		deleteArgs = append(deleteArgs, workspaceID)
 	}
 	if _, err := tx.ExecContext(ctx, tx.Rebind(deleteQuery), deleteArgs...); err != nil {

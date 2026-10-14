@@ -47,8 +47,10 @@ type MCPResolutionDecision struct {
 // EffectiveMCPResolution contains the delivery servers and safe filtered
 // decisions. Resolved secrets exist only in Servers.
 type EffectiveMCPResolution struct {
-	Servers   []ResolvedServer        `json:"-"`
-	Decisions []MCPResolutionDecision `json:"decisions,omitempty"`
+	Servers         []ResolvedServer        `json:"-"`
+	Decisions       []MCPResolutionDecision `json:"decisions,omitempty"`
+	Setup           *MCPSetupSnapshot       `json:"setup,omitempty"`
+	DesiredRevision int64                   `json:"-"`
 }
 
 // MCPSecretResolver reveals one secret at the last responsible moment.
@@ -93,20 +95,22 @@ func (r *Resolver) Resolve(ctx context.Context, resolutionContext ResolutionCont
 	if strings.TrimSpace(resolutionContext.WorkspaceID) == "" {
 		return nil, fmt.Errorf("%w: workspace id is required", ErrMCPInvalidSelection)
 	}
-	origins, legacyServers, err := r.loadOrigins(ctx, resolutionContext)
+	inputs, err := r.readResolutionInputs(ctx, resolutionContext)
 	if err != nil {
 		return nil, err
 	}
+	origins := inputs.Origins
+	legacyServers := make(map[string]ServerDef)
 	r.addLegacyFallback(ctx, resolutionContext, origins, legacyServers)
 	ids := make([]string, 0, len(origins))
 	for id := range origins {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	result := &EffectiveMCPResolution{}
+	result := &EffectiveMCPResolution{Setup: setupFromDefinitions(inputs.Definitions), DesiredRevision: inputs.DesiredRevision}
 	names := make(map[string]string, len(ids))
 	for _, id := range ids {
-		resolved, decision, err := r.resolveDefinition(ctx, resolutionContext, policy, id, origins[id], legacyServers, names)
+		resolved, decision, err := r.resolveDefinition(ctx, resolutionContext, policy, id, origins[id], legacyServers, names, inputs.Definitions[id])
 		if err != nil {
 			return nil, err
 		}
@@ -135,20 +139,16 @@ func (r *Resolver) resolveDefinition(
 	origins []SelectionOrigin,
 	legacyServers map[string]ServerDef,
 	names map[string]string,
+	definition *MCPServerDefinition,
 ) (*ResolvedServer, *MCPResolutionDecision, error) {
-	definition, getErr := r.catalog.GetMCPServerDefinition(ctx, resolutionContext.WorkspaceID, id)
 	if legacyServer, ok := legacyServers[id]; ok {
 		definition = legacyDefinition(id, resolutionContext, legacyServer)
-		getErr = nil
 	}
-	if errors.Is(getErr, ErrMCPServerDefinitionNotFound) || definition == nil {
+	if definition == nil {
 		return nil, &MCPResolutionDecision{
 			DefinitionID: id, ReasonCode: "definition_missing",
 			Summary: "MCP definition is no longer available", Origins: origins,
 		}, nil
-	}
-	if getErr != nil {
-		return nil, nil, getErr
 	}
 	if !definition.Enabled {
 		return nil, decisionPointer(definitionDecision(definition, "definition_disabled", "MCP definition is disabled", origins)), nil

@@ -77,10 +77,37 @@ export type MCPSelectionImpact = {
 
 export type MCPSessionApplyState = "applied" | "pending_idle" | "deferred_restart" | "failed";
 
+export type MCPSetupServer = {
+  definition_id: string;
+  revision: number;
+  enabled: boolean;
+  display_name: string;
+  runtime_name: string;
+};
+
+export type MCPSetupChange = {
+  definition_id: string;
+  action: "add" | "remove" | "update";
+  before?: MCPSetupServer;
+  after?: MCPSetupServer;
+};
+
+export type MCPSetupComparison = {
+  version: 1;
+  status: "known" | "unavailable";
+  reason?: string;
+  desired_revision: number;
+  applied_revision: number;
+  attachment_attempt_id?: string;
+  selection_ids?: string[];
+  changes?: MCPSetupChange[];
+};
+
 export type MCPSessionSelectionState = {
   desired_revision: number;
   applied_revision: number;
   apply_state: MCPSessionApplyState;
+  comparison?: MCPSetupComparison;
   failure_code?: string;
   failure_summary?: string;
   attachment_attempt_id?: string;

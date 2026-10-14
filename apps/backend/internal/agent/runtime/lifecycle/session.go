@@ -458,6 +458,7 @@ func (sm *SessionManager) InitializeAndPromptWithLayers(
 	runtimeMode string,
 	runtimeConfigOptions map[string]string,
 	startModelPolicy StartModelPolicy,
+	setupAccepted ...func(),
 ) error {
 	ctx, result, err := sm.initializeACPConnection(ctx, execution, agentConfig, mcpServers)
 	if err != nil {
@@ -466,6 +467,9 @@ func (sm *SessionManager) InitializeAndPromptWithLayers(
 	startModelPolicy = strictAuggieTaskStartModelPolicy(startModelPolicy, execution, agentConfig)
 
 	execution.ACPSessionID = result.SessionID
+	for _, accepted := range setupAccepted {
+		accepted()
+	}
 	if !cacheFreshSessionModelState(execution) && (profileModel != "" || runtimeModel != "") {
 		waitForFreshSessionModelState(ctx, sm.logger, execution)
 	}

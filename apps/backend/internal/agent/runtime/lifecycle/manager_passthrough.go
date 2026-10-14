@@ -824,10 +824,14 @@ func (m *Manager) startInteractiveProcess(ctx context.Context, execution *AgentE
 	// This matches ResumePassthroughSession and restartPassthroughProcess.
 	startReq := buildInteractiveStartRequest(execution.SessionID, execution, pt, env, cmd, stripEnv, true)
 
+	setup, revision, captured := execution.capturedMCPSetup()
 	processInfo, err := interactiveRunner.Start(ctx, startReq)
 	if err != nil {
 		m.updateExecutionError(execution.ID, "failed to start passthrough session: "+err.Error())
 		return nil, fmt.Errorf("failed to start passthrough session: %w", err)
+	}
+	if captured {
+		m.recordAcceptedMCPSetupOperation(ctx, execution, setup, revision)
 	}
 	return processInfo, nil
 }
@@ -1082,6 +1086,7 @@ func (m *Manager) replacePassthroughProcess(ctx context.Context, execution *Agen
 	// 3. Start new PTY process with ImmediateStart (terminal is already connected)
 	startReq := buildInteractiveStartRequest(execution.SessionID, execution, pt, env, cmd, rt.StripEnv, true)
 
+	setup, revision, captured := execution.capturedMCPSetup()
 	processInfo, err := interactiveRunner.Start(ctx, startReq)
 	if err != nil {
 		m.updateExecutionError(execution.ID, "failed to restart passthrough session: "+err.Error())
@@ -1089,6 +1094,9 @@ func (m *Manager) replacePassthroughProcess(ctx context.Context, execution *Agen
 	}
 
 	// 4. Update execution with new process ID
+	if captured {
+		m.recordAcceptedMCPSetupOperation(ctx, execution, setup, revision)
+	}
 	execution.PassthroughProcessID = processInfo.ID
 	execution.PassthroughStartedAt = time.Now()
 	execution.passthroughLaunchUsedResume = false

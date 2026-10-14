@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge } from "@kandev/ui/badge";
 import { CardContent, CardHeader, CardTitle } from "@kandev/ui/card";
 import { Label } from "@kandev/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@kandev/ui/select";
@@ -10,6 +9,7 @@ import { useSettingsSaveContributor } from "@/components/settings/settings-save-
 import { MCPSelectionPicker } from "@/components/mcp/mcp-selection-picker";
 import { useAppStore } from "@/components/state-provider";
 import { useMCPWorkspaceDefinitions } from "@/hooks/domains/workspace/use-mcp-workspace-settings";
+import { isHandledApiError } from "@/lib/api/client";
 import { useMCPSelectionEditor } from "@/hooks/domains/workspace/use-mcp-selection-editor";
 import { SettingsCard } from "@/components/settings/settings-card";
 
@@ -67,7 +67,7 @@ function ProfileMCPSelectionContent({
         onSelectedIdsChange={onSelectedIdsChange}
         disabled={hasLoadError}
         label={t("settings:mcpServers")}
-        description={t("settings:mcpSelectionDescription")}
+        description={t("settings:mcpProfileSelectionDescription")}
         testId={`profile-mcp-selection-${profileId}`}
       />
     );
@@ -100,9 +100,9 @@ function ProfileMCPSelectionContent({
           {t("settings:mcpLoadFailed")}
         </p>
       )}
-      {Boolean(editor.saveError) && (
+      {Boolean(editor.saveError) && !isHandledApiError(editor.saveError) && (
         <p className="text-sm text-destructive" role="alert">
-          {t("settings:mcpSaveFailed")}
+          {t("settings:mcpSelectionSaveFailed")}
         </p>
       )}
     </CardContent>
@@ -166,10 +166,7 @@ export function ProfileMCPSelectionCard({
   return (
     <SettingsCard isDirty={dirty}>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {t("agents:mcpConfiguration")}
-          <Badge variant="secondary">{t("agents:mcpTypedSelection")}</Badge>
-        </CardTitle>
+        <CardTitle className="flex items-center gap-2">{t("settings:mcpServers")}</CardTitle>
       </CardHeader>
       <ProfileMCPSelectionContent
         profileId={profileId}

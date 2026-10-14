@@ -66,6 +66,36 @@ export function mcpStatusLabelKey(status: MCPAttachmentStatus): string {
   return STATUS_LABEL_KEYS[status] ?? STATUS_LABEL_KEYS.unknown;
 }
 
+const FILTER_REASON_KEYS: Record<string, string> = {
+  http_unsupported: "task:mcpReasonHttpUnsupported",
+  sse_unsupported: "task:mcpReasonSseUnsupported",
+  duplicate_name: "task:mcpReasonDuplicateName",
+  transport_policy: "task:mcpReasonTransportPolicy",
+  server_policy: "task:mcpReasonServerPolicy",
+  invalid_transport: "task:mcpReasonInvalidTransport",
+  definition_disabled: "task:mcpReasonDefinitionDisabled",
+  definition_missing: "task:mcpReasonDefinitionMissing",
+  secret_resolution_failed: "task:mcpReasonSecretResolution",
+};
+const STATUS_EXPLANATION_KEYS: Record<MCPAttachmentStatus, string> = {
+  active: "task:mcpExplanationActive",
+  connected: "task:mcpExplanationConnected",
+  delivered: "task:mcpExplanationDelivered",
+  failed: "task:mcpExplanationFailed",
+  filtered: "task:mcpExplanationFiltered",
+  unavailable: "task:mcpExplanationUnavailable",
+  unknown: "task:mcpExplanationUnknown",
+};
+
+export function mcpStatusPresentation(server: MCPAttachmentServer) {
+  // Alternate transport reasons can survive a stronger observation.
+  const explanationKey =
+    server.status === "filtered"
+      ? (FILTER_REASON_KEYS[server.reason_code ?? ""] ?? STATUS_EXPLANATION_KEYS.filtered)
+      : (STATUS_EXPLANATION_KEYS[server.status] ?? STATUS_EXPLANATION_KEYS.unknown);
+  return { labelKey: mcpStatusLabelKey(server.status), explanationKey };
+}
+
 export function isKandevMcpServer(server: MCPAttachmentServer): boolean {
   return server.name === "kandev" && server.source !== "profile";
 }

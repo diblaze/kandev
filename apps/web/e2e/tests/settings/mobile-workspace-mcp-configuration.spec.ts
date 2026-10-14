@@ -28,6 +28,7 @@ test.describe("Workspace MCP configuration on mobile", () => {
     await testPage.goto(`/settings/workspaces/${seedData.workspaceId}/mcp-servers`);
     const settings = testPage.getByTestId("workspace-mcp-settings");
     await expect(settings).toBeVisible();
+    await expect(settings.getByRole("heading", { name: "MCP servers", exact: true })).toBeVisible();
 
     const add = settings.getByRole("button", { name: "Add MCP server" }).first();
     const addBox = await add.boundingBox();
@@ -98,7 +99,7 @@ test.describe("Workspace MCP configuration on mobile", () => {
     const choiceBox = await choiceButton.boundingBox();
     expect(choiceBox).not.toBeNull();
     expect(choiceBox!.height).toBeGreaterThanOrEqual(44);
-    const save = dialog.getByRole("button", { name: "Save setup" });
+    const save = dialog.getByRole("button", { name: "Add MCP server" });
     await expect
       .poll(async () => Math.round((await save.boundingBox())?.height ?? 0))
       .toBeGreaterThanOrEqual(44);

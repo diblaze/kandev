@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kandev/kandev/internal/agent/mcpconfig"
+	agentctltypes "github.com/kandev/kandev/internal/agentctl/types"
 	v1 "github.com/kandev/kandev/pkg/api/v1"
 	"go.uber.org/zap"
 )
@@ -72,29 +73,40 @@ func (m *Manager) applyPendingSessionMCP(ctx context.Context, sessionID string) 
 		return m.saveDeferredSessionMCP(ctx, sessionID)
 	}
 
+	return m.reconfigureIdleSessionMCP(ctx, execution, state)
+}
+
+func (m *Manager) reconfigureIdleSessionMCP(ctx context.Context, execution *AgentExecution, state mcpconfig.SessionMCPSelectionState) error {
+	sessionID := execution.SessionID
+
 	// session/load and session/resume can reset provider-owned runtime settings.
 	// Capture the effective Kandev runtime configuration before reconnecting so
 	// MCP selection changes do not silently replace a user's model, mode, or
 	// config options with provider defaults.
 	runtimeConfig := m.captureSessionRuntimeConfigForReset(ctx, execution)
-	if mcpErr := m.applySessionMCPWithAgent(ctx, execution); mcpErr != nil {
-		return m.saveFailedSessionMCP(ctx, sessionID, state.DesiredRevision, mcpErr)
+	agentConfig, err := m.getAgentConfigForExecution(execution)
+	if err != nil {
+		return m.saveFailedSessionMCP(ctx, sessionID, state.DesiredRevision, err)
+	}
+	servers, err := m.resolveMcpServers(ctx, execution, agentConfig)
+	if err != nil {
+		return m.saveFailedSessionMCP(ctx, sessionID, state.DesiredRevision, err)
+	}
+	setup, revision, captured := execution.capturedMCPSetup()
+	if !captured {
+		revision = state.DesiredRevision
+	}
+	if mcpErr := m.applySessionMCPWithAgent(ctx, execution, servers); mcpErr != nil {
+		return m.saveFailedSessionMCP(ctx, sessionID, revision, mcpErr)
 	}
 	if err := m.restoreSessionRuntimeConfig(ctx, execution, execution.ACPSessionID, runtimeConfig); err != nil {
 		return m.saveFailedSessionMCP(ctx, sessionID, state.DesiredRevision, err)
 	}
-	return m.saveAppliedSessionMCP(ctx, sessionID, state.DesiredRevision, execution.agentctl.GetLastAttachmentAttemptID())
+	return m.saveAppliedSessionMCP(ctx, sessionID, revision, execution.agentctl.GetLastAttachmentAttemptID(), setup)
 }
 
-func (m *Manager) applySessionMCPWithAgent(ctx context.Context, execution *AgentExecution) error {
-	agentConfig, err := m.getAgentConfigForExecution(execution)
-	if err != nil {
-		return err
-	}
-	servers, err := m.resolveMcpServers(ctx, execution, agentConfig)
-	if err != nil {
-		return err
-	}
+func (m *Manager) applySessionMCPWithAgent(ctx context.Context, execution *AgentExecution, servers []agentctltypes.McpServer) error {
+	var err error
 	client := execution.agentctl
 	if client.SupportsSessionResume() {
 		err = client.ResumeSession(ctx, execution.ACPSessionID, execution.WorkspacePath, servers)
@@ -116,12 +128,18 @@ func (m *Manager) applySessionMCPWithAgent(ctx context.Context, execution *Agent
 
 func (m *Manager) savePendingSessionMCP(ctx context.Context, sessionID string) error {
 	return m.updateSessionMCPState(ctx, sessionID, func(state *mcpconfig.SessionMCPSelectionState) {
+		if state.AppliedRevision >= state.DesiredRevision {
+			return
+		}
 		state.ApplyState = mcpconfig.SessionMCPApplyStatePendingIdle
 	})
 }
 
 func (m *Manager) saveDeferredSessionMCP(ctx context.Context, sessionID string) error {
 	return m.updateSessionMCPState(ctx, sessionID, func(state *mcpconfig.SessionMCPSelectionState) {
+		if state.AppliedRevision >= state.DesiredRevision {
+			return
+		}
 		state.ApplyState = mcpconfig.SessionMCPApplyStateDeferredRestart
 	})
 }
@@ -132,6 +150,9 @@ func (m *Manager) saveFailedSessionMCP(ctx context.Context, sessionID string, op
 		code = sessionMCPFailureLoad
 	}
 	return m.updateSessionMCPState(ctx, sessionID, func(state *mcpconfig.SessionMCPSelectionState) {
+		if state.AppliedRevision >= operationRevision {
+			return
+		}
 		if state.DesiredRevision != operationRevision {
 			state.ApplyState = mcpconfig.SessionMCPApplyStatePendingIdle
 			state.FailureCode = ""
@@ -149,9 +170,23 @@ func (m *Manager) saveAppliedSessionMCP(
 	sessionID string,
 	operationRevision int64,
 	attachmentAttemptID string,
+	setup *mcpconfig.MCPSetupSnapshot,
 ) error {
+	if m.mcpStateRepo == nil || sessionID == "" {
+		return nil
+	}
+	if writer, ok := m.mcpStateRepo.(mcpconfig.AcceptedMCPSetupRepository); ok {
+		return writer.SaveAcceptedMCPSetup(ctx, sessionID, operationRevision, attachmentAttemptID, setup)
+	}
+	if _, err := m.mcpStateRepo.GetMCPSelectionState(ctx, sessionID); errors.Is(err, mcpconfig.ErrMCPSelectionStateNotFound) {
+		return m.mcpStateRepo.SaveMCPSelectionState(ctx, sessionID, mcpconfig.SessionMCPSelectionState{DesiredRevision: operationRevision, AppliedRevision: operationRevision, ApplyState: mcpconfig.SessionMCPApplyStateApplied, AttachmentAttemptID: attachmentAttemptID, AcceptedSetup: setup})
+	}
 	return m.updateSessionMCPState(ctx, sessionID, func(state *mcpconfig.SessionMCPSelectionState) {
+		if state.AppliedRevision > operationRevision {
+			return
+		}
 		state.AppliedRevision = operationRevision
+		state.AcceptedSetup = setup
 		state.AttachmentAttemptID = attachmentAttemptID
 		state.FailureCode = ""
 		state.FailureSummary = ""

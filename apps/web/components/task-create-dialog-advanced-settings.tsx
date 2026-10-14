@@ -14,7 +14,7 @@ import type {
   WorkflowAgentOverrideOption,
   WorkflowAgentOverrideRow,
 } from "@/components/task-create-dialog-workflow-agent-overrides";
-import { MCPSelectionPicker } from "@/components/mcp/mcp-selection-picker";
+import { TaskCreateMCPSettingRow } from "@/components/task-create-dialog-mcp-select";
 import type { MCPInheritedSelection, MCPServerDefinition } from "@/lib/types/http-mcp";
 import { cn } from "@/lib/utils";
 import type { TaskPriority } from "@/lib/types/http";
@@ -111,44 +111,6 @@ function TaskCreateWorkflowAgentOverrideRow({
           </p>
         )}
       </div>
-    </div>
-  );
-}
-
-function TaskCreateMCPSettingRow({
-  definitions,
-  loading,
-  selectedIds,
-  onSelectedIdsChange,
-  inherited,
-  disabled,
-}: {
-  definitions: MCPServerDefinition[];
-  loading: boolean;
-  selectedIds: string[];
-  onSelectedIdsChange: (ids: string[]) => void;
-  inherited: MCPInheritedSelection[];
-  disabled?: boolean;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="min-w-0 md:col-span-2" data-testid="task-create-mcp-setting-row">
-      {loading ? (
-        <p className="min-h-11 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-          {t("settings:mcpLoading")}
-        </p>
-      ) : (
-        <MCPSelectionPicker
-          definitions={definitions}
-          selectedIds={selectedIds}
-          onSelectedIdsChange={onSelectedIdsChange}
-          inherited={inherited}
-          disabled={disabled}
-          label={t("settings:mcpServers")}
-          description={t("settings:mcpSelectionDescription")}
-          testId="task-create-mcp-selection"
-        />
-      )}
     </div>
   );
 }

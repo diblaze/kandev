@@ -36,11 +36,23 @@ test.describe("Workspace MCP configuration", () => {
 
     const settings = testPage.getByTestId("workspace-mcp-settings");
     await expect(settings).toBeVisible();
+    await expect(settings.getByRole("heading", { name: "MCP servers", exact: true })).toBeVisible();
+    await expect(
+      testPage
+        .getByTestId("workspace-settings-tabs")
+        .getByRole("link", { name: "MCP servers", exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+    const add = settings.getByRole("button", { name: "Add MCP server" }).first();
+    expect((await add.boundingBox())!.height).toBeCloseTo(28, 0);
     await expect(testPage.getByTestId(`mcp-server-card-${server.id}`)).toContainText(
       "Docs remote MCP",
     );
     await expect(settings).toContainText("Remote endpoint");
     await expect(settings).toContainText("Streamable HTTP");
+    const edit = settings
+      .getByTestId(`mcp-server-card-${server.id}`)
+      .getByRole("button", { name: "Edit", exact: true });
+    expect((await edit.boundingBox())!.height).toBeCloseTo(28, 0);
     await expect(testPage.getByTestId("mcp-selection-impact")).toContainText(
       "Not selected in any profile",
     );
@@ -111,7 +123,7 @@ test.describe("Workspace MCP configuration", () => {
     await review
       .getByRole("textbox", { name: "Runtime name" })
       .fill(`${TEST_RUNTIME_PREFIX}example-tools`);
-    await review.getByRole("button", { name: "Save setup" }).click();
+    await review.getByRole("button", { name: "Add MCP server" }).click();
     await expect(review).toBeHidden();
 
     await expect
@@ -202,19 +214,19 @@ test.describe("Workspace MCP configuration", () => {
     await testPage.goto(`/settings/workspaces/${seedData.workspaceId}/mcp-servers`);
     const configured = testPage.getByTestId("workspace-mcp-settings");
     await expect(configured.getByTestId(`mcp-server-card-${server.id}`)).toContainText(
-      "Selected in 1 profiles, 1 repositories, 1 tasks, and 0 sessions.",
+      "Selected in 1 profile, 1 repository, 1 task, and 0 sessions.",
     );
     await configured.getByRole("tab", { name: "Marketplace" }).click();
     const marketplaceView = testPage.getByTestId("mcp-marketplace");
-    await expect(marketplaceView).toContainText("temporarily degraded");
-    await expect(marketplaceView).toContainText("Showing last-good cached results");
+    await expect(marketplaceView).toContainText("Could not refresh the marketplace");
+    await expect(marketplaceView).toContainText("Showing previously saved results");
     const unsupportedCard = marketplaceView
       .locator('[data-slot="card"]')
       .filter({ hasText: "Unsupported package" });
     await unsupportedCard.getByRole("button", { name: "Review" }).click();
     const review = testPage.getByRole("dialog");
     await expect(review).toContainText("No materializer is available");
-    await expect(review.getByRole("button", { name: "Save setup" })).toBeDisabled();
+    await expect(review.getByRole("button", { name: "Add MCP server" })).toBeDisabled();
 
     await testPage.keyboard.press("Escape");
     await expect(review).toBeHidden();
@@ -226,7 +238,7 @@ test.describe("Workspace MCP configuration", () => {
       })
       .click();
     const deleteDialog = testPage.getByRole("dialog");
-    await expect(deleteDialog).toContainText("Selected in 1 profiles");
+    await expect(deleteDialog).toContainText("Selected in 1 profile");
     await expect(deleteDialog).toContainText(
       "Any profile, repository, task, or session selections",
     );

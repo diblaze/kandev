@@ -192,6 +192,7 @@ function SessionModeBody(props: DialogFormBodyProps) {
         ExecutorProfileSelectorComponent={ExecutorProfileSelector}
       />
       <MCPSessionSelector
+        workspaceId={props.workspaceId}
         definitions={props.mcpDefinitions}
         definitionsLoading={props.mcpDefinitionsLoading}
         selectedIds={props.fs.mcpServerIds}
