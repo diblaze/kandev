@@ -117,12 +117,26 @@ The first web typecheck exhausted Node's default 4 GiB heap. `NODE_OPTIONS=--max
 
 The specification validator, full spec lint, 36 spec-lint tests, public-doc tests, and public-doc validation passed. Local PR documentation coverage checks passed for all six work orders. Architecture lint passed. The commit hooks also validate the final documents.
 
-## Real-provider acceptance blocker
+## Fresh Pi/Greywall discovery
 
-`pi` and `greywall` are not on this session's PATH. The optional handoff `/tmp/handoff-Fhcnxu.md` is unavailable. No explicit private credential source or sandbox policy was supplied for a new acceptance run.
+On 2026-10-18, the user authorized tool installation. Installed Pi 1.3.0, pi-acp 0.0.34, Greywall 0.3.7, and Greyproxy 0.4.5 in a new private directory outside the repository and `/tmp`. The Greywall and Greyproxy release archives passed their published SHA-256 checksums. The npm installation used exact package versions, disabled lifecycle scripts, and retained its lockfile in the private installation. No global npm package or service was changed.
 
-No real-provider prompt was sent. No credential was copied from the retained manual instance. The real-provider runner remains unfinished, and Task 06 stays incomplete. The historical overlay run in [reproduction.md](reproduction.md) does not satisfy this acceptance item.
+The host runs NixOS 26.05, Linux 6.18.49, and Node 24.19.0. The installation uses the existing Bubblewrap 0.11.2 and an isolated Nix installation of socat 1.8.1.3. Greywall successfully launched a Node subprocess. This smoke check does not certify sandbox enforcement.
 
-To complete this item, provide the private Pi/Greywall installation paths, an explicit disposable credential source, model identity, and permitted sandbox network/path policy. Then finish and test the isolated runner, and record fresh discovery, utility tool use, ACP chat, and native passthrough receipts without an overlay. Keep raw traces and credentials private.
+Built `acpdbg` and `agentctl` from commit `23eee8e8b6b673dd1b4921d542b75e30ef7b4142` with `go build -trimpath`, no Go overlay, and no inherited build flags. Fresh disposable homes used only a synthetic OpenAI key. No real provider credential was loaded and no model prompt was sent.
+
+Both direct and Greywall-wrapped `acpdbg` discovery completed `initialize` and `session/new`. Each returned 44 models and 5 modes. The captured frames contained zero `session/prompt` requests.
+
+A separate authenticated agentctl control process then repeated direct and wrapped discovery through `/api/v1/inference/probe`. Both returned success, 44 models, and 5 modes. The inner command used the managed npm marker and the pinned adapter. The generic wrapper envelope used `{{kandev.work_dir}}` and `{{kandev.managed_npm_dir}}`. The wrapped run produced exactly one nonce-bearing launcher receipt before executing Greywall. No provider-specific resolver exception was used.
+
+The sandbox received explicit grants for installation reads and the disposable home, npm cache, temporary directory, working directory, and managed npm directory. It did not use learning mode, watch mode, a provider profile, or an allow-all network rule. Proxy endpoints used dynamically allocated local ports with no proxy listening. The adapter cache was prepared before the check; the probe used npm offline mode. Greyproxy was installed but was not started for these prompt-free checks.
+
+The initial agentctl checks exposed test setup issues. Offline npm first needed its adapter cache prepared. Greywall's Unix socket exceeded Linux's path-length limit under the long private temporary path. A shorter, dynamically allocated temporary directory fixed that failure. Private links to the resolved Nix Node/npm/npx tools fixed a launcher path that was absent inside the sandbox. These corrections changed test setup only. Each agentctl process, disposable home, and temporary directory was removed after its run. The retained manual instance was not used.
+
+## Remaining real-provider acceptance
+
+The optional handoff `/tmp/handoff-Fhcnxu.md` remains unavailable. No explicit disposable provider credential source, model identity, or provider network policy has been supplied. Installation and prompt-free discovery are complete. Live utility tool use, ACP chat, and native passthrough still require those inputs.
+
+No credential was copied from the retained manual instance. The checked-in real-provider runner remains unfinished, and Task 06 stays incomplete. The historical overlay run in [reproduction.md](reproduction.md) does not satisfy the remaining acceptance items. Finish and test the isolated runner, then record fresh live receipts without an overlay. Keep raw traces and credentials private.
 
 The manual instance and deprecated #3812 task remain unchanged. The requirement and system-design pair remains draft.

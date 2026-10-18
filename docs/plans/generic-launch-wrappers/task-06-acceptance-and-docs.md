@@ -110,7 +110,7 @@ Real provider access and wrapper platform support are external prerequisites. Mi
 
 ## Results
 
-Browser regression cases and operator documentation are implemented. Desktop and mobile acceptance, focused backend race checks, and document validation pass. See [acceptance.md](acceptance.md) for exact results and remaining prerequisites. The real-provider runner and fresh provider acceptance remain incomplete.
+Browser regression cases and operator documentation are implemented. Desktop and mobile acceptance, focused backend race checks, and document validation pass. Pi, pi-acp, Greywall, and Greyproxy are now installed privately. Fresh direct and sandboxed discovery passes through both acpdbg and the authenticated agentctl API, with no provider exception or model prompt. See [acceptance.md](acceptance.md) for exact results and remaining prerequisites. The checked-in real-provider runner and live prompt, ACP chat, and passthrough acceptance remain incomplete.
 
 ## Real-provider harness contract
 
