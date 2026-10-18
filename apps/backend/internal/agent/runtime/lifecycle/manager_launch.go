@@ -17,6 +17,7 @@ import (
 	"github.com/kandev/kandev/internal/agent/agents"
 	"github.com/kandev/kandev/internal/agent/executor"
 	kubeexecutor "github.com/kandev/kandev/internal/agent/kubernetes"
+	"github.com/kandev/kandev/internal/agent/launchwrapper"
 	"github.com/kandev/kandev/internal/agent/managedruntime"
 	"github.com/kandev/kandev/internal/agent/runtime/activity"
 	"github.com/kandev/kandev/internal/agent/settings/cliflags"
@@ -649,6 +650,7 @@ func baseBranchMetadataKey(spec RepoLaunchSpec) string {
 
 // agentCommands holds both the display strings and structured argv for an agent execution.
 type agentCommands struct {
+	wrapper      launchwrapper.Spec
 	initial      string
 	continue_    string // continue command for one-shot agents (empty if not applicable)
 	args         []string
@@ -741,7 +743,6 @@ func (m *Manager) buildAgentCommandWithContext(
 		AutoApprove:           autoApprove,
 		PermissionValues:      permissionValues,
 		CLIFlagTokens:         cliFlagTokens,
-		CommandPrefixTokens:   commandPrefixTokens,
 		Runtime:               runtime,
 		PreferNativeBinary:    preferNative,
 		ManagedRuntimeVersion: managedRuntimeOptions.ManagedRuntimeVersion,
@@ -757,7 +758,9 @@ func (m *Manager) buildAgentCommandWithContext(
 	if err := validateBuiltAgentCommands(args, continueArgs); err != nil {
 		return agentCommands{}, err
 	}
-	return newAgentCommands(args, continueArgs), nil
+	commands := newAgentCommands(args, continueArgs)
+	commands.wrapper = launchwrapper.Profile(commandPrefixTokens)
+	return commands, nil
 }
 
 func (m *Manager) resolveManagedRuntimeVersion(
@@ -1978,6 +1981,7 @@ func (m *Manager) promoteWorkspaceExecution(ctx context.Context, execution *Agen
 		execution.ContinueCommand = cmds.continue_
 		execution.AgentArgs = cmds.args
 		execution.ContinueArgs = cmds.continueArgs
+		execution.LaunchWrapper = cmds.wrapper
 		if req.ACPSessionID != "" && execution.ACPSessionID == "" {
 			execution.ACPSessionID = req.ACPSessionID
 		}
@@ -2017,6 +2021,7 @@ func (m *Manager) promoteWorkspaceExecution(ctx context.Context, execution *Agen
 				execution.ContinueCommand = ""
 				execution.AgentArgs = nil
 				execution.ContinueArgs = nil
+				execution.LaunchWrapper = launchwrapper.Spec{}
 				execution.isResumedSession = false
 				execution.IsPassthrough = false
 				return nil, err
@@ -2406,6 +2411,7 @@ func (m *Manager) buildExecutionFromInstance(
 	execution.ContinueCommand = cmds.continue_
 	execution.AgentArgs = cmds.args
 	execution.ContinueArgs = cmds.continueArgs
+	execution.LaunchWrapper = cmds.wrapper
 	return execution, nil
 }
 
@@ -3018,7 +3024,7 @@ func (m *Manager) configureAndStartAgent(ctx context.Context, execution *AgentEx
 
 	// Starting with stale agent configuration could expose an old credential
 	// set, so the subprocess must not start when configuration delivery fails.
-	if err := client.ConfigureAgent(ctx, execution.AgentCommand, execution.AgentArgs, configureEnv, execution.ContinueCommand, execution.ContinueArgs); err != nil {
+	if err := client.ConfigureAgent(ctx, execution.AgentCommand, execution.AgentArgs, configureEnv, execution.ContinueCommand, execution.ContinueArgs, execution.LaunchWrapper); err != nil {
 		return "", fmt.Errorf("failed to configure agent: %w", err)
 	}
 

@@ -1,153 +1,194 @@
 ---
 created: 2026-10-14
-updated: 2026-10-16
+updated: 2026-10-18
 status: draft
 requirements:
+  - REQ-AGENTS-WRAPPERS-001
+  - REQ-AGENTS-WRAPPERS-002
+  - REQ-AGENTS-WRAPPERS-003
+  - REQ-AGENTS-WRAPPERS-004
+  - REQ-AGENTS-WRAPPERS-005
   - REQ-AGENTS-PROFILE-DISCOVERY-001
   - REQ-AGENTS-PROFILE-DISCOVERY-002
 system_design:
+  - ../../specs/agents/system-design/generic-launch-wrappers.md
   - ../../specs/agents/system-design/profile-capability-discovery.md
 legacy_specs: []
 ---
 
-# Generic launch wrappers: investigation and design handoff
+# Implementation plan: Generic launch wrappers
 
-## Status and ownership
+## Overview and current state
 
-This is a docs-only investigation handoff, not an implementation-ready design package.
-The linked requirements cover existing profile discovery behavior. They do not yet
-specify generic wrapper admission, passthrough changes, or a sandbox plugin contract.
-Complete the requirements, system design, and implementation work orders before
-production changes. No permanent code or regression tests are included in this draft.
+Apply operator-configured wrappers consistently across supported discovery, utility, session, and CLI passthrough paths.
+Prepare runtime paths on the execution host. Refuse unsupported contexts without an unwrapped retry.
+Basic wrapping remains in core. Sandbox-specific plugins remain optional and deferred.
 
-Current Kandev task: `06d00e9a-1f0d-4392-90ed-aa665334a592`.
-Work continues here. The user deprecated task `6e852cad-2b53-47a8-a51a-89c8a31bb176`,
-titled "Issue #3812: Sandbox providers for local executors".
-Do not restart, modify, or move work into that task.
-[Issue #3812](https://github.com/kdlbs/kandev/issues/3812) remains background material.
+The user authorized implementation on 2026-10-18. Tasks 02 through 05 are implemented. Task 06 owns the remaining browser and real-provider acceptance evidence.
+[Task 01](task-01-complete-design.md) records the design work.
+The implementation order is shared preparation, utility execution, session lifecycle, passthrough, then acceptance and public documentation.
+All tasks execute sequentially in the primary conversation unless the user explicitly authorizes delegation.
 
-## Problem and evidence
+Current task: `9dadaf68-e904-4c07-8649-1daf71f6569f`.
+Current session: `15c94e91-6a8b-426d-997c-c9b8f020a79c`.
+Continue branch `feature/investigate-pi-agent-6ac` and draft PR #4538. Do not merge.
+The earlier investigation task was `06d00e9a-1f0d-4392-90ed-aa665334a592`.
+Do not change deprecated task `6e852cad-2b53-47a8-a51a-89c8a31bb176`, associated with issue #3812.
+Preserve the existing manual test instance and its private state.
+The optional local handoff `/tmp/handoff-Fhcnxu.md` was unavailable during this design pass.
 
-Pi with a Greywall command prefix exposed inconsistent launch preparation:
+## Scope
 
-- Ordinary ACP session construction prepends the configured prefix.
-- Profile discovery and utility execution resolve that prefix through an
-  agent-executable allowlist that rejects Greywall before it runs.
-- Pi CLI passthrough constructs the native Pi command without the profile prefix.
-  Its apparent success therefore does not establish sandbox execution.
+### In scope
 
-A temporary build overlay admitted the exact `greywall` token to isolate the failure.
-That exposed a separate policy problem: Greywall's private `/tmp` hides both Kandev's
-managed npm project directory and the temporary probe working directory.
-Explicit grants for those paths allowed the real adapter to start.
+- Generic profile wrapper admission separate from trusted child-command admission.
+- Whole-argument runtime references, execution-host resolution, and environment consistency.
+- Supported ACP, continuation, recovery, and passthrough launches with versioned agentctl compatibility.
+- Failure sanitization, process cleanup, and regression evidence using unrelated wrapper names.
+- Fresh Pi/Greywall acceptance without the diagnostic overlay, plus operator documentation at implementation time.
 
-Real tests covered discovery, a provider round trip, file tools, and a normal Kandev
-chat session with passthrough disabled. Pi wrote the expected result and replied
-`VERIFIED:2910`. See [reproduction.md](reproduction.md) for versions and limitations.
-The original reporter's exact command, platform, and policy remain unknown.
+### Out of scope
 
-The user rejected the exact-name patch as a permanent fix. The overlay and its
-machine-specific profile are diagnostic evidence only. Do not implement a new
-allowlist entry for Greywall, nono, or another named wrapper as this task's solution.
+No provider-name exception, plugin implementation, executor-level policy setting, task override, approval transport, or policy learning.
+No new UI controls or layout changes. Existing desktop and phone profile flows require regression coverage.
+Native non-ACP utility wrapper contexts remain explicitly unsupported.
+No changes to the deprecated task, the retained manual instance, or its authentication files.
 
-## Current direction
+## Inputs and decisions
 
-### Generic wrapping in core
+Agents owns the durable contract because it owns profile launch settings and their execution semantics.
+The [requirements](../../specs/agents/requirements/generic-launch-wrappers.md) and
+[design](../../specs/agents/system-design/generic-launch-wrappers.md) are the authoritative draft pair.
 
-Basic wrapping does not require a provider-specific Go adapter or an installed plugin.
-Investigate a shared launch-preparation contract that takes an operator-authorized
-executable and structured arguments, then applies them consistently to each supported
-process path. Preserve the trusted agent command, argument order, environment handling,
-process ownership, and cancellation behavior.
+The [reproduction](reproduction.md) records real Pi/Greywall success with a temporary overlay and explicit path grants.
+It does not verify the generic implementation or every launch path.
+The exact-name exception and its machine-specific policy are rejected implementation directions.
 
-Separate wrapper admission from agent-command admission. Do not simply remove the
-utility allowlist and create an arbitrary-execution endpoint. Specify how authorized
-profile settings reach the execution boundary, including draft discovery requests.
-Keep the fixed deployment guard's identity and policy distinct from user configuration.
-Wrapper failures must not trigger an unwrapped retry or a different launch context.
+The design retains profile strings, adds two typed path references, and introduces a separate internal wrapper envelope.
+There is no executor override hierarchy or profile migration.
+The plugin evaluation concludes that core wrapping needs no plugin capability in this increment.
+Future sandbox services require a separately reviewed capability and runtime evidence.
 
-### Runtime context without machine-specific paths
+Current authentication differs from the historical launcher ADR.
+Profile mutations and draft probes use `org.config.manage`. Disabled auth still uses a synthetic administrator.
+This work preserves customization and existing authority. It does not claim universal sandbox enforcement.
 
-Kandev knows its working directory and managed runtime paths. Investigate how to expose
-the required values without shell interpolation, hard-coded temporary paths, secret
-disclosure, or automatic permission expansion. Typed argument substitutions and
-declarative configuration are candidates, not a selected public syntax.
-Resolve directories before any wrapper needs to reference them.
+## Technical approach
 
-An arbitrary executable has no universal filesystem or network-policy language.
-Its mapping must come from operator configuration, a declarative preset, or optional
-plugin behavior. Supplying a path is not permission to grant access to it.
-Report policy conflicts instead of granting all of `/tmp` or retrying without confinement.
-A generic command wrapper does not prove that the configured executable is a sandbox.
+### Shared preparation
 
-### Optional plugin integration
+Add `internal/agent/launchwrapper` with validated versioned templates and execution-host preparation.
+Use existing tokenization. Preserve whole argv values and escaped literal reference tokens.
+Extract a path-returning managed npm helper while retaining private-directory checks.
+Prepare the child command before composing the wrapper. Never scan user wrapper arguments for trusted npm markers.
 
-A plugin could provide configuration, availability checks, setup, supervisor integration,
-approval requests, or denial reports. A Greywall plugin must not be required for basic
-command-prefix compatibility.
+### Utility and discovery
 
-The existing `ExecutorProviderPlugin` SDK interface provisions and attaches remote
-environments. It does not expose a local process-wrapper hook. Reuse plugin packaging,
-versioning, capability checks, and transport if a new capability is justified, but do
-not model a local wrapper as a remote executor or use UI actions for launch authority.
-Core should retain process/ACP ownership, cancellation, authorization, and session identity.
-The exact plugin contract and whether the first increment needs it remain open.
+Extend `InferenceConfigDTO` with the internal wrapper envelope.
+Retain `resolveSpawnCommand` for the child and the old prefix allowlist for legacy requests.
+Use shared preparation in ACP probe, prompt execution, and OpenCode secondary listing.
+Resolve secret-backed utility environment entries rather than silently omitting them.
+Preserve profile cache scope, runtime generations, and prompt-free discovery.
 
-## Decisions the next agent must resolve
+### Session and passthrough
 
-1. **Authority and admission:** Define who can configure and execute wrappers,
-   binary/path resolution, environment precedence, draft validation, guard composition,
-   and the distinction between customization and enforced confinement. Reconcile the
-   [launcher authority ADR](../../decisions/2026-07-24-operator-owned-agent-launcher-settings.md)
-   with current authentication code; its historical description is not a current audit.
-2. **Execution coverage and scope:** Inventory discovery, model-option resolution,
-   secondary model commands, utility prompts, startup, continuation, restart, recovery,
-   and passthrough. Specify supported wrapping or explicit refusal for each path.
-   Host discovery must not claim to validate a selected executor's sandbox. Discovery
-   must not create task sessions or send model prompts.
-3. **Runtime inputs:** Define exposed paths and environment values, preparation order,
-   argv boundaries, and generated-file ownership. Preserve managed npm isolation and
-   do not automatically widen operator policy.
-4. **Configuration and compatibility:** Decide whether existing profile prefixes are
-   sufficient initially or require executor-level configuration. If override levels
-   are added, define precedence, migration, snapshots, and whether a task can loosen
-   executor policy. Do not treat #3812's sketch as an approved schema.
-5. **Plugin scope:** Decide between declarative-only support and a new typed plugin
-   capability. Define unavailable-provider behavior and lifecycle ownership. Approval
-   transport and policy learning need separate runtime evidence; #3812's triage did
-   not establish a usable nono approval interface.
+Carry the wrapper separately through configure, process config, one-shot commands, and protected recovery state.
+Resolve references in agentctl immediately before spawning.
+Carry the same template through initial, fresh, and resumed `InteractiveStartRequest` paths.
+Advertise `launch-wrapper.v1` only after every v1 receiving path is implemented.
+The intermediate work orders use explicit test capability fixtures. Do not advertise partial support.
 
-## Source map
+### Compatibility matrix
 
-| Area | Starting point |
+| Consumer | Shape and intended behavior | Planned evidence | Unsupported behavior |
+| --- | --- | --- | --- |
+| Pi, Codex ACP, other built-in ACP agents | Trusted child plus generic profile wrapper | Actual helper subprocess argv and protocol tests | Fail before prompt if wrapper cannot start |
+| Registered custom ACP agent | Existing operator-defined child plus independent wrapper | Registered-command and wrapper-admission tests | No public arbitrary-command bypass |
+| OpenCode secondary discovery | Same authorized context as ACP probe | Subprocess receipt and model snapshot assertions | Use same-context ACP snapshot or fail, never unwrapped listing |
+| Native Codex and Claude utility transports | Wrapper context rejected in first increment | No-spawn refusal tests | Typed unsupported status |
+| Pi and existing passthrough providers | Native argv and PTY with one outer profile wrapper | Initial/fresh/resume PTY receipts and cancellation | Refuse unsupported transport/platform |
+| Local/worktree execution | Resolve wrapper and runtime paths locally | Process and browser integration | No silent fallback |
+| Remote execution | Require installed wrapper and `launch-wrapper.v1` | Target-host context and old-peer tests | Host probe does not establish remote support |
+| Legacy retained process | Preserve authoritative already-composed literal argv | Adoption and replacement tests | Ambiguous template state blocks replacement |
+| No prefix, agent-wide probe | Existing default launch contract | Compatibility regressions | No profile context imported |
+
+## Tests and traceability
+
+All named `generic_wrapper_test.go` files and `TestGenericWrapper*` methods below are planned, not existing evidence.
+Each implementation work order uses Red-Green-Refactor and records actual command results.
+A test that only compares DTO fields is insufficient when the acceptance criterion concerns a running process.
+
+| Acceptance criteria | Planned proof |
 | --- | --- |
-| Profile token validation | `apps/backend/internal/agent/runtime/lifecycle/manager_launch.go`, `resolveProfileLaunchTokens` |
-| Session and continuation argv | `apps/backend/internal/agent/runtime/lifecycle/command.go` |
-| Probe and utility admission | `apps/backend/internal/agentctl/server/utility/acp_executor.go`, `resolveACPCommandPrefix` |
-| Host probe context | `apps/backend/internal/agent/hostutility/profile_probe.go` |
-| Runtime temporary directory | `apps/backend/internal/agent/managedruntime/npm_project.go` |
-| Pi ACP and passthrough | `apps/backend/internal/agent/agents/pi_acp.go` |
-| Plugin extension pattern | `apps/backend/pkg/pluginsdk/executor_provider.go`, `apps/backend/proto/kandev/plugin/v1/plugin.proto` |
-| Plugin trust and packaging | `docs/public/plugins-authoring.md` |
+| WRAPPERS-001.1, 002.1–002.4, 004.3 | `launchwrapper/prepare_test.go`: `TestGenericWrapperPrepare`, table cases for arbitrary names, paths, spacing, escaping, references, and npm isolation |
+| WRAPPERS-001.2–001.4, 002.5 | `settings/handlers/generic_wrapper_test.go`, `hostutility/generic_wrapper_test.go`, `lifecycle/generic_wrapper_utility_test.go`: authority and actual final child environment |
+| WRAPPERS-001.3, 001.5 | `utility/generic_wrapper_test.go`: `TestGenericWrapperAdmission`, trusted child allowlist, forged provenance, and guard lookalikes |
+| WRAPPERS-003.1, 003.2, 003.5 | `utility/generic_wrapper_test.go`: `TestGenericWrapperProbe`, `TestGenericWrapperPrompt`, `TestGenericWrapperSecondary`, real fixture receipt and no prompt during discovery |
+| WRAPPERS-003.3, 004.4 | `process/generic_wrapper_test.go`, `lifecycle/generic_wrapper_test.go`, `runtime/agentctl/generic_wrapper_test.go`: continuation, replacement, reset, retries, old peers, and adoption |
+| WRAPPERS-003.4 | `process/generic_wrapper_interactive_test.go`, `lifecycle/generic_wrapper_passthrough_test.go`: initial/fresh/resume, inner flags, and Pi native command |
+| WRAPPERS-004.1, 004.2, 004.5 | Utility and process fixture tests: refused launch has no inner-process receipt, descendants terminate, captured logs contain no sentinel credentials |
+| WRAPPERS-005.1–005.3 | Plugins-disabled process/browser fixture and fresh real-provider acceptance record |
+| PROFILE-DISCOVERY-001.3–001.5, 002.4–002.5 | Existing profile suites plus wrapper tests: matching model/options context, authority, no task/session writes, no fallback, and sanitized failure |
 
-## Verification expected from the eventual implementation
+Use unrelated fixture names generated in temporary directories, including a path with spaces.
+Derive every runtime path from the test process. Do not depend on a developer home or a retained diagnostic path.
+Include wrappers that fail before exec, retain pipes, spawn descendants, and forward an empty argument.
+Include both direct and wrapped controls. A missing wrapper receipt is failure even if the agent replied successfully.
 
-Use wrapper fixtures with unrelated executable names and paths to prove support does
-not depend on a provider name. Exercise every supported path, argument boundaries,
-environment handling, unavailable executables, wrapper failure, cancellation, guard
-composition, authority rejection, and sensitive-error sanitization. An unwrapped
-fallback must never count as success.
+## E2E tests
 
-Retain Pi/Greywall as a real-provider acceptance scenario, including a probe working
-directory under `/tmp`. Keep discovery separate from a billable prompt. Generic wrapper
-fixtures prove composition, not another sandbox's platform support. Verify provider
-claims with the actual programs.
+Extend `tests/settings/profile-capability-discovery.spec.ts` and its mobile counterpart.
+Use real profile APIs and an isolated subprocess-backed fixture, not intercepted success responses.
+Prove draft refresh, dependent model options, saved selection, missing-wrapper error, and recovery after correcting the draft.
+Map these to WRAPPERS-003.1, 003.5, 004.1 and the existing discovery criteria.
 
-## Work orders and next action
+Add `tests/cli-mode/generic-launch-wrappers.spec.ts` and `mobile-generic-launch-wrappers.spec.ts`.
+Prove initial and resumed passthrough commands produce wrapper receipts while preserving terminal input and cancellation.
+Map these to WRAPPERS-003.4 and 004.2. Exercise the existing desktop and phone interaction patterns.
+No new UI composition is proposed, so no UI preview is required.
 
-- [ ] [Task 01: Complete the generic wrapper design](task-01-complete-design.md).
+Task 06 owns the fresh Pi/Greywall acceptance procedure.
+Run it in a separate disposable instance with explicit operator policy and credentials supplied privately.
+Record discovery, a prompt/tool round trip, ordinary ACP chat, and passthrough with positive wrapper evidence.
+Do not infer confinement or macOS support from Linux success.
+Missing tools, credentials, or platform support block that acceptance item. Record the blocker and keep the PR draft.
 
-The next deliverable is a reviewed design package with bounded implementation work
-orders. This draft preserves evidence and direction; it does not ship the fix.
-Public docs should describe supported behavior when implementation is ready, not
-present this investigation or its temporary overlay as released functionality.
+## Work orders
+
+Completed: [Task 01: Complete design](task-01-complete-design.md).
+
+- [x] [Task 02: Shared wrapper preparation](task-02-wrapper-preparation.md), wave 2.
+- [x] [Task 03: Authorized discovery and utility execution](task-03-utility-execution.md), wave 3, depends on 02.
+- [x] [Task 04: Session lifecycle and recovery](task-04-session-lifecycle.md), wave 4, depends on 03.
+- [x] [Task 05: Passthrough and capability activation](task-05-passthrough.md), wave 5, depends on 04.
+- [ ] [Task 06: End-to-end acceptance and operator documentation](task-06-acceptance-and-docs.md), wave 6, depends on 05.
+
+These work orders form one implementation package. Do not release intermediate partial capability support.
+The existing [profile discovery plan](../profile-capability-discovery/plan.md) remains its completed historical delivery record.
+This package adds wrapper coverage without rewriting its historical test counts or reopening completed work.
+
+## Verification results
+
+Design checks passed on 2026-10-16:
+
+- `python3 scripts/list-docs.py validate`: 382 decisions and 1611 specifications validated.
+- `python3 scripts/lint-spec-files.test.py`: 36 tests passed.
+- `python3 scripts/lint-spec-files.py --all`: all specification files passed.
+- `.github/scripts/pr-docs.cjs` local `validateCoverage` preflight: all six work orders passed with zero reference errors.
+- Local Markdown targets, plan design membership, dependency links, and `git diff --check`: passed.
+
+The coverage preflight supplied a synthetic runtime-path entry to force artifact validation without changing runtime files.
+Its local runner was `/tmp/check-wrapper-design.cjs`. It did not publish a GitHub status.
+The English structural check passed with synonym warnings excluded because technical nouns retain distinct contract meanings.
+Advisory passive-voice findings do not establish formal ASD dictionary compliance.
+
+PR #4538 now uses the implementation-oriented title and scope. Its live body, draft state, and unchanged head were checked.
+The design-only checkpoint ended before production changes. The later implementation turn is recorded in [acceptance.md](acceptance.md). The specification pair remains draft until Task 06 is complete.
+
+## Risks
+
+- External wrapper policy can hide required directories even when argv is correct. Kandev must report failure without broadening policy.
+- Remote or retained agentctl binaries can lack the new capability. Refuse new wrapped launches until compatible binaries are available.
+- Some wrappers detach processes or alter PTY behavior. Such shapes require explicit unsupported results or bounded cleanup evidence.
+- Profile environment values can affect the wrapper before confinement. Generic launch success does not establish an operator security boundary.
+- The manual instance uses a rejected diagnostic overlay. Its success cannot satisfy permanent implementation acceptance.

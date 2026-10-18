@@ -31,22 +31,31 @@ func PrepareNPMProjectPrefix(args []string) error {
 		return nil
 	}
 
-	prefix, err := npmProjectPrefixPath()
+	prefix, err := PrepareNPMProjectDirectory()
 	if err != nil {
-		return errors.New("managed npm project prefix could not be prepared")
-	}
-	if err := os.MkdirAll(prefix, 0o700); err != nil {
-		return errors.New("managed npm project prefix could not be prepared")
-	}
-	info, err := os.Lstat(prefix)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("managed npm project prefix could not be prepared")
-	}
-	if err := os.Chmod(prefix, 0o700); err != nil {
-		return errors.New("managed npm project prefix could not be prepared")
+		return err
 	}
 	args[index+1] = prefix
 	return nil
+}
+
+// PrepareNPMProjectDirectory creates or validates the private execution-host project root.
+func PrepareNPMProjectDirectory() (string, error) {
+	prefix, err := npmProjectPrefixPath()
+	if err != nil {
+		return "", errors.New("managed npm project prefix could not be prepared")
+	}
+	if err := os.MkdirAll(prefix, 0o700); err != nil {
+		return "", errors.New("managed npm project prefix could not be prepared")
+	}
+	info, err := os.Lstat(prefix)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("managed npm project prefix could not be prepared")
+	}
+	if err := os.Chmod(prefix, 0o700); err != nil {
+		return "", errors.New("managed npm project prefix could not be prepared")
+	}
+	return prefix, nil
 }
 
 func npmProjectPrefixArgumentIndex(args []string) int {

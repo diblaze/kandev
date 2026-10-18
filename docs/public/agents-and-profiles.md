@@ -461,7 +461,7 @@ This order applies only to Settings. Task creation, in-task agents, handoff, and
 | Mode                                   | Requested through the installed agent's advertised ACP session control before the first prompt. Kandev prefers its mode config option and supports legacy `session/set_mode`. An explicit mode must be confirmed by the agent or startup holds the prompt. Applying a mode does not write Claude settings or redirect its configuration directory. |
 | Configuration options                  | Dynamic ACP values requested with `session/set_config_option`.                                                                                                                                                                                                                                                                                     |
 | CLI flags                              | Enabled entries are tokenized and appended to the ACP launch command.                                                                                                                                                                                                                                                                              |
-| Command prefix                         | Optional ACP-only launcher argv prepended to the command, for example `greywall --`.                                                                                                                                                                                                                                                               |
+| Command prefix                         | Optional launcher argv for structured sessions, ACP probes, and native terminal passthrough. No provider plugin is required.                                                                                                                                                                                                                                                               |
 | Environment                            | Literal values or references to Kandev secrets, resolved when the process starts.                                                                                                                                                                                                                                                                  |
 | Provider                               | Native uses the agent default. OpenAI-compatible sends ACP requests to the configured HTTP(S) router and can use a Kandev global API-key secret.                                                                                                                                                                                                   |
 | CLI passthrough                        | Uses the CLI's native terminal interface instead of a structured ACP conversation.                                                                                                                                                                                                                                                                 |
@@ -735,7 +735,7 @@ apply.
 </details>
 
 <details>
-<summary>CLI flags and ACP command prefixes</summary>
+<summary>CLI flags and command prefixes</summary>
 
 ### CLI flags
 
@@ -747,11 +747,27 @@ Claude CLI passthrough uses standard output by default. Add an enabled `--verbos
 
 Some older profiles contain compatibility fields such as Auggie's `allow_indexing`; current launch behavior is represented by the active profile settings and flags.
 
-### ACP command prefixes
+### Command prefixes
 
-**Command prefix** is available for ACP launches, not terminal-passthrough launches. Kandev parses the prefix into structured argv rather than running a shell: quote a path containing spaces, for example `"/opt/launchers/safe wrapper" --`. The resulting argv is prefixed to the agent command, so shell features such as pipes, redirects, variable expansion, and command substitution are not evaluated.
+**Command prefix** wraps structured agent sessions, ACP model discovery and utility prompts, and native terminal passthrough. Basic wrapping requires no provider-specific plugin. Kandev parses the prefix into structured argv rather than running a shell: quote a path containing spaces, for example `"/opt/launchers/safe wrapper" --`. The resulting argv is prefixed to the agent command, so shell features such as pipes, redirects, variable expansion, and command substitution are not evaluated.
 
 The prefix must contain a nonempty first argv element that is not flag-like. Malformed quotes, a trailing escape, an empty launcher, or a prefix beginning with `-` is rejected when you save or preview it. If an older persisted profile contains an invalid prefix, Kandev fails the launch rather than silently running the agent without its configured launcher. Check the command preview after changing a prefix.
+
+The wrapper executable and all paths must exist on the execution host. Host model discovery uses the Kandev host. Remote sessions use their executor. A bare executable name uses the final process `PATH`. A relative executable path is relative to the working directory. Kandev does not search the current directory implicitly.
+
+Use these references as complete, separately quoted arguments:
+
+- `"{{kandev.work_dir}}"` resolves to the current execution working directory.
+- `"{{kandev.managed_npm_dir}}"` resolves to Kandev's private managed npm directory on that host.
+
+For example, `"/opt/launchers/safe wrapper" --work-dir "{{kandev.work_dir}}" --` passes the working directory as one argument. Embedded references such as `--work-dir={{kandev.work_dir}}`, unknown references, and references in the executable position are rejected. Triple braces escape a literal reference: `"{{{kandev.work_dir}}}"` passes `{{kandev.work_dir}}` unchanged.
+
+Kandev applies the wrapper once per process launch, including restart and resume. A missing wrapper or incompatible execution runtime fails the operation. Kandev does not retry without the wrapper. A failed model refresh preserves the selected model. Correct the prefix and select **Refresh models** to retry.
+
+Wrapped ACP probes require an authenticated agentctl control connection. Agentctl with authentication disabled refuses wrapped control requests. Native non-ACP utility transports do not support wrappers and return **unsupported**. This restriction does not prevent a supported agent's native terminal passthrough from using a wrapper.
+
+Wrapping alone does not establish a sandbox policy. The wrapper owns its access rules and platform support. Rich sandbox configuration through plugins is not implemented.
+
 
 </details>
 
@@ -816,7 +832,7 @@ conversation from saved history. It does not restore private harness state.
 
 ## Structured ACP and terminal passthrough
 
-ACP sessions can expose typed messages, tool updates, permission requests, models, modes, dynamic configuration, todos, usage, and resume metadata. Each capability depends on the agent's actual ACP implementation. ACP-only profile settings, including command prefixes and structured configuration, do not add those capabilities to a terminal-passthrough CLI.
+ACP sessions can expose typed messages, tool updates, permission requests, models, modes, dynamic configuration, todos, usage, and resume metadata. Each capability depends on the agent's actual ACP implementation. ACP-only profile settings, including structured configuration, do not add those capabilities to a terminal-passthrough CLI.
 
 Terminal custom profiles use passthrough and preserve the CLI's native PTY interface. This is useful when the native terminal has features that ACP does not expose, but Kandev cannot manufacture structured capabilities that are absent. Custom ACP profiles use structured ACP sessions. Profile-specific MCP injection also varies by CLI; verify the command preview and the MCP section before depending on it.
 

@@ -1,11 +1,16 @@
 ---
 id: "01-complete-design"
 title: "Complete the generic launch wrapper design"
-status: pending
+status: done
 wave: 1
 depends_on: []
 plan: "plan.md"
 requirements:
+  - REQ-AGENTS-WRAPPERS-001
+  - REQ-AGENTS-WRAPPERS-002
+  - REQ-AGENTS-WRAPPERS-003
+  - REQ-AGENTS-WRAPPERS-004
+  - REQ-AGENTS-WRAPPERS-005
   - REQ-AGENTS-PROFILE-DISCOVERY-001
   - REQ-AGENTS-PROFILE-DISCOVERY-002
 acceptance_criteria:
@@ -15,6 +20,7 @@ acceptance_criteria:
   - AC-AGENTS-PROFILE-DISCOVERY-002.4
   - AC-AGENTS-PROFILE-DISCOVERY-002.5
 system_design:
+  - ../../specs/agents/system-design/generic-launch-wrappers.md
   - ../../specs/agents/system-design/profile-capability-discovery.md
 ---
 
@@ -25,8 +31,9 @@ system_design:
 Turn the [investigation](plan.md) into a reviewable requirements, system-design,
 plan, and implementation-work-order package. This is a design work order, not
 authorization to implement the rejected exact-`greywall` exception.
-The linked acceptance criteria are existing discovery constraints to preserve;
-new wrapper and plugin behavior still needs its own requirements.
+The linked acceptance criteria are existing discovery constraints to preserve.
+the new wrapper requirements now define the additional behavior.
+The optional plugin evaluation is complete and defers a new capability.
 
 Work stays in the current task. Do not change the deprecated #3812 Kandev task.
 No production code, permanent tests, plugin implementation, or public behavior
@@ -37,7 +44,7 @@ claims belong to this work order.
 1. Re-read the reproduction and current source paths. Trace every launch path,
    including host discovery and Pi passthrough. Verify current operator authority
    instead of relying on the older ADR's unauthenticated-deployment description.
-2. Resolve the five decision groups in the plan. Prefer generic structured wrapping;
+2. Resolve the five decision groups in the plan. Prefer generic structured wrapping.
    do not require a named-provider adapter for basic prefix support. Ask focused
    questions only for decisions that existing direction and contracts do not settle.
 3. Choose the durable contract owner and write or update the requirements and design
@@ -56,7 +63,7 @@ claims belong to this work order.
 - Requirements and design resolve authority, runtime inputs, execution scope,
   compatibility, and the optional plugin boundary without machine-specific constants.
 - Each supported launch path has planned success, refusal, and cleanup coverage.
-- Existing discovery criteria remain traceable; new contracts have acceptance criteria.
+- Existing discovery criteria remain traceable. new contracts have acceptance criteria.
 - The superseded provider-name exception is not an implementation instruction.
 - Plugin APIs, overrides, approvals, and learning are specified or explicitly deferred.
 
@@ -74,4 +81,15 @@ must specify their focused Go tests and any UI verification.
 
 ## Results
 
-Pending. This PR records the investigation and handoff only.
+Completed the design artifacts on 2026-10-16. The catalog, 36 linter tests, full specification lint, six-work-order coverage preflight, local links, and diff checks passed.
+
+- Created the draft generic-wrapper requirement and system-design pair under Agents.
+- Resolved authority, execution-host references, launch coverage, version compatibility, and plugin scope.
+- Created Tasks 02 through 06 with dependencies, acceptance criteria, owned files, and targeted checks.
+- Preserved the historical reproduction and the manual instance. The local handoff file was unavailable.
+- Production changes, permanent tests, and provider acceptance remain pending.
+
+The current task and session are recorded in [plan.md](plan.md).
+The deprecated #3812 task remains unchanged.
+
+Detailed commands and results appear in [the plan](plan.md#verification-results).

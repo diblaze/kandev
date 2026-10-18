@@ -137,6 +137,10 @@ func TestExecuteProfilePromptForwardsProviderGatewayAuth(t *testing.T) {
 
 	var received agentctlutil.PromptRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/identity" {
+			_, _ = w.Write([]byte(`{"capabilities":["launch-wrapper.v1"]}`))
+			return
+		}
 		if r.URL.Path == "/health" {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -158,8 +162,14 @@ func TestExecuteProfilePromptForwardsProviderGatewayAuth(t *testing.T) {
 	mgr := NewManager(reg, host, port, nil, log)
 	mgr.SetProfileResolver(profilePromptResolver{profile: &settingsmodels.AgentProfile{
 		ID: "profile-1", AgentID: agentType, ProviderKind: settingsmodels.ProviderKindOpenAICompatible,
-		Model: "gateway-model",
+		Model: "gateway-model", CommandPrefix: "independent-wrapper --",
+		EnvVars: []settingsmodels.ProfileEnvVar{{Key: "WRAPPER_SECRET", SecretID: "secret-id"}},
 	}})
+	mgr.SetProfileEnvironmentResolver(func(_ context.Context, name string, values []settingsmodels.ProfileEnvVar) (map[string]string, error) {
+		require.Equal(t, agentType, name)
+		require.Equal(t, []settingsmodels.ProfileEnvVar{{Key: "WRAPPER_SECRET", SecretID: "secret-id"}}, values)
+		return map[string]string{"WRAPPER_SECRET": "resolved-wrapper-value"}, nil
+	})
 	mgr.SetProviderGatewayAuthResolver(func(context.Context, string, string) (*acpprovider.GatewayAuth, string, string, error) {
 		gateway := acpprovider.BuildGatewayAuth("gateway", "Kandev", "http://localhost:20128/v1", "secret")
 		return &gateway, "OPENAI_API_KEY", "secret", nil
@@ -174,6 +184,9 @@ func TestExecuteProfilePromptForwardsProviderGatewayAuth(t *testing.T) {
 	_, err := mgr.ExecuteProfilePrompt(context.Background(), "profile-1", "hello")
 	require.NoError(t, err)
 	require.NotNil(t, received.InferenceConfig)
+	require.Equal(t, "resolved-wrapper-value", received.InferenceConfig.Env["WRAPPER_SECRET"])
+	require.Equal(t, []string{"independent-wrapper", "--"}, received.InferenceConfig.LaunchWrapper.Argv)
+	require.Empty(t, received.InferenceConfig.CommandPrefix)
 	require.Equal(t, "secret", received.InferenceConfig.Env["OPENAI_API_KEY"])
 	require.NotNil(t, received.InferenceConfig.ProviderGatewayAuth)
 	require.Equal(t, "gateway", received.InferenceConfig.ProviderGatewayAuth.MethodID)

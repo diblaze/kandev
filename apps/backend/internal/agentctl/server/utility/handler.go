@@ -11,9 +11,10 @@ import (
 
 // Handler provides HTTP handlers for inference operations.
 type Handler struct {
-	acpExecutor   *ACPInferenceExecutor
-	codexExecutor *CodexAppServerInferenceExecutor
-	logger        *zap.Logger
+	acpExecutor          *ACPInferenceExecutor
+	codexExecutor        *CodexAppServerInferenceExecutor
+	logger               *zap.Logger
+	authenticatedControl func(*gin.Context) bool
 }
 
 // NewHandler creates a new inference handler.
@@ -38,8 +39,12 @@ func (h *Handler) handleProbe(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, ProbeResponse{
 			Success: false,
-			Error:   "invalid request: " + err.Error(),
+			Error:   "invalid inference request",
 		})
+		return
+	}
+
+	if !h.admitWrapper(c, req.InferenceConfig) {
 		return
 	}
 
@@ -71,8 +76,12 @@ func (h *Handler) handlePrompt(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, PromptResponse{
 			Success: false,
-			Error:   "invalid request: " + err.Error(),
+			Error:   "invalid inference request",
 		})
+		return
+	}
+
+	if !h.admitWrapper(c, req.InferenceConfig) {
 		return
 	}
 
@@ -117,4 +126,24 @@ func (h *Handler) promptExecutor(req PromptRequest) inferenceExecutor {
 type inferenceExecutor interface {
 	Execute(context.Context, *PromptRequest) (*PromptResponse, error)
 	Probe(context.Context, *ProbeRequest) (*ProbeResponse, error)
+}
+
+// SetControlAuthorization supplies the result of the server authentication middleware.
+func (h *Handler) SetControlAuthorization(authenticated func(*gin.Context) bool) {
+	h.authenticatedControl = authenticated
+}
+
+func (h *Handler) admitWrapper(c *gin.Context, cfg *InferenceConfigDTO) bool {
+	if cfg == nil || cfg.LaunchWrapper.IsZero() {
+		return true
+	}
+	if h.authenticatedControl == nil || !h.authenticatedControl(c) {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "error": "authenticated control is required for launch wrappers"})
+		return false
+	}
+	if cfg.LaunchWrapper.Validate() != nil || len(cfg.CommandPrefix) != 0 {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid launch wrapper configuration"})
+		return false
+	}
+	return true
 }

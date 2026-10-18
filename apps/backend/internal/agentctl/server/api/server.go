@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/kandev/kandev/internal/agent/launchwrapper"
 	"github.com/kandev/kandev/internal/agentctl/server/adapter/transport/shared"
 	"github.com/kandev/kandev/internal/agentctl/server/config"
 	"github.com/kandev/kandev/internal/agentctl/server/process"
@@ -112,6 +113,7 @@ func (s *Server) Router() http.Handler {
 func (s *Server) setupRoutes() {
 	// Health check
 	s.router.GET("/health", s.handleHealth)
+	s.router.GET("/identity", s.handleInstanceIdentity)
 
 	// Agent control
 	api := s.router.Group("/api/v1")
@@ -123,6 +125,7 @@ func (s *Server) setupRoutes() {
 
 		// Process control
 		api.POST("/agent/configure", s.handleAgentConfigure)
+		api.GET("/agent/launch-wrapper", s.handleLaunchWrapper)
 		api.POST("/agent/managed-runtime/cache-repair", s.handleManagedRuntimeCacheRepair)
 		api.POST("/agent/background-work/action", s.handleBackgroundWorkAction)
 		api.POST("/start", s.handleStart)
@@ -251,6 +254,7 @@ func (s *Server) setupRoutes() {
 
 	// Utility agent routes
 	auxHandler := utility.NewHandler(s.cfg.WorkDir, s.logger.Zap())
+	auxHandler.SetControlAuthorization(func(c *gin.Context) bool { return c.GetBool(authenticatedControlContextKey) })
 	auxHandler.RegisterRoutes(api)
 
 	// MCP routes (if MCP server is configured)
@@ -473,12 +477,13 @@ func (s *Server) handleStart(c *gin.Context) {
 
 // AgentConfigure request/response - configures the agent command before starting
 type AgentConfigureRequest struct {
-	Command         string            `json:"command"`
-	AgentArgs       optionalArgs      `json:"agent_args"`
-	ContinueCommand string            `json:"continue_command,omitempty"` // For one-shot agents: command for follow-up prompts
-	ContinueArgs    optionalArgs      `json:"continue_args"`
-	Env             map[string]string `json:"env,omitempty"`
-	ReplaceEnv      bool              `json:"replace_env,omitempty"`
+	LaunchWrapper   launchwrapper.Spec `json:"launch_wrapper,omitzero"`
+	Command         string             `json:"command"`
+	AgentArgs       optionalArgs       `json:"agent_args"`
+	ContinueCommand string             `json:"continue_command,omitempty"` // For one-shot agents: command for follow-up prompts
+	ContinueArgs    optionalArgs       `json:"continue_args"`
+	Env             map[string]string  `json:"env,omitempty"`
+	ReplaceEnv      bool               `json:"replace_env,omitempty"`
 	// ApprovalPolicy is accepted and ignored. It was never consulted by any
 	// code path; the field remains so an older backend configuring a newer
 	// agentctl still succeeds. Permission auto-approval travels on
@@ -507,9 +512,20 @@ func (s *Server) handleAgentConfigure(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, AgentConfigureResponse{
 			Success: false,
-			Error:   "invalid request: " + err.Error(),
+			Error:   "invalid agent configuration",
 		})
 		return
+	}
+
+	if !req.LaunchWrapper.IsZero() {
+		if !c.GetBool(authenticatedControlContextKey) {
+			c.JSON(http.StatusForbidden, AgentConfigureResponse{Error: "authenticated control is required for launch wrappers"})
+			return
+		}
+		if !req.AgentArgs.Present || req.LaunchWrapper.Validate() != nil {
+			c.JSON(http.StatusBadRequest, AgentConfigureResponse{Error: "invalid launch wrapper configuration"})
+			return
+		}
 	}
 
 	if !req.AgentArgs.Present && req.Command == "" {
@@ -522,12 +538,12 @@ func (s *Server) handleAgentConfigure(c *gin.Context) {
 
 	var configureErr error
 	if req.ReplaceEnv {
-		configureErr = s.procMgr.ConfigureWithEnvironment(req.Command, req.AgentArgs.Args, req.AgentArgs.Present, req.Env, req.ContinueCommand, req.ContinueArgs.Args, req.ContinueArgs.Present)
+		configureErr = s.procMgr.ConfigureWithEnvironment(req.Command, req.AgentArgs.Args, req.AgentArgs.Present, req.Env, req.ContinueCommand, req.ContinueArgs.Args, req.ContinueArgs.Present, req.LaunchWrapper)
 	} else {
-		configureErr = s.procMgr.Configure(req.Command, req.AgentArgs.Args, req.AgentArgs.Present, req.Env, req.ContinueCommand, req.ContinueArgs.Args, req.ContinueArgs.Present)
+		configureErr = s.procMgr.Configure(req.Command, req.AgentArgs.Args, req.AgentArgs.Present, req.Env, req.ContinueCommand, req.ContinueArgs.Args, req.ContinueArgs.Present, req.LaunchWrapper)
 	}
 	if configureErr != nil {
-		s.logger.Error("failed to configure agent", zap.Error(configureErr), zap.String("command", req.Command))
+		s.logger.Error("failed to configure agent", zap.Error(configureErr))
 		c.JSON(http.StatusInternalServerError, AgentConfigureResponse{
 			Success: false,
 			Error:   configureErr.Error(),
@@ -535,7 +551,7 @@ func (s *Server) handleAgentConfigure(c *gin.Context) {
 		return
 	}
 
-	s.logger.Info("agent configured", zap.String("command", req.Command))
+	s.logger.Info("agent configured")
 	c.JSON(http.StatusOK, AgentConfigureResponse{
 		Success: true,
 		Message: "agent configured",

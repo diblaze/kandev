@@ -15,10 +15,10 @@ import (
 
 	"github.com/kandev/kandev/internal/agent/agents"
 	"github.com/kandev/kandev/internal/agent/executor"
+	"github.com/kandev/kandev/internal/agent/launchwrapper"
 	"github.com/kandev/kandev/internal/agent/managedruntime"
 	"github.com/kandev/kandev/internal/agent/mcpconfig"
 	agentctl "github.com/kandev/kandev/internal/agent/runtime/agentctl"
-	"github.com/kandev/kandev/internal/agent/settings/cliflags"
 	settingsmodels "github.com/kandev/kandev/internal/agent/settings/models"
 	"github.com/kandev/kandev/internal/agentctl/server/process"
 	agentctltypes "github.com/kandev/kandev/internal/agentctl/types"
@@ -856,6 +856,10 @@ func (m *Manager) passthroughAgentCommandWithPreparation(ctx context.Context, ex
 	rt := agentConfig.Runtime()
 	taskDescription := getTaskDescriptionFromMetadata(execution)
 	promptForCmd := promptForPassthroughCommand(pt, taskDescription)
+	flags, prefix, err := m.resolveProfileLaunchTokens(profileInfo)
+	if err != nil {
+		return nil, agents.PassthroughConfig{}, nil, agents.Command{}, err
+	}
 	mcpArgs, err := m.applyPassthroughMCPWithPreparation(ctx, execution, pt, agentConfig, profileInfo, progress)
 	if err != nil {
 		return nil, agents.PassthroughConfig{}, nil, agents.Command{}, err
@@ -871,31 +875,14 @@ func (m *Manager) passthroughAgentCommandWithPreparation(ctx context.Context, ex
 		Prompt:           promptForCmd,
 		PermissionValues: profilePermissionValues(profileInfo),
 		MCPArgs:          mcpArgs,
-		CLIFlagTokens:    m.profileCLIFlagTokens(profileInfo),
+		CLIFlagTokens:    flags,
 		BaseCommand:      baseCommand,
 	})
 	if cmd.IsEmpty() {
 		return nil, agents.PassthroughConfig{}, nil, agents.Command{}, fmt.Errorf("passthrough command is empty for agent %s", agentConfig.ID())
 	}
+	execution.LaunchWrapper = launchwrapper.Profile(prefix)
 	return ptAgent, pt, rt, cmd, nil
-}
-
-// profileCLIFlagTokens resolves the user-configured CLI flag argv tokens from
-// a profile, mirroring the ACP launch path (manager_launch.go). Returns nil
-// on resolve error and logs a warning so a malformed flag does not block the
-// session — matches the warn-and-continue behaviour of the ACP path.
-func (m *Manager) profileCLIFlagTokens(p *AgentProfileInfo) []string {
-	if p == nil {
-		return nil
-	}
-	tokens, err := cliflags.Resolve(p.CLIFlags)
-	if err != nil {
-		m.logger.Warn("failed to resolve cli_flags for passthrough profile, launching without user-configured flags",
-			zap.String("profile_id", p.ProfileID),
-			zap.Error(err))
-		return nil
-	}
-	return tokens
 }
 
 // buildInteractiveStartRequest builds the InteractiveStartRequest for a passthrough session.
@@ -903,8 +890,9 @@ func (m *Manager) profileCLIFlagTokens(p *AgentProfileInfo) []string {
 // terminal WebSocket is already connected).
 func buildInteractiveStartRequest(sessionID string, execution *AgentExecution, pt agents.PassthroughConfig, env map[string]string, cmd agents.Command, stripEnv []string, immediateStart bool) process.InteractiveStartRequest {
 	return process.InteractiveStartRequest{
-		SessionID: sessionID,
-		Command:   cmd.Args(),
+		SessionID:     sessionID,
+		LaunchWrapper: launchwrapper.Profile(execution.LaunchWrapper.Argv),
+		Command:       cmd.Args(),
 		// Redacted copy logged in place of Command by the interactive runner so
 		// Codex MCP `-c` overrides (env/headers tokens) never reach process logs.
 		LogCommand:      redactPassthroughArgs(cmd.Args()),
@@ -1071,6 +1059,10 @@ func (m *Manager) freshPassthroughCommandWithPreparation(ctx context.Context, ex
 }
 
 func (m *Manager) freshPassthroughCommandForResolved(ctx context.Context, execution *AgentExecution, resolved *resolvedPassthrough, progress *prepareProgressRecorder) (agents.PassthroughConfig, *agents.RuntimeConfig, agents.Command, error) {
+	flags, prefix, err := m.resolveProfileLaunchTokens(resolved.profile)
+	if err != nil {
+		return agents.PassthroughConfig{}, nil, agents.Command{}, err
+	}
 	mcpArgs, err := m.applyPassthroughMCPWithPreparation(ctx, execution, resolved.pt, resolved.agentConfig, resolved.profile, progress)
 	if err != nil {
 		return agents.PassthroughConfig{}, nil, agents.Command{}, err
@@ -1084,13 +1076,14 @@ func (m *Manager) freshPassthroughCommandForResolved(ctx context.Context, execut
 		Model:            effectivePassthroughModel(execution, resolved.profile),
 		PermissionValues: profilePermissionValues(resolved.profile),
 		MCPArgs:          mcpArgs,
-		CLIFlagTokens:    m.profileCLIFlagTokens(resolved.profile),
+		CLIFlagTokens:    flags,
 		BaseCommand:      baseCommand,
 	})
 	if cmd.IsEmpty() {
 		return agents.PassthroughConfig{}, nil, agents.Command{}, fmt.Errorf("passthrough command is empty for agent %s", resolved.agentID)
 	}
 
+	execution.LaunchWrapper = launchwrapper.Profile(prefix)
 	return resolved.pt, resolved.rt, cmd, nil
 }
 
@@ -1099,6 +1092,10 @@ func (m *Manager) resumePassthroughCommand(ctx context.Context, execution *Agent
 }
 
 func (m *Manager) resumePassthroughCommandWithPreparation(ctx context.Context, execution *AgentExecution, resolved *resolvedPassthrough, useResume bool, progress *prepareProgressRecorder) (agents.Command, error) {
+	flags, prefix, err := m.resolveProfileLaunchTokens(resolved.profile)
+	if err != nil {
+		return agents.Command{}, err
+	}
 	mcpArgs, err := m.applyPassthroughMCPWithPreparation(ctx, execution, resolved.pt, resolved.agentConfig, resolved.profile, progress)
 	if err != nil {
 		return agents.Command{}, err
@@ -1112,12 +1109,13 @@ func (m *Manager) resumePassthroughCommandWithPreparation(ctx context.Context, e
 		Resume:           useResume,
 		PermissionValues: profilePermissionValues(resolved.profile),
 		MCPArgs:          mcpArgs,
-		CLIFlagTokens:    m.profileCLIFlagTokens(resolved.profile),
+		CLIFlagTokens:    flags,
 		BaseCommand:      baseCommand,
 	})
 	if cmd.IsEmpty() {
 		return agents.Command{}, fmt.Errorf("passthrough resume command is empty for agent %s", resolved.agentID)
 	}
+	execution.LaunchWrapper = launchwrapper.Profile(prefix)
 	return cmd, nil
 }
 

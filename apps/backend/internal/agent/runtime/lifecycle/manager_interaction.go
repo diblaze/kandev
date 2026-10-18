@@ -13,6 +13,7 @@ import (
 
 	"github.com/kandev/kandev/internal/agent/agents"
 	"github.com/kandev/kandev/internal/agent/executor"
+	"github.com/kandev/kandev/internal/agent/launchwrapper"
 	"github.com/kandev/kandev/internal/agent/runtime/activity"
 	agentctlclient "github.com/kandev/kandev/internal/agent/runtime/agentctl"
 	"github.com/kandev/kandev/internal/agent/runtime/routingerr"
@@ -1627,6 +1628,10 @@ func (m *Manager) restartAgentProcess(
 	if err != nil {
 		return err
 	}
+	if err := client.ValidateLaunchWrapper(ctx, preparation.commands.wrapper); err != nil {
+		return err
+	}
+
 	if runtime := preparation.agentConfig.Runtime(); runtime != nil {
 		if err := m.prepareCursorMCPAuth(execution, preparation.profileInfo, execution.ExecutorType, runtime.ProjectMCPStrategy); err != nil {
 			return err
@@ -1799,6 +1804,7 @@ func (m *Manager) resetAgentRestartState(executionID string, commands agentComma
 		exec.ContinueCommand = commands.continue_
 		exec.AgentArgs = commands.args
 		exec.ContinueArgs = commands.continueArgs
+		exec.LaunchWrapper = commands.wrapper
 		m.resetStreamingStateWithHistory(exec)
 		select {
 		case <-exec.promptDoneCh:
@@ -3275,12 +3281,11 @@ func (m *Manager) buildFreshAgentCommandWithProfile(
 	}
 
 	opts := agents.CommandOptions{
-		Model:               model,
-		SessionID:           "", // Fresh start — no resume flags
-		AutoApprove:         autoApprove,
-		PermissionValues:    permissionValues,
-		CLIFlagTokens:       cliFlagTokens,
-		CommandPrefixTokens: commandPrefixTokens,
+		Model:            model,
+		SessionID:        "", // Fresh start — no resume flags
+		AutoApprove:      autoApprove,
+		PermissionValues: permissionValues,
+		CLIFlagTokens:    cliFlagTokens,
 		// Runtime is "standalone" / "docker" / "sprites" — MockAgent
 		// reads this to pick a bare name (container PATH lookup) vs.
 		// an absolute host path.
@@ -3295,5 +3300,7 @@ func (m *Manager) buildFreshAgentCommandWithProfile(
 	if err := validateBuiltAgentCommands(args, continueArgs); err != nil {
 		return agentCommands{}, err
 	}
-	return newAgentCommands(args, continueArgs), nil
+	commands := newAgentCommands(args, continueArgs)
+	commands.wrapper = launchwrapper.Profile(commandPrefixTokens)
+	return commands, nil
 }

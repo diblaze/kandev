@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kandev/kandev/internal/agent/launchwrapper"
 	"github.com/kandev/kandev/internal/agent/settings/models"
 )
 
@@ -47,7 +48,7 @@ func ValidateCommandPrefix(prefix string) error {
 	if err != nil {
 		return err
 	}
-	if err := ValidateCommandArgs(tokens); err != nil {
+	if err := launchwrapper.ValidateTokens(tokens); err != nil {
 		return err
 	}
 	return nil

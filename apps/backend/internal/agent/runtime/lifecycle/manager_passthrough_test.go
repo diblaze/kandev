@@ -1074,7 +1074,7 @@ func TestManager_ProfileCLIFlagTokens(t *testing.T) {
 	mgr := newTestManager(t)
 
 	t.Run("nil profile returns nil", func(t *testing.T) {
-		if got := mgr.profileCLIFlagTokens(nil); got != nil {
+		if got, _, _ := mgr.resolveProfileLaunchTokens(nil); got != nil {
 			t.Errorf("profileCLIFlagTokens(nil) = %v, want nil", got)
 		}
 	})
@@ -1088,7 +1088,7 @@ func TestManager_ProfileCLIFlagTokens(t *testing.T) {
 				{Flag: "--add-dir /shared", Enabled: true},
 			},
 		}
-		got := mgr.profileCLIFlagTokens(profile)
+		got, _, _ := mgr.resolveProfileLaunchTokens(profile)
 		want := []string{"--allow-all-tools", "--add-dir", "/shared"}
 		if len(got) != len(want) {
 			t.Fatalf("profileCLIFlagTokens() = %v, want %v", got, want)
@@ -1107,7 +1107,7 @@ func TestManager_ProfileCLIFlagTokens(t *testing.T) {
 				{Flag: `--broken "unterminated`, Enabled: true},
 			},
 		}
-		if got := mgr.profileCLIFlagTokens(profile); got != nil {
+		if got, _, _ := mgr.resolveProfileLaunchTokens(profile); got != nil {
 			t.Errorf("profileCLIFlagTokens(malformed) = %v, want nil", got)
 		}
 	})

@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/kandev/kandev/internal/agent/launchwrapper"
 	"github.com/kandev/kandev/internal/common/acpprovider"
 	commonconfig "github.com/kandev/kandev/internal/common/config"
 	"github.com/kandev/kandev/internal/gitconfigenv"
@@ -253,7 +254,9 @@ type InstanceConfig struct {
 	AgentCommand string
 
 	// AgentArgs is the parsed command (derived from AgentCommand)
-	AgentArgs []string
+	AgentArgs             []string
+	LaunchWrapper         launchwrapper.Spec `json:"launch_wrapper,omitzero"`
+	LaunchWrapperRequired bool               `json:"launch_wrapper_required,omitempty"`
 
 	// WorkDir is the working directory for the agent process
 	WorkDir string

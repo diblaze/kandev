@@ -217,8 +217,12 @@ A host-only path such as `CODEX_PATH` can still be invalid on a remote executor.
 - [Profile requirements](../requirements/profile-capability-discovery.md)
 - [Implementation plan](../../../plans/profile-capability-discovery/plan.md)
 - [Compact profile refresh delivery](../../../plans/first-run-agent-setup/plan.md)
-- [Generic launch wrappers: draft investigation and design handoff](../../../plans/generic-launch-wrappers/plan.md)
+- [Generic launch wrapper implementation plan](../../../plans/generic-launch-wrappers/plan.md)
 
 A global `CODEX_PATH` workaround cannot describe two differently configured profiles.
 Overwriting the agent-wide cache would leak one profile's catalog into another profile.
 The scoped context extends existing discovery contracts; this design preserves the rationale without a separate ADR.
+
+The draft [generic wrapper design](generic-launch-wrappers.md) defines the planned extension to wrapper admission and runtime-path preparation.
+It preserves trusted child-command admission and this document's discovery authority, cache, and failure contracts.
+Until that package is implemented, unsupported prefixes retain the existing refusal behavior.

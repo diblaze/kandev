@@ -29,6 +29,8 @@ const (
 // OWNERSHIP-002.2).
 const credentialInvalidatedContextKey = "credentialInvalidated"
 
+const authenticatedControlContextKey = "authenticatedControl"
+
 // afterInstanceAuthAccepted is invoked, if non-nil, immediately after
 // instanceAuth accepts a credentialSource-backed request and captures its
 // invalidation channel, before the request is allowed to proceed. It exists
@@ -120,6 +122,7 @@ func (s *Server) instanceAuth(staticToken string, exemptPaths ...string) gin.Han
 				afterInstanceAuthAccepted()
 			}
 			c.Set(credentialInvalidatedContextKey, invalidated)
+			c.Set(authenticatedControlContextKey, true)
 			c.Next()
 			return
 		}
@@ -128,6 +131,7 @@ func (s *Server) instanceAuth(staticToken string, exemptPaths ...string) gin.Han
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{errKey: errInvalidAuthToken})
 			return
 		}
+		c.Set(authenticatedControlContextKey, true)
 		c.Next()
 	}
 }
