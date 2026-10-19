@@ -1,6 +1,6 @@
 # Generic wrapper acceptance
 
-Date: 2026-10-18. Source branch: `feature/investigate-pi-agent-6ac`.
+Dates: 2026-10-18 and 2026-10-19. Source branch: `feature/investigate-pi-agent-6ac`.
 The implementation is under review. PR #4538 stays draft. This record does not certify real sandbox enforcement.
 
 ## Backend checks
@@ -133,10 +133,101 @@ The sandbox received explicit grants for installation reads and the disposable h
 
 The initial agentctl checks exposed test setup issues. Offline npm first needed its adapter cache prepared. Greywall's Unix socket exceeded Linux's path-length limit under the long private temporary path. A shorter, dynamically allocated temporary directory fixed that failure. Private links to the resolved Nix Node/npm/npx tools fixed a launcher path that was absent inside the sandbox. These corrections changed test setup only. Each agentctl process, disposable home, and temporary directory was removed after its run. The retained manual instance was not used.
 
-## Remaining real-provider acceptance
+## Fresh live-provider acceptance
 
-The optional handoff `/tmp/handoff-Fhcnxu.md` remains unavailable. No explicit disposable provider credential source, model identity, or provider network policy has been supplied. Installation and prompt-free discovery are complete. Live utility tool use, ACP chat, and native passthrough still require those inputs.
+On 2026-10-19, the user completed a new disposable OpenAI Codex login. The complete checked-in runner passed with `openai-codex/gpt-6.1-sol`. It built the production source at `4364a99bb02d5544629e9c4c9891d959b6468c42` without an overlay. No production code changed during acceptance setup.
 
-No credential was copied from the retained manual instance. The checked-in real-provider runner remains unfinished, and Task 06 stays incomplete. The historical overlay run in [reproduction.md](reproduction.md) does not satisfy the remaining acceptance items. Finish and test the isolated runner, then record fresh live receipts without an overlay. Keep raw traces and credentials private.
+The direct control, authenticated wrapped discovery, wrapped utility prompt, full backend ACP chat, and native Pi terminal all passed in one run. Discovery returned 9 models and 6 modes with the new login. Each model case performed four ordered tool calls and produced the independently checked output. Each wrapped operation produced one launcher receipt. Both backend sessions reached an idle state before cleanup.
 
-The manual instance and deprecated #3812 task remain unchanged. The requirement and system-design pair remains draft.
+Initial retries corrected harness setup: the workflow-step API path, offline npm profile environment, tool-evidence timing, and first-run questions. Greywall's provider-profile prompt and Pi's project-trust prompt could consume the task description before Pi was ready. The final run suppresses the Greywall question without applying a built-in profile and trusts only its empty Pi test repository. Private fd and ripgrep executables prevent optional tool downloads. These are disposable test settings, not Kandev provider exceptions.
+
+All 12 credential-free runner tests pass. They cover no-spawn refusal, foreign-listener rejection, unrelated-process preservation, detached-child cleanup, private-log handling, public-result sanitization, required tool order, version parsing, and explicit wrapper configuration. New failure cases were observed before their harness corrections.
+
+The runner removed its processes, temporary homes, database, repositories, and credential copies. The newly created source login was then removed. No acceptance-owned process remains. The installed tools and private diagnostic logs remain available. No credential was copied from the retained manual instance. The manual instance and deprecated #3812 task remain unchanged.
+
+Task 06 is complete. The requirements are active and the system design is current. PR #4538 remains draft and unmerged. The optional handoff was unavailable. Historical overlay evidence in [reproduction.md](reproduction.md) remains separate from these results.
+
+## Reproduce the live acceptance run
+
+The opt-in runner is `scripts/check-generic-wrapper-real.py`. It supports Linux and an explicit disposable Pi OpenAI Codex login. It does not load credentials from a normal home or from an existing Kandev instance. The credential file must have mode `0600`. Use a fresh login for this test and remove that login after use.
+
+Prepare a private tool installation outside `/tmp`. Its `bin/` directory must contain Pi, pi-acp, Greywall, Greyproxy, Bubblewrap, socat, Node, npm, npx, bash, git, fd, and ripgrep (`rg`). Install pi-acp 0.0.34. Prepare an npm cache under the installation's `cache/` directory for offline `npx pi-acp@0.0.34`. Go, git, and bash must also be available on the host PATH. The runner does not install software.
+
+Set these variables to private local values. Do not put credential values in them:
+
+- `WRAPPER_ACCEPTANCE_TOOLS`: installation directory.
+- `WRAPPER_ACCEPTANCE_AUTH_FILE`: disposable Pi `auth.json` path.
+- `WRAPPER_ACCEPTANCE_MODEL`: explicit `openai-codex/<model>` identity.
+- `WRAPPER_ACCEPTANCE_PRIVATE_LOG_DIR` (optional): private directory for raw diagnostic logs. Without this variable, cleanup deletes the logs.
+
+Run from the repository root:
+
+```bash
+python3 scripts/check-generic-wrapper-real.test.py
+python3 scripts/check-generic-wrapper-real.py --check-prerequisites
+python3 scripts/check-generic-wrapper-real.py --run --record docs/plans/generic-launch-wrappers/acceptance.md
+```
+
+The prerequisite check starts no processes and sends no prompts. The live run builds the current backend, agentctl, and acpdbg without an overlay. It creates its own database, repositories, homes, ports, proxy, and process ownership record. It refuses a port whose listener belongs to another process. Cleanup stops only owned processes, including detached descendants, and removes the temporary resources and credential copies. It preserves the explicitly supplied source credential file.
+
+Each model case must call read, bash, write, and read in order. The runner checks the computed file and random nonce independently. Wrapped cases must also produce an outer launcher receipt before Greywall executes the inner process. Only sanitized results enter this record. Raw output stays private.
+
+The test proxy has one allow rule: `chatgpt.com:443`. It has no allow-all rule. The sandbox receives explicit paths for the tool installation, disposable state, npm cache, temporary directory, working directory, and managed npm directory. Both Kandev runtime references remain in the configured wrapper prefix. Greywall uses the owned proxy endpoints and does not use its default proxy control service. Its built-in provider profile, watch mode, and learning mode are disabled. The disposable Greywall preferences suppress first-run profile questions. Pi trusts only its empty test repository and skips optional online update checks. This policy permits Pi to read the disposable credential file; it does not claim that the credential is hidden from the agent.
+
+The restricted policy does not permit the sandboxed native Pi process to contact the Kandev MCP endpoint. This acceptance checks Pi's built-in tools and terminal transport. It does not establish MCP access through Greywall, sandbox confinement, or support on macOS or remote executors.
+
+## Opt-in real-provider runner result
+
+```json
+{
+  "date": "2026-10-19",
+  "status": "passed",
+  "platform": "linux/x86_64",
+  "model": "openai-codex/gpt-6.1-sol",
+  "versions": {
+    "pi": "1.3.0",
+    "greywall": "0.3.7",
+    "greyproxy": "0.4.5",
+    "bwrap": "0.11.2",
+    "node": "24.19.0",
+    "npm": "11.17.0",
+    "fd": "10.4.2",
+    "rg": "15.2.0",
+    "pi-acp": "0.0.34",
+    "socat": "1.8.1.3",
+    "go": "1.26.6"
+  },
+  "checks": [
+    {
+      "scenario": "direct",
+      "status": "passed",
+      "tool_calls": 4
+    },
+    {
+      "scenario": "discovery",
+      "status": "passed",
+      "models": 9,
+      "modes": 6,
+      "receipts": 1
+    },
+    {
+      "scenario": "utility",
+      "status": "passed",
+      "receipts": 1,
+      "tool_calls": 4
+    },
+    {
+      "scenario": "chat",
+      "status": "passed",
+      "receipts": 1,
+      "tool_calls": 4
+    },
+    {
+      "scenario": "passthrough",
+      "status": "passed",
+      "receipts": 1,
+      "tool_calls": 4
+    }
+  ]
+}
+```

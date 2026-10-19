@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 system: agents
 created: 2026-10-16
 owners:
@@ -16,7 +16,7 @@ A wrapper is a command customization. Its presence alone does not prove sandbox 
 
 [Profile discovery](profile-capability-discovery.md) retains ownership of discovery state and model-picker behavior.
 [Managed npm recovery](managed-npm-runtime-recovery.md) retains ownership of package repair.
-This draft adds consistent wrapper execution and explicit refusal where support is absent.
+This contract adds consistent wrapper execution and explicit refusal where support is absent.
 
 ## Terms
 

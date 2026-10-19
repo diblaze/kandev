@@ -1,5 +1,5 @@
 ---
-status: draft
+status: current
 system: agents
 created: 2026-10-16
 requirements:
@@ -16,7 +16,7 @@ requirements:
 
 Agents owns profile configuration and launch semantics across lifecycle, host utility, and agentctl.
 Executors supply the execution environment. Plugins own extension negotiation, not the core launch decision.
-This draft extends [profile discovery](profile-capability-discovery.md) without changing its cache or UI ownership.
+This design extends [profile discovery](profile-capability-discovery.md) without changing its cache or UI ownership.
 
 The selected design retains `command_prefix` as the public setting.
 It separates the wrapper from the trusted child command until preparation on the execution host.

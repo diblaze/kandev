@@ -1,7 +1,7 @@
 ---
 created: 2026-10-14
-updated: 2026-10-18
-status: draft
+updated: 2026-10-19
+status: implemented
 requirements:
   - REQ-AGENTS-WRAPPERS-001
   - REQ-AGENTS-WRAPPERS-002
@@ -24,7 +24,7 @@ Apply operator-configured wrappers consistently across supported discovery, util
 Prepare runtime paths on the execution host. Refuse unsupported contexts without an unwrapped retry.
 Basic wrapping remains in core. Sandbox-specific plugins remain optional and deferred.
 
-The user authorized implementation on 2026-10-18. Tasks 02 through 05 are implemented. Task 06 owns the remaining browser and real-provider acceptance evidence.
+The user authorized implementation on 2026-10-18. Tasks 02 through 06 are complete. Task 06 records the passing browser and live-provider acceptance evidence.
 [Task 01](task-01-complete-design.md) records the design work.
 The implementation order is shared preparation, utility execution, session lifecycle, passthrough, then acceptance and public documentation.
 All tasks execute sequentially in the primary conversation unless the user explicitly authorizes delegation.
@@ -58,7 +58,7 @@ No changes to the deprecated task, the retained manual instance, or its authenti
 
 Agents owns the durable contract because it owns profile launch settings and their execution semantics.
 The [requirements](../../specs/agents/requirements/generic-launch-wrappers.md) and
-[design](../../specs/agents/system-design/generic-launch-wrappers.md) are the authoritative draft pair.
+[design](../../specs/agents/system-design/generic-launch-wrappers.md) are the authoritative pair.
 
 The [reproduction](reproduction.md) records real Pi/Greywall success with a temporary overlay and explicit path grants.
 It does not verify the generic implementation or every launch path.
@@ -114,7 +114,7 @@ The intermediate work orders use explicit test capability fixtures. Do not adver
 
 ## Tests and traceability
 
-All named `generic_wrapper_test.go` files and `TestGenericWrapper*` methods below are planned, not existing evidence.
+The table below records the original test plan. Work-order results and [acceptance.md](acceptance.md) record the implemented tests and commands.
 Each implementation work order uses Red-Green-Refactor and records actual command results.
 A test that only compares DTO fields is insufficient when the acceptance criterion concerns a running process.
 
@@ -161,7 +161,7 @@ Completed: [Task 01: Complete design](task-01-complete-design.md).
 - [x] [Task 03: Authorized discovery and utility execution](task-03-utility-execution.md), wave 3, depends on 02.
 - [x] [Task 04: Session lifecycle and recovery](task-04-session-lifecycle.md), wave 4, depends on 03.
 - [x] [Task 05: Passthrough and capability activation](task-05-passthrough.md), wave 5, depends on 04.
-- [ ] [Task 06: End-to-end acceptance and operator documentation](task-06-acceptance-and-docs.md), wave 6, depends on 05.
+- [x] [Task 06: End-to-end acceptance and operator documentation](task-06-acceptance-and-docs.md), wave 6, depends on 05.
 
 These work orders form one implementation package. Do not release intermediate partial capability support.
 The existing [profile discovery plan](../profile-capability-discovery/plan.md) remains its completed historical delivery record.
@@ -183,7 +183,7 @@ The English structural check passed with synonym warnings excluded because techn
 Advisory passive-voice findings do not establish formal ASD dictionary compliance.
 
 PR #4538 now uses the implementation-oriented title and scope. Its live body, draft state, and unchanged head were checked.
-The design-only checkpoint ended before production changes. The later implementation turn is recorded in [acceptance.md](acceptance.md). The specification pair remains draft until Task 06 is complete.
+The design-only checkpoint ended before production changes. The later implementation turn is recorded in [acceptance.md](acceptance.md). Task 06 completed on 2026-10-19. The requirements are active and the design is current. All five live-provider scenarios and 12 harness safety tests pass. The PR remains draft and unmerged.
 
 ## Risks
 

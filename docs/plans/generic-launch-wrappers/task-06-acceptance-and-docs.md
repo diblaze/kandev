@@ -1,7 +1,7 @@
 ---
 id: "06-acceptance-and-docs"
 title: "End-to-end acceptance and operator documentation"
-status: in_progress
+status: done
 wave: 6
 depends_on:
   - "05-passthrough"
@@ -58,7 +58,7 @@ No changes to the deprecated #3812 task or manual instance. No real-provider pro
 ## Verification
 
 Run from the repository root. Implement new behavior with failing tests first.
-New test and harness paths below are delivery targets, not files already available in this design package.
+The test and harness paths below are implemented.
 
 ```bash
 (cd apps && pnpm install --frozen-lockfile)
@@ -110,11 +110,15 @@ Real provider access and wrapper platform support are external prerequisites. Mi
 
 ## Results
 
-Browser regression cases and operator documentation are implemented. Desktop and mobile acceptance, focused backend race checks, and document validation pass. Pi, pi-acp, Greywall, and Greyproxy are now installed privately. Fresh direct and sandboxed discovery passes through both acpdbg and the authenticated agentctl API, with no provider exception or model prompt. See [acceptance.md](acceptance.md) for exact results and remaining prerequisites. The checked-in real-provider runner and live prompt, ACP chat, and passthrough acceptance remain incomplete.
+Completed on 2026-10-19. All 11 selected desktop and phone browser tests pass. Focused backend and race checks, web typecheck, changed-file lint, and document validators pass. Broader baseline failures remain listed in [acceptance.md](acceptance.md).
+
+The opt-in runner and its 12 credential-free safety tests are implemented. A fresh isolated OpenAI Codex login completed one full Pi/Greywall run: direct control, authenticated wrapped discovery, utility prompt/tools, ACP chat, and native passthrough. Discovery returned 9 models and 6 modes. Each model case completed read/bash/write/read with independently verified output. Each wrapped operation produced one receipt. No overlay or provider exception was used.
+
+The runner cleaned its resources. The disposable source login was removed separately. The retained manual instance and deprecated task are unchanged. The requirements are active, the design is current, and the PR remains draft. Exact versions, commands, policy, and limits appear in [acceptance.md](acceptance.md).
 
 ## Real-provider harness contract
 
-The proposed harness accepts private executable paths and credential locations through environment variables.
+The harness accepts private executable paths and credential locations through environment variables.
 `--check-prerequisites` reports missing tools, credentials, or unsupported platform without starting an instance or sending a prompt.
 `--run` allocates its own temporary home, database, ports, workspace, and process ownership record.
 It builds the current source without a Go overlay. It never reads the retained manual instance database or its authentication copy.
@@ -125,7 +129,7 @@ The harness proves a direct control, wrapped discovery without a prompt, a read/
 Use a unique nonce and wrapper receipt per scenario. Check the output file independently and record exact tool/runtime versions.
 A simple recording launcher may execute the real sandbox command, but every positive case must prove both layers ran.
 Keep raw traces and credentials private. Commit only sanitized counts, statuses, versions, platform, and limitations.
-Stop only processes named in the harness ownership record. Clean its credentials and operation-owned resources on success, failure, and interruption.
+Stop only processes created by the runner or identified by its private ownership nonce. The on-disk ownership record is evidence, not authority to terminate a process. Clean its credentials and operation-owned resources on success, failure, and interruption.
 Add `scripts/check-generic-wrapper-real.test.py` with credential-free tests for prerequisite refusal, ownership isolation, and sanitization.
 Run `python3 scripts/check-generic-wrapper-real.test.py` before either harness command.
 Preserve `reproduction.md` as historical evidence. Record permanent acceptance separately.
