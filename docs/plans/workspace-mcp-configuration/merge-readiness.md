@@ -179,3 +179,63 @@ suites passed 19 cases. All used retries zero and one worker. Independent
 source audits found no concrete new MCP transaction or dynamic-startup lock
 defect; the initial transient causes remain unknown. Fresh complete CI on
 the remediation commit is still required before merge confirmation.
+
+
+## Second-head browser fixture synchronization
+
+On da26, CI found two further fixture synchronization failures outside the
+feature source. The workflow move-preview helper matched only a task URL and
+read a browser response body after UI waits. A controlled competing response
+for another destination reproduced a wrong `reuse_current` result where
+`create_new` was expected. The helper now matches the destination step, consumes
+JSON immediately, observes transport and UI together, and asserts task/step
+identity. No body error is swallowed, retried or replaced by a separate read.
+All existing move, model, recipient and final-session assertions remain. The
+complete spec passed three cases; its ordered desktop CI partition replay
+passed 35 cases under two CPUs/4 GiB, one worker and retries disabled.
+
+The Threads deep-link test asserted a chat before its task's session list had
+loaded. An eight-second initial GET stimulus reproduced the same loading-state
+failure. Reusing the existing client session-settlement helper fixes the test
+without changing its rendered assertion timeout or the product loader. The
+complete two-case layout suite passes with that real slow read and all stream
+bounds, row geometry, unmount/remount and navigation assertions retained.
+The exact original CI request timings and CDP resource failure are not proven
+from the saved snapshots; these deterministic counterexamples establish the
+fixture weaknesses repaired here.
+
+This delta changes only browser tests and this record. Product source,
+42-file/478-test unit evidence and published MCP/prompt captures remain
+unchanged. Final immutable delta review, normal hooks and fresh committed-head
+CI remain required. The optional automated walkthrough separately timed out
+twice at its fixed generation deadline; no workflow or check policy was changed.
+
+
+The repeated mobile freeze case had two observation gaps: an immediate DOM
+scroll assignment captured an unsettled baseline, and the substring marker
+could match the outgoing prompt before the assistant appended its reply. Its
+fixture now completes a native touch gesture, verifies trusted start/move/end,
+waits for stable position and geometry, and checks the exact assistant marker.
+It also checks preservation immediately after disabling. The final ten-pixel
+bounds and two-second budget, real composer/send path and history-depth
+preconditions remain. No transcript implementation or tolerance changed.
+The old wheel-only helper failed the trusted-touch setup contract; five focused
+native-gesture repeats passed under the same resource limits. That setup RED
+is not a reproduction or claimed root cause of the intermittent CI offset.
+Full phone-suite validation and final committed-head CI remain gates.
+
+The complete da26 artifact audit reconciles 118 blob reports: 4,012 first-attempt
+passes, three retry passes, zero final failed cases and 40 skipped. Those three
+flaky verdicts are exactly the workflow, Threads and mobile fixtures described
+above; fail-on-flaky correctly kept the required E2E gate red. No parse errors
+or additional failed cases were found. All six container shards passed.
+
+
+Final fixture review found and closed a history-precondition gap: the settled
+sample now requires both a nonzero history offset and more than 100 pixels
+remaining below the viewport. A local controlled schedule that holds settlement
+at the bottom was accepted before this check (RED) and rejected after it
+(GREEN). The probe changes only the disposable test clone and is not committed.
+It does not reproduce the original CI offset. Three edited browser specs pass
+all TypeScript diagnostics; the 60-file changed-E2E unresolved-name/import audit
+and scoped lint also pass. Existing product screenshots remain representative.

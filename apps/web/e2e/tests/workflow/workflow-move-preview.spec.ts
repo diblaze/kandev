@@ -14,22 +14,64 @@ import {
   movePreviewRequestPredicate,
 } from "./workflow-move-preview-stability-helpers";
 
-function waitForPreviewResponse(page: Page, taskId: string) {
-  return page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname === `/api/v1/tasks/${taskId}/move-preview` &&
-      response.ok(),
-  );
+async function injectCompetingPreview(
+  page: Page,
+  taskId: string,
+  stepId: string,
+  previousStepId: string,
+) {
+  let injected = false;
+  const matches = movePreviewRequestPredicate(taskId, stepId);
+  await page.route(`**/api/v1/tasks/${taskId}/move-preview`, async (route) => {
+    const request = route.request();
+    if (injected || !matches(request)) return route.continue();
+    injected = true;
+    await page.evaluate(
+      async ({ url, payload }) => {
+        const response = await fetch(url, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) throw new Error(`Competing preview failed: ${response.status}`);
+        await response.json();
+      },
+      {
+        url: request.url(),
+        payload: { ...request.postDataJSON(), workflow_step_id: previousStepId },
+      },
+    );
+    await route.continue();
+  });
+  return () => injected;
+}
+
+function waitForPreviewResponse(page: Page, taskId: string, workflowStepId: string) {
+  const matches = movePreviewRequestPredicate(taskId, workflowStepId);
+  return page.waitForResponse((response) => matches(response.request()) && response.ok());
 }
 
 async function openStepPreview(page: Page, taskId: string, stepName: string) {
-  const response = waitForPreviewResponse(page, taskId);
-  await page.getByTestId(`workflow-step-${stepName}`).hover();
+  const trigger = page.getByTestId(`workflow-step-${stepName}`);
+  const workflowStepId = await trigger.getAttribute("data-workflow-step-id");
+  if (!workflowStepId) throw new Error(`Workflow step ${stepName} has no identity`);
+  const response = waitForPreviewResponse(page, taskId, workflowStepId).then((value) =>
+    value.json(),
+  );
   const popover = page.locator('[data-testid="workflow-step-popover"]:visible');
-  await expect(popover).toBeVisible();
-  await expect(popover.getByTestId("workflow-move-preview")).toBeVisible({ timeout: 15_000 });
-  return { popover, preview: await response.then((value) => value.json()) };
+  const [preview] = await Promise.all([
+    response,
+    (async () => {
+      await trigger.hover();
+      await expect(popover).toBeVisible();
+      await expect(popover.getByTestId("workflow-move-preview")).toBeVisible({
+        timeout: 15_000,
+      });
+    })(),
+  ]);
+  expect(preview).toMatchObject({ task_id: taskId, workflow_step_id: workflowStepId });
+  return { popover, preview };
 }
 
 test.describe("Workflow move preview", () => {
@@ -175,7 +217,7 @@ test.describe("Workflow move preview", () => {
       agent_profile_id: profileA.id,
       events: { on_enter: [{ type: "auto_start_agent" }] },
     });
-    await apiClient.createWorkflowStep(workflow.id, "Fresh C", 3, {
+    const freshStep = await apiClient.createWorkflowStep(workflow.id, "Fresh C", 3, {
       agent_profile_id: profileC.id,
       profile_session_start_policy: "new",
       events: { on_enter: [{ type: "auto_start_agent" }] },
@@ -219,7 +261,9 @@ test.describe("Workflow move preview", () => {
       initialSessionId,
     );
 
+    const wasInjected = await injectCompetingPreview(testPage, task.id, freshStep.id, source.id);
     const freshPreview = await openStepPreview(testPage, task.id, "Fresh C");
+    expect(wasInjected()).toBe(true);
     expect(freshPreview.preview.outcome).toBe("create_new");
     expect(freshPreview.preview.recipient.session_id ?? "").toBe("");
     expect(freshPreview.preview.model.after.known).toBe(true);
