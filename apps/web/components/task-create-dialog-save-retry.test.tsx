@@ -186,6 +186,37 @@ function readResponses(agentEnabled: boolean): Map<string, () => Response> {
   const noConfig = () => new Response(null, { status: 204 });
   return new Map([
     ["/api/v1/user/agent-profile-recent-use", () => jsonResponse([])],
+    [`/api/v1/workspaces/${WORKSPACE_ID}/mcp-servers`, () => jsonResponse({ servers: [] })],
+    [
+      `/api/v1/tasks/${TASK_ID}/mcp-selections`,
+      () =>
+        jsonResponse({
+          workspace_id: WORKSPACE_ID,
+          scope: "task",
+          owner_id: TASK_ID,
+          definition_ids: [],
+        }),
+    ],
+    [
+      `/api/v1/repositories/${REPOSITORY_ID}/mcp-selections`,
+      () =>
+        jsonResponse({
+          workspace_id: WORKSPACE_ID,
+          scope: "repository",
+          owner_id: REPOSITORY_ID,
+          definition_ids: [],
+        }),
+    ],
+    [
+      "/api/v1/agent-profiles/retry-profile/mcp-selections",
+      () =>
+        jsonResponse({
+          workspace_id: WORKSPACE_ID,
+          scope: "profile",
+          owner_id: "retry-profile",
+          definition_ids: [],
+        }),
+    ],
     [
       `/api/v1/workspaces/${WORKSPACE_ID}/repository-sets`,
       () => jsonResponse({ repository_sets: [], total: 0 }),

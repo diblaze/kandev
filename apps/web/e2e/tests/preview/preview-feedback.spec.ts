@@ -10,6 +10,7 @@ import {
   saveDraft,
   selectGeneratedText,
   startPreviewServer,
+  waitForScreenshotCaptureMode,
 } from "./preview-feedback-helpers";
 
 test.describe("Web preview feedback", () => {

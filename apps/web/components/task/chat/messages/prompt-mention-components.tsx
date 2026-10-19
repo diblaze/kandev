@@ -801,19 +801,29 @@ function PromptMentionHoverPreview({
   onOpenChange,
   onToggle,
 }: PromptMentionHoverPreviewProps) {
+  const dismissed = useRef(false);
+  const allowOpen = () => {
+    dismissed.current = false;
+  };
+  const handleOpenChange = (nextOpen: boolean) => {
+    // A delayed hover must not reopen a preview after explicit dismissal.
+    if (!nextOpen || !dismissed.current) onOpenChange(nextOpen);
+  };
   const handleClick = (event: MouseEvent) => {
     event.stopPropagation();
+    dismissed.current = open;
     onToggle();
   };
   const handleKeyDown = (event: KeyboardEvent) => {
     if (!focusable || (event.key !== "Enter" && event.key !== " ")) return;
     event.preventDefault();
     event.stopPropagation();
+    dismissed.current = open;
     onToggle();
   };
 
   return (
-    <HoverCard open={open} onOpenChange={onOpenChange} openDelay={300} closeDelay={0}>
+    <HoverCard open={open} onOpenChange={handleOpenChange} openDelay={300} closeDelay={0}>
       <HoverCardTrigger asChild>
         <span
           data-testid="custom-prompt-mention"
@@ -826,11 +836,20 @@ function PromptMentionHoverPreview({
           className={className}
           onClick={handleClick}
           onKeyDown={handleKeyDown}
+          onPointerEnter={allowOpen}
+          onFocus={allowOpen}
         >
           <PromptMentionLabel value={value} className={labelClassName} />
         </span>
       </HoverCardTrigger>
-      <HoverCardContent side="top" align="start" className="w-80 max-h-80 overflow-y-auto">
+      <HoverCardContent
+        side="top"
+        align="start"
+        className="w-80 max-h-80 overflow-y-auto"
+        onEscapeKeyDown={() => {
+          dismissed.current = true;
+        }}
+      >
         <PromptPreview content={content} />
       </HoverCardContent>
     </HoverCard>

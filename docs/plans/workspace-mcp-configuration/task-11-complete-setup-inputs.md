@@ -147,3 +147,16 @@ phone cases with retries disabled, including exact argv/value/reference save,
 repository metadata and unsupported long-package review containment. The latter
 reproduced overflow, then passed after the dialog grid gained a zero minimum.
 Final commit/review/publication/CI and merge confirmation belong to the parent.
+
+### Current-main CI fixture integration
+
+The first published-head full frontend shards exposed 36 failures across five
+files: an obsolete workspace-tab adjacency assertion, missing MCP form-state
+fields in the composition mock, and strict edit/draft transports without the
+new legitimate MCP reads. The failures reproduced locally. Fixtures now return
+empty definitions/selections only for their known workspace/scope owners;
+unexpected request and draft-ownership assertions remain intact. All five
+files/38 cases passed, the combined affected suite passed 41 files/454 cases,
+and scoped lint and typecheck passed after extracting the MCP read fixture.
+These changes affect test scaffolding only; rendered UI and runtime code are
+unchanged, so the a57 screenshot captures remain valid for these surfaces.

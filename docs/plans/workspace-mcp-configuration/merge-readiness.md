@@ -5,11 +5,14 @@ normal commit hooks, final immutable candidate/commit review, publication and
 current-head GitHub CI remain delivery gates. The user requires confirmation
 before merging; auto-merge is off.
 
+The dated checkpoints below are a historical work log. This opening evidence
+and the latest CI remediation entry describe the current candidate.
+
 ## Current local evidence
 
 | Check | Result |
 | --- | --- |
-| Full changed frontend tests | 36 files, 416 tests passed |
+| Full changed and affected frontend tests | 42 files, 478 tests passed |
 | Full affected Go runtime | 11 packages passed, including lifecycle and agentctl API |
 | Real PostgreSQL | Atomic deletion, rollback and coherent resolution passed |
 | Orchestration integration | Backend app, orchestrator, task service/handlers and MCP handlers passed |
@@ -21,10 +24,11 @@ before merging; auto-merge is off.
 
 The affected settings suites were rerun after the final width repair: seven
 desktop and five phone cases passed. The remaining browser flows use unchanged
-production code. The latest source-only change is the review dialog's explicit
-single-column grid. No later Go runtime change invalidates the full runtime run.
-All review findings through the fifth isolated round are addressed; the final
-candidate delta includes only style, test-fixture and documentation changes.
+production code. The MCP dialog keeps its explicit single-column grid. No later Go runtime
+change invalidates the full runtime run. All review findings through the fifth
+isolated round are addressed. The latest CI candidate additionally repairs
+frontend/browser fixtures and a prompt-preview dismissal race; its exact-head
+review and CI are recorded separately below.
 
 The unchanged terminal integration fixture passes with a controlled POSIX shell;
 the host's customized interactive shell is unsuitable for that fixture. Pending
@@ -128,3 +132,50 @@ The rebuilt native runtime, delivery fixture and plugin package passed. Desktop 
 
 
 Phone E2E passed 19/20 cases, including pending application, 320/393/767px Connections geometry, provenance, settings inputs and recovery. The long unsupported-package case reproduced a real internal overflow: the dialog's implicit grid track expanded to min-content width. An explicit `grid-cols-1` gives that track a zero minimum rather than clipping content. The same long-name regression now shares a helper across desktop and phone settings tests. Current web/native rebuild and scoped lint passed; both complete settings suites are being rerun against this fix. The merge brings 175 staged Go packages through normal hooks, so their test export cache was warmed successfully without running tests or changing the five-minute lint budget.
+
+
+Published-head CI identified the strict frontend fixture integration gap recorded
+in task 11. The failures reproduced (five files/36 failures), then passed with
+known-owner MCP read responses, complete mocked form state and an explicit
+secrets/MCP/coordinators ordering assertion. Combined affected tests passed
+41 files/454 cases; final focused checks passed five files/38 cases, scoped lint
+and typecheck. No production/UI code changed. Current-head CI still requires a
+fresh passing result after the next normal remediation commit and push.
+
+
+## Published-head CI remediation
+
+The first complete a57 run ended with 81 passed, 11 skipped and 11 failed
+checks. Backend tests passed. Frontend fixture failures are repaired as above.
+E2E artifact audit covered all 118 blob reports with no parse errors: 3,998
+first-attempt passes, nine flaky verdicts, four failed cases and 40 skipped.
+These failures are not counted as passing evidence. PR review evidence was
+complete with no unresolved, hidden or actionable threads.
+
+Browser fixture repairs restore current-main worktree-path capture and the
+preview screenshot-helper import. The session-deletion test uses the same
+captured session ID for its action and assertion. Local path regression was
+RED then three cases passed; preview and the full session suite passed under
+two CPUs/4 GiB with retries disabled. A changed-E2E identifier audit exposed
+only the missing preview helper after path repair.
+
+The prompt-history failure reproduced under the same limits. A component
+regression showed a delayed hover timer reopening a preview after Escape.
+Explicit dismissal now suppresses delayed reopen until a new trigger
+interaction; click/keyboard toggles and later hover remain supported. This
+changes prompt-preview interaction only, with no MCP layout or copy change.
+The original click/Escape browser assertion is retained. After rebuilding,
+that plugin scenario and the existing native hover scenario both passed
+under the same pressure limits (two tests, 26.2 seconds). The final affected
+frontend run passed 42 files/478 tests, including all 24 prompt component
+cases; frontend typecheck and scoped lint passed. Final commit review and
+current-head CI remain gates.
+
+Other first-run flaky cases were investigated without speculative product
+changes: workflow/Azure focused cases and their ordered pressure replays
+passed (37 and 12 cases); dynamic fallback desktop passed under pressure;
+the combined phone autoscroll, fallback, plan-comment and workspace-clone
+suites passed 19 cases. All used retries zero and one worker. Independent
+source audits found no concrete new MCP transaction or dynamic-startup lock
+defect; the initial transient causes remain unknown. Fresh complete CI on
+the remediation commit is still required before merge confirmation.
