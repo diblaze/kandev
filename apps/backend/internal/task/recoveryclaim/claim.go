@@ -34,8 +34,9 @@ type taskCleanupJobContextKey struct{}
 // TaskCleanupJob identifies a task-level archive, delete, or environment-reset
 // job whose durable barrier authorizes resource cleanup for the same task.
 type TaskCleanupJob struct {
-	ID     string
-	TaskID string
+	ID       string
+	TaskID   string
+	Attempts int
 }
 
 // WithTaskCleanupJob carries an already admitted task cleanup job through the
@@ -231,6 +232,20 @@ func Get(ctx context.Context, db *sqlx.DB, environmentID string) (*models.TaskEn
 		return nil, err
 	}
 	return claim, nil
+}
+
+// GetTx reads the current claim inside a caller-owned transaction. Registry
+// updates use it while holding the owner-task lock so the proof cannot be
+// released or rebound between validation and publication.
+func GetTx(ctx context.Context, db *sqlx.DB, tx *sqlx.Tx, environmentID string) (*models.TaskEnvironmentRecoveryClaim, error) {
+	if db == nil || tx == nil || environmentID == "" {
+		return nil, errors.New("task environment recovery claim: database, transaction, and environment are required")
+	}
+	claim, err := loadClaim(ctx, db, tx, environmentID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return claim, err
 }
 
 // EnsureAvailableTx rejects mutations that would overlap recovery. A caller
@@ -505,4 +520,20 @@ func isUniqueViolation(err error) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(err.Error()), "unique") || strings.Contains(strings.ToLower(err.Error()), "duplicate")
+}
+
+// EnsureQuiescentTx rechecks all consumers before publication, including when
+// a retry borrowed the same durable claim left by an interrupted operation.
+func EnsureQuiescentTx(ctx context.Context, db *sqlx.DB, tx *sqlx.Tx, claim *models.TaskEnvironmentRecoveryClaim) error {
+	if claim == nil {
+		return ErrClaimMismatch
+	}
+	busy, err := environmentHasConsumers(ctx, db, tx, claim.TaskEnvironmentID, claim.SessionID, false)
+	if err != nil {
+		return err
+	}
+	if busy {
+		return ErrBusy
+	}
+	return nil
 }

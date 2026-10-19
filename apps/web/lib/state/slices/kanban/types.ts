@@ -34,6 +34,8 @@ export type KanbanStepEvents = {
   on_heartbeat?: Array<{ type: string; config?: Record<string, unknown> }>;
   on_budget_alert?: Array<{ type: string; config?: Record<string, unknown> }>;
   on_agent_error?: Array<{ type: string; config?: Record<string, unknown> }>;
+  on_pr_merged?: Array<{ type: string; config?: Record<string, unknown> }>;
+  on_pr_closed?: Array<{ type: string; config?: Record<string, unknown> }>;
 };
 
 /**
@@ -105,6 +107,8 @@ export type KanbanState = {
     workflowStepId: string;
     workflowAgentOverrides?: WorkflowAgentOverrides;
     title: string;
+    /** Card identifier (e.g. "KAN-42"); shown in place of the title where the UI calls for it. */
+    identifier?: string;
     description?: string;
     autopilot?: boolean;
     priority?: TaskPriority;

@@ -283,12 +283,6 @@ async function saveEditedTaskFields({
   }
 }
 
-function isRepositorySelectionError(error: unknown): boolean {
-  return (
-    error instanceof ApiError && Boolean(REPOSITORY_SELECTION_ERROR_KEYS[error.errorCode ?? ""])
-  );
-}
-
 async function saveMCPSelectionIfNeeded({
   isStartedEdit,
   dirty,
@@ -302,21 +296,6 @@ async function saveMCPSelectionIfNeeded({
 }) {
   if (isStartedEdit || !dirty || !save) return;
   await save(definitionIds);
-}
-
-async function shouldKeepTaskDialogOpen(
-  error: unknown,
-  mcpServerIdsDirty: boolean,
-  saveTaskMCPSelections: ((definitionIds: string[]) => Promise<unknown>) | undefined,
-  refreshStaleBranchPolicies: (error: unknown) => Promise<boolean>,
-) {
-  if (error instanceof RunnerSwitchRejectedError) return true;
-  if (error instanceof TaskUpdateAfterRunnerSwitchError) return true;
-  if (error instanceof LaunchAfterTaskUpdateError) return true;
-  if (mcpServerIdsDirty && Boolean(saveTaskMCPSelections)) return true;
-  if (isRepositorySelectionError(error)) return true;
-  if (isTaskDependencyUpdateFailure(error)) return true;
-  return refreshStaleBranchPolicies(error);
 }
 
 // eslint-disable-next-line max-lines-per-function
@@ -707,12 +686,8 @@ export function useTaskSubmitHandlers({
 
       onSuccess?.(updatedTask, "edit", { taskSessionId });
     } catch (error) {
-      closeDialog = !(await shouldKeepTaskDialogOpen(
-        error,
-        mcpServerIdsDirty,
-        saveTaskMCPSelections,
-        refreshStaleBranchPolicies,
-      ));
+      closeDialog = false;
+      await refreshStaleBranchPolicies(error);
       toast({
         title: t("task:failedToUpdateTask"),
         description: taskSubmitErrorMessage(error),
@@ -750,12 +725,8 @@ export function useTaskSubmitHandlers({
       if (!result) return;
       onSuccess?.(result.updatedTask, "edit");
     } catch (error) {
-      closeDialog = !(await shouldKeepTaskDialogOpen(
-        error,
-        mcpServerIdsDirty,
-        saveTaskMCPSelections,
-        refreshStaleBranchPolicies,
-      ));
+      closeDialog = false;
+      await refreshStaleBranchPolicies(error);
       toast({
         title: t("task:failedToUpdateTask"),
         description: taskSubmitErrorMessage(error),

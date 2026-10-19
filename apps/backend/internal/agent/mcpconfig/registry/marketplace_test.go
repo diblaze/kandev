@@ -73,9 +73,6 @@ func TestRegistryChoicePreservesInstallMetadata(t *testing.T) {
 			Transport: Transport{
 				Type:    "stdio",
 				Headers: []KeyValueInput{{Name: "X-Trace", Value: "trace"}},
-				Variables: map[string]KeyValueInput{
-					"tenant": {Name: "tenant", IsRequired: true},
-				},
 			},
 		}},
 	}
@@ -93,9 +90,6 @@ func TestRegistryChoicePreservesInstallMetadata(t *testing.T) {
 	}
 	if configuration.Env["MODE"] != "safe" || configuration.Headers["X-Trace"] != "trace" {
 		t.Fatalf("publisher inputs = %#v", configuration)
-	}
-	if _, ok := configuration.Options["registry_variables"]; !ok {
-		t.Fatalf("registry variables missing from options = %#v", configuration.Options)
 	}
 }
 

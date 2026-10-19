@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -54,6 +55,7 @@ type mockAgent struct {
 	sessions                       map[acp.SessionId]bool
 	promptCancels                  map[acp.SessionId]context.CancelFunc
 	promptCancelHolds              map[acp.SessionId]chan struct{}
+	detachedWork                   map[acp.SessionId]map[*mockDetachedWork]struct{}
 	sessionMCPServers              map[acp.SessionId]map[string]mcpServerDef
 	sessionConfig                  map[acp.SessionId][]acp.SessionConfigOption
 	sessionModes                   map[acp.SessionId]acp.SessionModeId
@@ -66,10 +68,21 @@ type mockAgent struct {
 var _ acp.Agent = (*mockAgent)(nil)
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "--delivery-journal-fixture" {
+		if err := runDeliveryJournalFixture(os.Args[2], os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--profile-probe-wrapper" {
 		os.Exit(runProfileProbeWrapper(os.Args[2:], os.Getenv(profileProbeEvidenceEnv)))
 	}
 	recordProfileProbeChildEvidence(os.Args, os.Getenv(profileProbeEvidenceEnv))
+	// Vendor-CLI shaped entry points (`--version`, `app-server`) that the hostcli package drives in E2E.
+	if runHostCLICommand(os.Args[1:], os.Stdin, os.Stdout) {
+		return
+	}
 	model := parseModelFlag()
 
 	// TUI mode: simple terminal UI for passthrough/PTY testing
@@ -117,6 +130,10 @@ func main() {
 // are gated on this negotiated advertisement, so the mock must earn eligibility
 // the same way a real bridge does or E2E would prove nothing about the gate.
 func (a *mockAgent) Initialize(_ context.Context, _ acp.InitializeRequest) (acp.InitializeResponse, error) {
+	traceACP("initialize", "", nil)
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("E2E_MOCK_AGENT_FAIL_INITIALIZE")), "true") {
+		return acp.InitializeResponse{}, errors.New("mock ACP initialization failed by E2E fixture")
+	}
 	var meta map[string]any
 	if mockPromptQueueingEnabled() {
 		meta = map[string]any{
@@ -126,7 +143,10 @@ func (a *mockAgent) Initialize(_ context.Context, _ acp.InitializeRequest) (acp.
 	return acp.InitializeResponse{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		AgentCapabilities: acp.AgentCapabilities{
-			LoadSession:     true,
+			LoadSession: true,
+			PromptCapabilities: acp.PromptCapabilities{
+				Image: true,
+			},
 			McpCapabilities: acp.McpCapabilities{Sse: true},
 			SessionCapabilities: acp.SessionCapabilities{
 				Close: &acp.SessionCloseCapabilities{},
@@ -357,6 +377,7 @@ func ptr(s string) *string {
 // is only reached on resume, so no resumed-guard is needed here (unlike TUI).
 func (a *mockAgent) LoadSession(ctx context.Context, req acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
 	traceACP("session_load", string(req.SessionId), nil)
+	traceACP("resume", string(req.SessionId), nil)
 	if err := mockContinuationRestoreFailure(req.SessionId); err != nil {
 		return acp.LoadSessionResponse{}, err
 	}
@@ -420,7 +441,11 @@ func (a *mockAgent) LoadSession(ctx context.Context, req acp.LoadSessionRequest)
 func (a *mockAgent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.PromptResponse, error) {
 	promptCtx, cancelPrompt := context.WithCancel(ctx)
 	prompt := extractPromptText(req.Prompt)
-	traceACP("prompt", string(req.SessionId), map[string]string{"prompt": prompt})
+	promptBlocks, _ := json.Marshal(summarizeACPPromptBlocks(req.Prompt))
+	traceACP("prompt", string(req.SessionId), map[string]string{
+		"prompt":        prompt,
+		"prompt_blocks": string(promptBlocks),
+	})
 	acceptanceMarker, cancelHoldPrompt := cancelHoldAcceptanceMarker(prompt)
 	var cancelHold chan struct{}
 	if cancelHoldPrompt {
@@ -464,6 +489,9 @@ func (a *mockAgent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.Prom
 	if resp, err, handled := a.handleMockInterruptionContinuation(promptCtx, req.SessionId, prompt); handled {
 		return resp, err
 	}
+	if resp, err, handled := a.handleRetainedCapacity(promptCtx, req.SessionId, prompt); handled {
+		return resp, err
+	}
 	// The /overloaded scenario must surface a real prompt-time ACP *error*
 	// (a JSON-RPC error response), which handlePrompt's emitter cannot do —
 	// so intercept it here and return the error from Prompt directly.
@@ -479,12 +507,15 @@ func (a *mockAgent) Prompt(ctx context.Context, req acp.PromptRequest) (acp.Prom
 	a.mu.Lock()
 	sessionMCPServers := cloneMCPServerDefs(a.sessionMCPServers[req.SessionId])
 	a.mu.Unlock()
-	e := &emitter{ctx: promptCtx, conn: a.conn, sid: req.SessionId, mcpServers: sessionMCPServers}
+	e := &emitter{
+		ctx: promptCtx, conn: a.conn, sid: req.SessionId, mcpServers: sessionMCPServers,
+		registerDetachedWork: a.registerDetachedWork,
+	}
 	handlePrompt(e, prompt, a.sessionModel(req.SessionId))
 	if promptCtx.Err() != nil {
 		return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
 	}
-	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn, Usage: mockPromptUsage(prompt)}, nil
 }
 
 func (a *mockAgent) sessionModel(sessionID acp.SessionId) string {
@@ -504,6 +535,7 @@ func (a *mockAgent) Cancel(_ context.Context, req acp.CancelNotification) error 
 	cancelHold := a.promptCancelHolds[req.SessionId]
 	cancelPrompt := a.promptCancels[req.SessionId]
 	a.mu.Unlock()
+	a.cancelDetachedWork(req.SessionId)
 	if cancelHold != nil {
 		select {
 		case <-cancelHold:
@@ -659,6 +691,7 @@ func (a *mockAgent) CloseSession(_ context.Context, req acp.CloseSessionRequest)
 		}
 	}
 	_ = os.Remove(overloadedCounterPath(req.SessionId))
+	clearRetainedCapacityCounters(req.SessionId)
 	_ = os.Remove(transportLostCounterPath(req.SessionId))
 	_ = os.Remove(mockContinuationPath(req.SessionId))
 	if dynamicFallbackCounterID == "" {

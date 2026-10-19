@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -346,13 +347,17 @@ func legacyDefinitionInput(workspaceID, profileID, name string, server ServerDef
 	if serverType != ServerTypeStdio {
 		mode = ExecutionModeRemote
 	}
+	endpoint, unsafeURL, err := legacyEndpointForCatalog(server.URL)
+	if err != nil {
+		return CreateDefinitionInput{}, false, err
+	}
 	configuration := MCPServerConfiguration{
 		Command: server.Command, Args: append([]string(nil), server.Args...),
-		URL: server.URL,
+		URL: endpoint,
 		Env: map[string]string{}, Headers: map[string]string{},
 	}
 	bindings := make([]MCPSecretBinding, 0)
-	unsafeSecrets := false
+	unsafeSecrets := unsafeURL
 	for key, value := range server.Env {
 		if value == "" {
 			configuration.Env[key] = value
@@ -385,6 +390,23 @@ func legacyDefinitionInput(workspaceID, profileID, name string, server ServerDef
 		SecretBindings: bindings, Source: DefinitionSourceLegacyImport,
 		SourceIdentity: "legacy:" + profileID + ":" + name,
 	}, unsafeSecrets, nil
+}
+
+func legacyEndpointForCatalog(value string) (string, bool, error) {
+	if value == "" {
+		return "", false, nil
+	}
+	endpoint, err := url.Parse(value)
+	if err != nil {
+		return "", false, errors.New("legacy MCP endpoint requires review")
+	}
+	unsafe := endpoint.User != nil || endpoint.RawQuery != "" || endpoint.ForceQuery || endpoint.Fragment != ""
+	endpoint.User = nil
+	endpoint.RawQuery = ""
+	endpoint.ForceQuery = false
+	endpoint.Fragment = ""
+	endpoint.RawFragment = ""
+	return endpoint.String(), unsafe, nil
 }
 
 func isLegacyReservedServerName(name string) bool {

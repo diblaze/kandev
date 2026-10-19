@@ -49,6 +49,7 @@ export type {
   ThreadViewDraftApi,
   LspStatusLocation,
   LastSeenDisplay,
+  MessageTimeDisplay,
   MCPTaskAgentProfileDefault,
   StartupPage,
   UserSettings,
@@ -442,6 +443,8 @@ export type Task = ActiveSubagentCountFields & {
   workflow_agent_overrides?: WorkflowAgentOverrides;
   position: number;
   title: string;
+  /** Card identifier (e.g. "KAN-42"); shown in place of the title where the UI calls for it. */
+  identifier?: string;
   description: string;
   /** True when the task was created in autopilot mode. Immutable after creation. */
   autopilot?: boolean;
@@ -527,6 +530,7 @@ export type Task = ActiveSubagentCountFields & {
 
 // Task origin values mirror models.TaskOrigin* constants in the Go backend.
 export type TaskOrigin =
+  | "coordinator"
   | "manual"
   | "agent_created"
   | "routine"
@@ -635,6 +639,45 @@ export type TaskSessionWorktree = {
   created_at?: string;
 };
 
+/** Path-free durable progress for one managed workspace recovery attempt. */
+export type WorkspaceRecoveryProjection = {
+  task_id: string;
+  environment_id: string;
+  session_id: string;
+  operation_id: string;
+  attempt_id: string;
+  ownership_generation: string;
+  revision: string;
+  kind: string;
+  /** Error attempt that admitted a session-owned relocation, when available. */
+  error_stamp?: string;
+  state: string;
+  phase: string;
+  repository_id?: string;
+  repository_position: number;
+  repository_total: number;
+  completed_slots: number;
+  workspace_complete: boolean;
+  agent_ready: boolean;
+  runner_live: boolean;
+  started_at: string;
+  updated_at: string;
+  ended_at?: string | null;
+  reason_code?: string;
+};
+
+/** Path-free identity and cause for one currently open session recovery block. */
+export type SessionRecoveryBlockProjection = {
+  id: string;
+  incarnation_id: string;
+  expected_generation: number;
+  reason: string;
+  consumer_reference?: string;
+  delivery_submission_id?: string;
+  delivery_stream_id?: string;
+  updated_at: string;
+};
+
 export type TaskSession = ActiveSubagentCountFields & {
   id: SessionId;
   task_id: TaskId;
@@ -665,6 +708,8 @@ export type TaskSession = ActiveSubagentCountFields & {
   container_id?: string;
   executor_id?: string;
   environment_id?: string;
+  /** Current backend agent process execution identity for this session. */
+  agent_execution_id?: string;
   repository_id?: RepositoryId;
   base_branch?: string;
   base_commit_sha?: string;
@@ -675,6 +720,10 @@ export type TaskSession = ActiveSubagentCountFields & {
   workspace_path?: string;
   worktrees?: TaskSessionWorktree[];
   task_environment_id?: string;
+  /** Latest path-free managed workspace recovery operation for this environment. */
+  workspace_recovery?: WorkspaceRecoveryProjection | null;
+  /** Current native-generation recovery causes; an empty array clears stale blocks. */
+  session_recovery_blocks?: SessionRecoveryBlockProjection[];
   state: TaskSessionState;
   /** Backend-owned runtime cancellation projection; API responses include it explicitly. */
   cancellation_pending?: boolean;
@@ -841,7 +890,12 @@ export type SidebarTaskQuery = {
     op: string;
     value: string | string[] | boolean;
   }>;
-  sort: { key: string; direction: string };
+  sort: {
+    key: string;
+    direction: string;
+    color?: string;
+    then_by?: Array<{ key: string; direction: string; color?: string }>;
+  };
   group: string;
   collapsed_group_keys: string[];
   collapsed_task_ids: string[];
@@ -973,6 +1027,7 @@ export type ListWorkspacesResponse = {
 };
 
 export type Executor = {
+  owner_user_id?: string | null;
   id: string;
   name: string;
   type: ExecutorType;
@@ -992,6 +1047,7 @@ export type ProfileEnvVar = {
 };
 
 export type ExecutorProfile = {
+  owner_user_id?: string | null;
   id: string;
   executor_id: string;
   executor_type?: ExecutorType;
@@ -1041,6 +1097,13 @@ export type ListMessagesResponse = {
   total: number;
   has_more: boolean;
   cursor: string;
+  turns?: Turn[];
+  turn_coverage?: MessageTurnCoverage;
+};
+
+export type MessageTurnCoverage = {
+  message_ids: string[];
+  active_turn_id: string | null;
 };
 
 export type MessageAuthorType = "user" | "agent";

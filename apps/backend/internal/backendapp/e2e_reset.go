@@ -14,14 +14,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	agentruntime "github.com/kandev/kandev/internal/agent/runtime"
 	"github.com/kandev/kandev/internal/automation"
 	"github.com/kandev/kandev/internal/common/logger"
+	"github.com/kandev/kandev/internal/common/processidentity"
+	"github.com/kandev/kandev/internal/coordinator"
 	"github.com/kandev/kandev/internal/events"
 	"github.com/kandev/kandev/internal/events/bus"
 	"github.com/kandev/kandev/internal/github"
 	"github.com/kandev/kandev/internal/gitlab"
+	"github.com/kandev/kandev/internal/orchestrator/messagequeue"
 	taskmodels "github.com/kandev/kandev/internal/task/models"
-	"github.com/kandev/kandev/internal/task/repository/repoerrors"
 	sqliterepo "github.com/kandev/kandev/internal/task/repository/sqlite"
 	taskservice "github.com/kandev/kandev/internal/task/service"
 )
@@ -36,6 +39,11 @@ const (
 	e2eTaskCleanupPollInterval = 25 * time.Millisecond
 )
 
+type e2eRetentionWorker interface {
+	Start(context.Context) error
+	Stop()
+}
+
 // registerE2EResetRoutes registers the E2E test-only endpoints.
 // The endpoints are available when KANDEV_MOCK_AGENT is "true" or "only" (dev/E2E modes).
 func registerE2EResetRoutes(
@@ -45,7 +53,12 @@ func registerE2EResetRoutes(
 	automationSvc *automation.Service,
 	githubSvc *github.Service,
 	gitlabSvc *gitlab.Service,
+	coordinatorSvc *coordinator.Service,
 	eventBus bus.EventBus,
+	agentRuntimeAvailability *agentruntime.RuntimeOwner,
+	lifecycleMgr agentruntime.SessionExecutionControl,
+	retentionWorker e2eRetentionWorker,
+	appCtx context.Context,
 	log *logger.Logger,
 ) {
 	mockMode := os.Getenv("KANDEV_MOCK_AGENT")
@@ -54,7 +67,13 @@ func registerE2EResetRoutes(
 	}
 
 	api := router.Group("/api/v1/e2e")
-	api.DELETE("/reset/:workspaceId", handleE2EReset(repo, taskSvc, automationSvc, githubSvc, gitlabSvc, log))
+	if os.Getenv("KANDEV_E2E_MOCK") == "true" && agentRuntimeAvailability != nil {
+		api.POST("/agent-runtime/kill-child", handleE2EKillAgentRuntimeChild(agentRuntimeAvailability))
+	}
+	if os.Getenv("KANDEV_E2E_MOCK") == "true" && lifecycleMgr != nil {
+		api.POST("/agent-runtime/disconnect-session-stream", handleE2EDisconnectSessionAgentStream(lifecycleMgr))
+	}
+	api.DELETE("/reset/:workspaceId", handleE2EReset(repo, taskSvc, automationSvc, githubSvc, gitlabSvc, coordinatorSvc, retentionWorker, appCtx, log))
 	if githubSvc != nil {
 		api.POST("/tasks/:id/remote-contribution", handleE2EAttachGitHubContribution(repo, taskSvc, githubSvc, log))
 	}
@@ -93,6 +112,70 @@ func registerE2EResetRoutes(
 	api.PATCH("/tasks/:id/origin", handleE2ESetTaskOrigin(repo, log))
 
 	log.Info("registered E2E endpoints (test-only)")
+}
+
+type e2eDisconnectSessionAgentStreamRequest struct {
+	SessionID string `json:"session_id"`
+}
+
+func handleE2EDisconnectSessionAgentStream(manager agentruntime.SessionExecutionControl) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		var req e2eDisconnectSessionAgentStreamRequest
+		if err := ctx.ShouldBindJSON(&req); err != nil || req.SessionID == "" {
+			ctx.JSON(http.StatusBadRequest, gin.H{errKey: "session_id is required"})
+			return
+		}
+		execution, ok := manager.GetExecutionBySessionID(req.SessionID)
+		if !ok || execution.DeliveryMode != agentruntime.DurableDeliveryV1 {
+			ctx.JSON(http.StatusNotFound, gin.H{errKey: "durable delivery session is not running"})
+			return
+		}
+		client, releaseClient := execution.AcquireAgentCtlClient()
+		defer releaseClient()
+		if client == nil || !client.HasAgentStream() {
+			ctx.JSON(http.StatusConflict, gin.H{errKey: "agent updates stream is not connected"})
+			return
+		}
+		client.CloseUpdatesStream()
+		ctx.JSON(http.StatusAccepted, gin.H{"disconnected": true})
+	}
+}
+
+func handleE2EKillAgentRuntimeChild(owner *agentruntime.RuntimeOwner) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		lease, err := owner.Acquire(ctx.Request.Context())
+		if err != nil {
+			ctx.JSON(http.StatusConflict, gin.H{"error": "local agent runtime is not available"})
+			return
+		}
+		defer lease.Close()
+
+		identity := lease.ProcessIdentity()
+		if identity.Validate() != nil || identity.PID != lease.ProcessID() || lease.CheckCurrent() != nil {
+			ctx.JSON(http.StatusConflict, gin.H{"error": "local runtime process ownership cannot be verified"})
+			return
+		}
+		state, err := processidentity.Inspect(identity)
+		if err != nil || state != processidentity.StateAlive {
+			ctx.JSON(http.StatusConflict, gin.H{"error": "local runtime process is not confirmed alive"})
+			return
+		}
+		process, err := os.FindProcess(identity.PID)
+		if err != nil {
+			ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "local runtime process could not be reached"})
+			return
+		}
+		state, err = processidentity.Inspect(identity)
+		if err != nil || state != processidentity.StateAlive || lease.CheckCurrent() != nil {
+			ctx.JSON(http.StatusConflict, gin.H{"error": "local runtime process ownership changed before termination"})
+			return
+		}
+		if err := process.Kill(); err != nil {
+			ctx.JSON(http.StatusServiceUnavailable, gin.H{"error": "local runtime process could not be stopped"})
+			return
+		}
+		ctx.JSON(http.StatusAccepted, gin.H{"killed": true, "process_id": identity.PID, "runtime_epoch": lease.Epoch()})
+	}
 }
 
 type e2eAttachGitHubContributionRequest struct {
@@ -182,9 +265,14 @@ func handleE2EReset(
 	automationSvc *automation.Service,
 	githubSvc *github.Service,
 	gitlabSvc *gitlab.Service,
+	coordinatorSvc *coordinator.Service,
+	retentionWorker e2eRetentionWorker,
+	appCtx context.Context,
 	log *logger.Logger,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		resumeRetention := pauseDeliveryRetentionForReset(appCtx, retentionWorker, log)
+		defer resumeRetention()
 		workspaceID := c.Param("workspaceId")
 
 		// Optional: comma-separated workflow IDs to keep (e.g., the seeded workflow).
@@ -230,6 +318,19 @@ func handleE2EReset(
 		}
 		if _, err := repo.DB().ExecContext(ctx, `DELETE FROM runtime_flag_overrides`); err != nil {
 			log.Warn("e2e reset: runtime flag override cleanup failed", zap.Error(err))
+		}
+		// Coordinator state (coordinators, proposals, stalls) is keyed by
+		// workspace_id, not task_id, so it outlives a reset's task deletion
+		// the same way review watches and routing state do. Without this,
+		// every coordinator e2e spec sharing the worker-scoped
+		// seedData.workspaceId leaks its coordinators/stalls/proposals into
+		// the next spec. coordinatorSvc is nil when features.coordinator is
+		// disabled (prod/dev profiles never register this endpoint's mock
+		// mode with the feature off, but guard anyway).
+		if err := deleteCoordinatorStateForReset(ctx, coordinatorSvc, workspaceID); err != nil {
+			log.Error("e2e reset: coordinator state cleanup failed", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{errKey: "coordinator state cleanup failed"})
+			return
 		}
 		// Repository sets outlive the tasks a reset removes, so a set seeded by
 		// one spec would still be offered in the next spec's create dialog. The
@@ -369,23 +470,31 @@ func handleE2EReset(
 			})
 			return
 		}
+		tasks, err = orderE2ETasksForDeletion(tasks)
+		if err != nil {
+			log.Error("e2e reset: failed to order tasks for deletion", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{errKey: err.Error()})
+			return
+		}
+		var deletedTasks int64
 		deletedTaskIDs := append([]string(nil), taskIDsForCleanup...)
 		deletedTaskIDSet := make(map[string]struct{}, len(deletedTaskIDs))
 		for _, taskID := range deletedTaskIDs {
 			deletedTaskIDSet[taskID] = struct{}{}
 		}
-		deletedTasks, resetDeletedTaskIDs, err := deleteE2ETasksForReset(ctx, taskSvc, tasks)
-		if err != nil {
-			// Abort: leaving an undeleted task with its workflow gone
-			// would create orphan rows visible to subsequent tests.
-			log.Error("e2e reset: failed to delete task", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, gin.H{errKey: err.Error()})
-			return
-		}
-		for _, taskID := range resetDeletedTaskIDs {
-			if _, exists := deletedTaskIDSet[taskID]; !exists {
-				deletedTaskIDSet[taskID] = struct{}{}
-				deletedTaskIDs = append(deletedTaskIDs, taskID)
+		for _, t := range tasks {
+			if err := deleteTaskForE2EReset(ctx, taskSvc, t.ID); err != nil {
+				// Abort: leaving an undeleted task with its workflow gone
+				// would create orphan rows visible to subsequent tests.
+				log.Error("e2e reset: failed to delete task",
+					zap.String("task_id", t.ID), zap.Error(err))
+				c.JSON(http.StatusInternalServerError, gin.H{errKey: err.Error()})
+				return
+			}
+			deletedTasks++
+			if _, exists := deletedTaskIDSet[t.ID]; !exists {
+				deletedTaskIDSet[t.ID] = struct{}{}
+				deletedTaskIDs = append(deletedTaskIDs, t.ID)
 			}
 		}
 
@@ -419,44 +528,79 @@ func handleE2EReset(
 	}
 }
 
+func pauseDeliveryRetentionForReset(
+	appCtx context.Context,
+	worker e2eRetentionWorker,
+	log *logger.Logger,
+) func() {
+	if worker == nil {
+		return func() {}
+	}
+	worker.Stop()
+	return func() {
+		if appCtx == nil || appCtx.Err() != nil {
+			return
+		}
+		if err := worker.Start(appCtx); err != nil && log != nil {
+			log.Warn("e2e reset: failed to resume durable delivery retention", zap.Error(err))
+		}
+	}
+}
+
 type e2eResetTaskDeleter interface {
 	DeleteTaskWithOptions(context.Context, string, taskservice.DeleteTaskOptions) error
 }
 
-func deleteE2ETasksForReset(
-	ctx context.Context,
-	taskDeleter e2eResetTaskDeleter,
-	tasks []*taskmodels.Task,
-) (int64, []string, error) {
-	pending := append([]*taskmodels.Task(nil), tasks...)
-	deletedIDs := make([]string, 0, len(tasks))
-	var deleted int64
-	for len(pending) > 0 {
-		deferred := make([]*taskmodels.Task, 0, len(pending))
-		deletedThisPass := false
-		var firstHierarchyConflict error
-		for _, task := range pending {
-			err := deleteTaskForE2EReset(ctx, taskDeleter, task.ID)
-			if errors.Is(err, repoerrors.ErrTaskHierarchyConflict) {
-				deferred = append(deferred, task)
-				if firstHierarchyConflict == nil {
-					firstHierarchyConflict = fmt.Errorf("delete task %s: %w", task.ID, err)
-				}
-				continue
-			}
-			if err != nil {
-				return deleted, deletedIDs, fmt.Errorf("delete task %s: %w", task.ID, err)
-			}
-			deleted++
-			deletedIDs = append(deletedIDs, task.ID)
-			deletedThisPass = true
+func orderE2ETasksForDeletion(tasks []*taskmodels.Task) ([]*taskmodels.Task, error) {
+	tasksByID := make(map[string]*taskmodels.Task, len(tasks))
+	remainingChildren := make(map[string]int, len(tasks))
+	parentByID := make(map[string]string, len(tasks))
+	for _, task := range tasks {
+		if task == nil || task.ID == "" {
+			return nil, fmt.Errorf("task deletion order requires nonempty task IDs")
 		}
-		if len(deferred) > 0 && !deletedThisPass {
-			return deleted, deletedIDs, firstHierarchyConflict
+		if _, exists := tasksByID[task.ID]; exists {
+			return nil, fmt.Errorf("duplicate task ID %q in deletion order", task.ID)
 		}
-		pending = deferred
+		tasksByID[task.ID] = task
+		remainingChildren[task.ID] = 0
+		parentByID[task.ID] = task.ParentID
 	}
-	return deleted, deletedIDs, nil
+	for _, task := range tasks {
+		parentID := task.ParentID
+		if parentID == "" {
+			continue
+		}
+		if _, exists := tasksByID[parentID]; exists {
+			remainingChildren[parentID]++
+		}
+	}
+
+	ready := make([]*taskmodels.Task, 0, len(tasks))
+	for _, task := range tasks {
+		if remainingChildren[task.ID] == 0 {
+			ready = append(ready, task)
+		}
+	}
+
+	ordered := make([]*taskmodels.Task, 0, len(tasks))
+	for next := 0; next < len(ready); next++ {
+		task := ready[next]
+		ordered = append(ordered, task)
+		parentID := parentByID[task.ID]
+		parent, exists := tasksByID[parentID]
+		if parentID == "" || !exists {
+			continue
+		}
+		remainingChildren[parentID]--
+		if remainingChildren[parentID] == 0 {
+			ready = append(ready, parent)
+		}
+	}
+	if len(ordered) != len(tasks) {
+		return nil, fmt.Errorf("task deletion order contains a parent cycle")
+	}
+	return ordered, nil
 }
 
 func deleteTaskForE2EReset(
@@ -464,11 +608,27 @@ func deleteTaskForE2EReset(
 	taskDeleter e2eResetTaskDeleter,
 	taskID string,
 ) error {
-	return taskDeleter.DeleteTaskWithOptions(ctx, taskID, taskservice.DeleteTaskOptions{
-		// E2E reset is an explicit test cleanup boundary. It must remove
-		// disposable local changes left by the test that created the task.
-		DiscardWorktreeChanges: true,
-	})
+	waitCtx, cancel := context.WithTimeout(ctx, e2eTaskCleanupWaitTimeout)
+	defer cancel()
+	ticker := time.NewTicker(e2eTaskCleanupPollInterval)
+	defer ticker.Stop()
+	for {
+		if err := waitCtx.Err(); err != nil {
+			return err
+		}
+		err := taskDeleter.DeleteTaskWithOptions(waitCtx, taskID, taskservice.DeleteTaskOptions{
+			// E2E reset removes disposable local changes after session transfers settle.
+			DiscardWorktreeChanges: true,
+		})
+		if !errors.Is(err, messagequeue.ErrSessionTransferInProgress) {
+			return err
+		}
+		select {
+		case <-waitCtx.Done():
+			return waitCtx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func waitForE2ETaskCleanup(ctx context.Context, database *sql.DB, taskIDs []string) error {
@@ -665,6 +825,17 @@ func deleteAutomationsForReset(
 	return automationSvc.DeleteAutomationsByWorkspace(ctx, workspaceID)
 }
 
+func deleteCoordinatorStateForReset(
+	ctx context.Context,
+	coordinatorSvc *coordinator.Service,
+	workspaceID string,
+) error {
+	if coordinatorSvc == nil {
+		return nil
+	}
+	return coordinatorSvc.DeleteWorkspaceState(ctx, workspaceID)
+}
+
 type e2eHiddenWorkflowRequest struct {
 	WorkspaceID string `json:"workspace_id"`
 	Name        string `json:"name"`
@@ -727,7 +898,8 @@ type e2eCreateAutomationRequest struct {
 	// SQL (`execution_mode = 'task' AS legacy_board_card`), so seeding the
 	// column is the only honest way to put a workspace in the state the
 	// notice exists to explain.
-	LegacyBoardCard bool `json:"legacy_board_card"`
+	LegacyBoardCard bool                    `json:"legacy_board_card"`
+	RetryPolicy     *automation.RetryPolicy `json:"retry_policy,omitempty"`
 }
 
 // handleE2ECreateAutomation seeds an automation for E2E tests via HTTP so tests
@@ -743,6 +915,10 @@ func handleE2ECreateAutomation(
 			c.JSON(http.StatusBadRequest, gin.H{errKey: "workspace_id and name are required"})
 			return
 		}
+		retryPolicy := automation.RetryPolicy{}
+		if body.RetryPolicy != nil {
+			retryPolicy = *body.RetryPolicy
+		}
 		a, err := svc.CreateAutomation(c.Request.Context(), &automation.CreateAutomationRequest{
 			WorkspaceID:        body.WorkspaceID,
 			Name:               body.Name,
@@ -755,6 +931,7 @@ func handleE2ECreateAutomation(
 			Repositories:       body.Repositories,
 			Prompt:             body.Prompt,
 			AgentProfileID:     body.AgentProfileID,
+			RetryPolicy:        retryPolicy,
 			ExecutorProfileID:  body.ExecutorProfileID,
 			MaxConcurrentRuns:  10,
 		})

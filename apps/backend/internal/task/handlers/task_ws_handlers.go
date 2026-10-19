@@ -35,7 +35,7 @@ func (h *TaskHandlers) doListTaskSessions(ctx context.Context, msg *ws.Message, 
 	if taskID == "" {
 		return ws.NewError(msg.ID, msg.Action, ws.ErrorCodeValidation, "task_id is required", nil)
 	}
-	sessions, err := h.service.ListTaskSessions(ctx, taskID)
+	sessions, err := h.service.ListTaskSessionSummaryObservations(ctx, taskID)
 	if err != nil {
 		h.logger.Error("failed to list task sessions", zap.Error(err))
 		return ws.NewError(msg.ID, msg.Action, ws.ErrorCodeInternalError, "Failed to list task sessions", nil)
@@ -197,7 +197,7 @@ func (h *TaskHandlers) wsCreateTask(ctx context.Context, msg *ws.Message) (*ws.M
 		Autopilot:                   req.Autopilot,
 		Priority:                    req.Priority,
 		State:                       req.State,
-		Repositories:                convertToServiceRepos(repos),
+		Repositories:                convertTaskRepositories(req.Repositories != nil, repos),
 		Position:                    req.Position,
 		Metadata:                    req.Metadata,
 		MCPServerIDs:                req.MCPServerIDs,
@@ -368,7 +368,7 @@ func (h *TaskHandlers) wsUpdateTask(ctx context.Context, msg *ws.Message) (*ws.M
 		Description:    description,
 		Priority:       req.Priority,
 		State:          req.State,
-		Repositories:   convertUpdateRepositories(req.Repositories != nil, repos),
+		Repositories:   convertTaskRepositories(req.Repositories != nil, repos),
 		Position:       req.Position,
 		Metadata:       req.Metadata,
 		ParentID:       req.ParentID,

@@ -7,12 +7,14 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/kandev/kandev/internal/agent/mcpconfig"
+	"github.com/kandev/kandev/internal/db/dialect"
 )
 
 // ReadMCPResolutionInputs freezes catalog definitions and all selecting scopes
 // in one read transaction. No secret values or provider calls occur here.
 func (r *sqliteRepository) ReadMCPResolutionInputs(ctx context.Context, rc mcpconfig.ResolutionContext) (*mcpconfig.ResolutionInputs, error) {
-	tx, err := r.ro.BeginTxx(ctx, &sql.TxOptions{ReadOnly: true})
+
+	tx, err := r.ro.BeginTxx(ctx, mcpResolutionReadOptions(r.ro.DriverName()))
 	if err != nil {
 		return nil, err
 	}
@@ -73,4 +75,12 @@ func readMCPSelectionIDsTx(ctx context.Context, tx *sqlx.Tx, origin mcpconfig.Se
 	ids := make([]string, 0)
 	err = tx.SelectContext(ctx, &ids, tx.Rebind(query), args...)
 	return ids, err
+}
+
+func mcpResolutionReadOptions(driver string) *sql.TxOptions {
+	options := &sql.TxOptions{ReadOnly: true}
+	if dialect.IsPostgres(driver) {
+		options.Isolation = sql.LevelRepeatableRead
+	}
+	return options
 }

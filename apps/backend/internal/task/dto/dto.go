@@ -1,7 +1,10 @@
 package dto
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"strconv"
 	"time"
 
 	"github.com/kandev/kandev/internal/authz"
@@ -142,20 +145,22 @@ type ShellOutputSnapshotResponse struct {
 }
 
 type ExecutorDTO struct {
-	ID        string                   `json:"id"`
-	Name      string                   `json:"name"`
-	Type      models.ExecutorType      `json:"type"`
-	Status    models.ExecutorStatus    `json:"status"`
-	IsSystem  bool                     `json:"is_system"`
-	Resumable bool                     `json:"resumable"`
-	Config    map[string]string        `json:"config,omitempty"`
-	Profiles  []ExecutorProfileDTO     `json:"profiles,omitempty"`
-	Provider  *models.ExecutorProvider `json:"provider,omitempty"`
-	CreatedAt time.Time                `json:"created_at"`
-	UpdatedAt time.Time                `json:"updated_at"`
+	OwnerUserID string                   `json:"owner_user_id"`
+	ID          string                   `json:"id"`
+	Name        string                   `json:"name"`
+	Type        models.ExecutorType      `json:"type"`
+	Status      models.ExecutorStatus    `json:"status"`
+	IsSystem    bool                     `json:"is_system"`
+	Resumable   bool                     `json:"resumable"`
+	Config      map[string]string        `json:"config,omitempty"`
+	Profiles    []ExecutorProfileDTO     `json:"profiles,omitempty"`
+	Provider    *models.ExecutorProvider `json:"provider,omitempty"`
+	CreatedAt   time.Time                `json:"created_at"`
+	UpdatedAt   time.Time                `json:"updated_at"`
 }
 
 type ExecutorProfileDTO struct {
+	OwnerUserID   string                   `json:"owner_user_id"`
 	ID            string                   `json:"id"`
 	ExecutorID    string                   `json:"executor_id"`
 	ExecutorType  string                   `json:"executor_type,omitempty"`
@@ -358,6 +363,47 @@ type TaskWorkspaceFolderDTO struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+// WorkspaceRecoveryDTO contains only the path-free public progress projection.
+// Generation and revision remain decimal strings to preserve 64-bit identity
+// across JavaScript clients.
+type WorkspaceRecoveryDTO struct {
+	TaskID              string     `json:"task_id"`
+	EnvironmentID       string     `json:"environment_id"`
+	SessionID           string     `json:"session_id"`
+	OperationID         string     `json:"operation_id"`
+	AttemptID           string     `json:"attempt_id"`
+	ErrorStamp          string     `json:"error_stamp,omitempty"`
+	OwnershipGeneration string     `json:"ownership_generation"`
+	Revision            string     `json:"revision"`
+	Kind                string     `json:"kind"`
+	State               string     `json:"state"`
+	Phase               string     `json:"phase"`
+	RepositoryID        string     `json:"repository_id,omitempty"`
+	RepositoryPosition  int        `json:"repository_position"`
+	RepositoryTotal     int        `json:"repository_total"`
+	CompletedSlots      int        `json:"completed_slots"`
+	WorkspaceComplete   bool       `json:"workspace_complete"`
+	AgentReady          bool       `json:"agent_ready"`
+	RunnerLive          bool       `json:"runner_live"`
+	StartedAt           time.Time  `json:"started_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	EndedAt             *time.Time `json:"ended_at,omitempty"`
+	ReasonCode          string     `json:"reason_code,omitempty"`
+}
+
+// SessionRecoveryBlockDTO contains the path-free identity and cause needed to
+// present an open operator recovery block.
+type SessionRecoveryBlockDTO struct {
+	ID                   string    `json:"id"`
+	IncarnationID        string    `json:"incarnation_id"`
+	ExpectedGeneration   int64     `json:"expected_generation"`
+	Reason               string    `json:"reason"`
+	ConsumerReference    string    `json:"consumer_reference,omitempty"`
+	DeliverySubmissionID string    `json:"delivery_submission_id,omitempty"`
+	DeliveryStreamID     string    `json:"delivery_stream_id,omitempty"`
+	UpdatedAt            time.Time `json:"updated_at"`
+}
+
 type TaskSessionDTO struct {
 	ID                 string `json:"id"`
 	TaskID             string `json:"task_id"`
@@ -400,10 +446,14 @@ type TaskSessionDTO struct {
 	CompletedAt          *time.Time               `json:"completed_at,omitempty"`
 	UpdatedAt            time.Time                `json:"updated_at"`
 	// Workflow fields
-	IsPrimary         bool                `json:"is_primary"`
-	IsPassthrough     bool                `json:"is_passthrough"`
-	ReviewStatus      models.ReviewStatus `json:"review_status,omitempty"`
-	TaskEnvironmentID string              `json:"task_environment_id,omitempty"`
+	IsPrimary         bool                  `json:"is_primary"`
+	IsPassthrough     bool                  `json:"is_passthrough"`
+	ReviewStatus      models.ReviewStatus   `json:"review_status,omitempty"`
+	TaskEnvironmentID string                `json:"task_environment_id,omitempty"`
+	WorkspaceRecovery *WorkspaceRecoveryDTO `json:"workspace_recovery"`
+	// SessionRecoveryBlocks is always serialized so a resolved block clears a
+	// prior client projection.
+	SessionRecoveryBlocks []SessionRecoveryBlockDTO `json:"session_recovery_blocks"`
 	// ForegroundActivity mirrors the in-memory fine-grained busy substate so a
 	// fresh page-load / second tab sees live background work without waiting for
 	// a WS flip (ADR-0049). Generating is emitted only for RUNNING sessions;
@@ -452,6 +502,101 @@ type TaskSessionDTO struct {
 	// ParkedEpoch identifies the backend process that produced Revision (see
 	// "Revision epoch"); a lower-or-equal epoch update is stale.
 	ParkedEpoch uint64 `json:"parked_epoch"`
+}
+
+// EnrichWorkspaceRecovery attaches the exact environment operation projection
+// to a rich session response. A nil operation is serialized as null so it can
+// clear a prior versioned client projection.
+func EnrichWorkspaceRecovery(
+	session *TaskSessionDTO,
+	operation *models.TaskEnvironmentRecoveryOperation,
+	runnerLive bool,
+) {
+	if session == nil {
+		return
+	}
+	session.WorkspaceRecovery = WorkspaceRecoveryFromOperation(operation, runnerLive)
+}
+
+// SessionRecoveryBlockProjectionReader provides the current generation and its
+// open recovery causes to the session serialization boundary.
+type SessionRecoveryBlockProjectionReader interface {
+	GetCurrentHarnessSessionGeneration(context.Context, string, string) (*models.HarnessSessionGeneration, error)
+	ListOpenSessionRecoveryBlocks(context.Context, string, string, int64) ([]*models.SessionRecoveryBlock, error)
+}
+
+// EnrichSessionRecoveryBlocks projects blocks only for the current persisted
+// native-session generation. A missing generation cannot inherit an old one.
+func EnrichSessionRecoveryBlocks(
+	ctx context.Context,
+	result *TaskSessionDTO,
+	session *models.TaskSession,
+	reader SessionRecoveryBlockProjectionReader,
+) error {
+	if result == nil {
+		return nil
+	}
+	result.SessionRecoveryBlocks = []SessionRecoveryBlockDTO{}
+	if session == nil || reader == nil {
+		return nil
+	}
+	incarnationID := session.QueueIncarnationID
+	if incarnationID == "" {
+		incarnationID = session.ID
+	}
+	generation, err := reader.GetCurrentHarnessSessionGeneration(ctx, session.ID, incarnationID)
+	if errors.Is(err, models.ErrTaskSessionNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if generation == nil || generation.Generation < 1 {
+		return nil
+	}
+	blocks, err := reader.ListOpenSessionRecoveryBlocks(ctx, session.ID, incarnationID, generation.Generation)
+	if err != nil {
+		return err
+	}
+	for _, block := range blocks {
+		if block == nil || block.State != models.RecoveryBlockOpen {
+			continue
+		}
+		result.SessionRecoveryBlocks = append(result.SessionRecoveryBlocks, SessionRecoveryBlockDTO{
+			ID: block.ID, IncarnationID: block.IncarnationID,
+			ExpectedGeneration: block.ExpectedGeneration, Reason: block.Reason,
+			ConsumerReference:    block.ConsumerReference,
+			DeliverySubmissionID: block.DeliverySubmissionID,
+			DeliveryStreamID:     block.DeliveryStreamID, UpdatedAt: block.UpdatedAt,
+		})
+	}
+	return nil
+}
+
+// WorkspaceRecoveryFromOperation builds the public path-free progress shape.
+// Generation and revision are decimal strings so JavaScript preserves their
+// full 64-bit identity.
+func WorkspaceRecoveryFromOperation(
+	operation *models.TaskEnvironmentRecoveryOperation,
+	runnerLive bool,
+) *WorkspaceRecoveryDTO {
+	if operation == nil {
+		return nil
+	}
+	return &WorkspaceRecoveryDTO{
+		TaskID: operation.OwnerTaskID, EnvironmentID: operation.TaskEnvironmentID,
+		SessionID: operation.SessionID, OperationID: operation.OperationID,
+		AttemptID: operation.AttemptID, ErrorStamp: operation.ErrorStamp,
+		OwnershipGeneration: strconv.FormatInt(operation.OwnershipGeneration, 10),
+		Revision:            strconv.FormatInt(operation.Revision, 10),
+		Kind:                operation.Kind, State: operation.State, Phase: operation.Phase,
+		RepositoryID:       operation.RepositoryID,
+		RepositoryPosition: operation.RepositoryPosition, RepositoryTotal: operation.RepositoryTotal,
+		CompletedSlots: operation.CompletedSlots, WorkspaceComplete: operation.WorkspaceComplete,
+		AgentReady: operation.AgentReady, RunnerLive: runnerLive,
+		StartedAt: operation.StartedAt, UpdatedAt: operation.UpdatedAt,
+		EndedAt: operation.EndedAt, ReasonCode: operation.ReasonCode,
+	}
 }
 
 // TaskSessionSummaryDTO is a lightweight version of TaskSessionDTO without snapshot fields.
@@ -560,10 +705,17 @@ type WorkflowSnapshotDTO struct {
 }
 
 type ListMessagesResponse struct {
-	Messages []*v1.Message `json:"messages"`
-	Total    int           `json:"total"`
-	HasMore  bool          `json:"has_more"`
-	Cursor   string        `json:"cursor"`
+	Messages     []*v1.Message           `json:"messages"`
+	Total        int                     `json:"total"`
+	HasMore      bool                    `json:"has_more"`
+	Cursor       string                  `json:"cursor"`
+	Turns        []TurnDTO               `json:"turns,omitempty"`
+	TurnCoverage *MessageTurnCoverageDTO `json:"turn_coverage,omitempty"`
+}
+
+type MessageTurnCoverageDTO struct {
+	MessageIDs   []string `json:"message_ids"`
+	ActiveTurnID *string  `json:"active_turn_id"`
 }
 
 // MessageSearchHit is a lightweight match returned by a session message search.
@@ -851,22 +1003,24 @@ func FromRepositoryScript(script *models.RepositoryScript) RepositoryScriptDTO {
 
 func FromExecutor(executor *models.Executor) ExecutorDTO {
 	return ExecutorDTO{
-		ID:        executor.ID,
-		Name:      executor.Name,
-		Type:      executor.Type,
-		Status:    executor.Status,
-		IsSystem:  executor.IsSystem,
-		Resumable: executor.Resumable,
-		Config:    executor.Config,
-		Provider:  executor.Provider,
-		CreatedAt: executor.CreatedAt,
-		UpdatedAt: executor.UpdatedAt,
+		OwnerUserID: executor.OwnerUserID,
+		ID:          executor.ID,
+		Name:        executor.Name,
+		Type:        executor.Type,
+		Status:      executor.Status,
+		IsSystem:    executor.IsSystem,
+		Resumable:   executor.Resumable,
+		Config:      executor.Config,
+		Provider:    executor.Provider,
+		CreatedAt:   executor.CreatedAt,
+		UpdatedAt:   executor.UpdatedAt,
 	}
 }
 
 func FromExecutorProfile(profile *models.ExecutorProfile) ExecutorProfileDTO {
 	config, secretFields := models.RedactExecutorProfileConfig(profile.Config)
 	return ExecutorProfileDTO{
+		OwnerUserID:   profile.OwnerUserID,
 		ID:            profile.ID,
 		ExecutorID:    profile.ExecutorID,
 		Name:          profile.Name,
@@ -1096,6 +1250,12 @@ func FromTaskSessionSummary(session *models.TaskSession) TaskSessionSummaryDTO {
 	return result
 }
 
+// FromTaskSessionSummaryObservation converts a bounded repository projection
+// to the existing compact session DTO without widening it with rich fields.
+func FromTaskSessionSummaryObservation(observation *models.TaskSessionSummaryObservation) TaskSessionSummaryDTO {
+	return FromTaskSessionSummary(observation.ToTaskSession())
+}
+
 func FromTaskSession(session *models.TaskSession) TaskSessionDTO {
 	result := TaskSessionDTO{
 		ID:                   session.ID,
@@ -1127,15 +1287,16 @@ func FromTaskSession(session *models.TaskSession) TaskSessionDTO {
 		CompletedAt:          session.CompletedAt,
 		UpdatedAt:            session.UpdatedAt,
 		// Workflow fields
-		IsPrimary:         session.IsPrimary,
-		IsPassthrough:     session.IsPassthrough,
-		ReviewStatus:      session.ReviewStatus,
-		TaskEnvironmentID: session.TaskEnvironmentID,
-		LastReadMessageID: session.LastReadMessageID,
-		CostSubcents:      session.CostSubcents,
-		TokensIn:          session.TokensIn,
-		TokensCachedIn:    session.TokensCachedIn,
-		TokensOut:         session.TokensOut,
+		IsPrimary:             session.IsPrimary,
+		IsPassthrough:         session.IsPassthrough,
+		ReviewStatus:          session.ReviewStatus,
+		TaskEnvironmentID:     session.TaskEnvironmentID,
+		SessionRecoveryBlocks: []SessionRecoveryBlockDTO{},
+		LastReadMessageID:     session.LastReadMessageID,
+		CostSubcents:          session.CostSubcents,
+		TokensIn:              session.TokensIn,
+		TokensCachedIn:        session.TokensCachedIn,
+		TokensOut:             session.TokensOut,
 	}
 	if worktrees := session.WorktreesAPI(); len(worktrees) > 0 {
 		result.WorktreeID = session.Worktrees[0].WorktreeID
@@ -1274,6 +1435,8 @@ type StepEventsDTO struct {
 	OnHeartbeat         []StepActionDTO `json:"on_heartbeat,omitempty"`
 	OnBudgetAlert       []StepActionDTO `json:"on_budget_alert,omitempty"`
 	OnAgentError        []StepActionDTO `json:"on_agent_error,omitempty"`
+	OnPRMerged          []StepActionDTO `json:"on_pr_merged,omitempty"`
+	OnPRClosed          []StepActionDTO `json:"on_pr_closed,omitempty"`
 }
 
 // StepActionDTO represents a step action for API responses

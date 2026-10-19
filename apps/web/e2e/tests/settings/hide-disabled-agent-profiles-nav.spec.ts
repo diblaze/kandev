@@ -2,7 +2,7 @@ import { test, expect } from "../../fixtures/test-base";
 import { getMockAgent } from "../../helpers/agent-fixtures";
 
 // Covers docs/specs/agents/requirements/hide-disabled-profiles-nav.md's nav-visibility
-// scenarios: with "Hide disabled agent profiles from left panel navigation"
+// scenarios: with "Hide disabled profiles from navigation"
 // off (the default), a disabled profile still shows in the Settings left
 // panel's Agents tree; turning the setting on hides it; re-enabling the
 // profile reveals it again — all without a reload.
@@ -26,7 +26,7 @@ test.describe("hide disabled agent profiles from left panel navigation", () => {
     const profileLink = new RegExp(escapeRegExp(profile.name));
 
     try {
-      // Disable the seeded profile via the API. The profile editor toggle
+      // Disable this test's unreferenced profile via the API. The profile editor toggle
       // itself is covered by agent-profile-disable.spec.ts.
       await apiClient.updateAgentProfile(profile.id, { enabled: false });
 
@@ -48,7 +48,8 @@ test.describe("hide disabled agent profiles from left panel navigation", () => {
       const disabledLink = settingsTree.getByRole("link", { name: profileLink });
       await expect(disabledLink).toBeVisible({ timeout: 15_000 });
 
-      // The setting is off by default.
+      // The setting lives inside the Agent options surface and is off by default.
+      await testPage.getByRole("button", { name: "Options", exact: true }).click();
       const hideDisabledSwitch = testPage.locator("#hide-disabled-agent-profiles-in-nav");
       await expect(hideDisabledSwitch).toHaveAttribute("aria-checked", "false");
 
@@ -56,6 +57,7 @@ test.describe("hide disabled agent profiles from left panel navigation", () => {
       // while the Agents row stays.
       await hideDisabledSwitch.click();
       await expect(hideDisabledSwitch).toHaveAttribute("aria-checked", "true");
+      await testPage.getByRole("button", { name: "Done", exact: true }).click();
       await expect(disabledLink).not.toBeVisible();
       await expect(settingsTree.getByRole("link", { name: /^Agents/ })).toBeVisible();
 

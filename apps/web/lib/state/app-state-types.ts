@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- AppState keeps the explicit cross-slice store contract in one type. */
+import type { ActiveTurnWindowObservation } from "./slices/session/types";
 import type { HydrationOptions } from "./hydration/hydrator";
 import type {
   Repository,
@@ -11,6 +12,7 @@ import type {
   TaskPendingActionRevision,
   Turn,
   TaskSession,
+  WorkspaceRecoveryProjection,
   TaskPlan,
   TaskPlanCommentSnapshot,
   TaskPlanRevision,
@@ -23,11 +25,8 @@ import type { SSHReachabilityRecord } from "@/lib/types/http-ssh";
 import type { UISliceActions as UIA } from "./slices/ui/types";
 import type * as SettingsSliceTypes from "./slices/settings/types";
 import type * as UISliceTypes from "./slices/ui/types";
-import type {
-  AgentUpdateJob,
-  InstallJob,
-  NotificationProvidersUpdate,
-} from "./slices/settings/types";
+import type { AgentUpdateJob } from "@/lib/api";
+import type { InstallJob, NotificationProvidersUpdate } from "./slices/settings/types";
 import {
   defaultWorkspaceState,
   defaultSettingsState,
@@ -43,6 +42,7 @@ import {
   defaultFeaturesState,
   defaultAuthState,
   defaultAutomationsState,
+  defaultCoordinatorsState,
   defaultSystemState,
   defaultPluginsState,
   defaultReviewState,
@@ -132,6 +132,7 @@ export type AppState = KanbanSlice & {
 
   // Session slice
   messages: (typeof defaultSessionState)["messages"];
+  messagePrompts: (typeof defaultSessionState)["messagePrompts"];
   turns: (typeof defaultSessionState)["turns"];
   taskSessions: (typeof defaultSessionState)["taskSessions"];
   taskSessionsByTask: (typeof defaultSessionState)["taskSessionsByTask"];
@@ -150,6 +151,7 @@ export type AppState = KanbanSlice & {
   shell: (typeof defaultSessionRuntimeState)["shell"];
   processes: (typeof defaultSessionRuntimeState)["processes"];
   gitStatus: (typeof defaultSessionRuntimeState)["gitStatus"];
+  gitStatusDisplay: (typeof defaultSessionRuntimeState)["gitStatusDisplay"];
   environmentIdBySessionId: (typeof defaultSessionRuntimeState)["environmentIdBySessionId"];
   sessionCommits: (typeof defaultSessionRuntimeState)["sessionCommits"];
   gitCheckoutGeneration: (typeof defaultSessionRuntimeState)["gitCheckoutGeneration"];
@@ -218,6 +220,9 @@ export type AppState = KanbanSlice & {
   automations: (typeof defaultAutomationsState)["automations"];
   automationRuns: (typeof defaultAutomationsState)["automationRuns"];
 
+  // Coordinators slice
+  coordinators: (typeof defaultCoordinatorsState)["coordinators"];
+
   // System slice (actions merged via SystemSliceActions intersection on AppState)
   system: (typeof defaultSystemState)["system"];
   agentRuntime: AgentRuntimeAvailability | null;
@@ -261,6 +266,7 @@ export type AppState = KanbanSlice & {
   updateAvailableNotification: (typeof defaultUIState)["updateAvailableNotification"];
   updateAvailableNotificationQueue: (typeof defaultUIState)["updateAvailableNotificationQueue"];
   bottomTerminal: (typeof defaultUIState)["bottomTerminal"];
+  directoryBrowserShowHidden: (typeof defaultUIState)["directoryBrowserShowHidden"];
   sidebarViews: (typeof defaultUIState)["sidebarViews"];
   sidebarViewsByWorkspace: (typeof defaultUIState)["sidebarViewsByWorkspace"];
   threadViews: (typeof defaultUIState)["threadViews"];
@@ -287,8 +293,12 @@ export type AppState = KanbanSlice & {
     tools?: AvailableAgentsState["tools"],
   ) => void;
   setAvailableAgentsLoading: (loading: boolean) => void;
+  applyAgentListSnapshot: SettingsSliceTypes.SettingsSliceActions["applyAgentListSnapshot"];
+  acceptAgentProfileOrder: SettingsSliceTypes.SettingsSliceActions["acceptAgentProfileOrder"];
+  setAgentProfileOrder: SettingsSliceTypes.SettingsSliceActions["setAgentProfileOrder"];
+  setAgentProfileOrderIntent: SettingsSliceTypes.SettingsSliceActions["setAgentProfileOrderIntent"];
   setAgentProfiles: (profiles: AgentProfilesState["items"]) => void;
-  setInstallJobs: (jobs: InstallJob[]) => void;
+  setInstallJobs: SettingsSliceTypes.SettingsSliceActions["setInstallJobs"];
   upsertInstallJob: (job: InstallJob) => void;
   appendInstallOutput: (agentName: string, chunk: string) => void;
   clearInstallJob: (agentName: string) => void;
@@ -393,6 +403,7 @@ export type AppState = KanbanSlice & {
   setPlanMode: (sessionId: string, enabled: boolean) => void;
   setCancelTurnPending: UIA["setCancelTurnPending"];
   setTranscriptAutoScrollEnabled: UIA["setTranscriptAutoScrollEnabled"];
+  setDirectoryBrowserShowHidden: UIA["setDirectoryBrowserShowHidden"];
   setTranscriptScrollTop: UIA["setTranscriptScrollTop"];
   setReviewPRSelection: UIA["setReviewPRSelection"];
   setActiveDocument: (sessionId: string, doc: UISliceTypes.ActiveDocument | null) => void;
@@ -457,6 +468,14 @@ export type AppState = KanbanSlice & {
     hydrationEpoch: number,
     options?: { replace?: boolean },
   ) => void;
+  /** Merges turn rows covered by one retained message window. */
+  mergeTurnsWindow: (
+    sessionId: string,
+    turns: Turn[],
+    coverage: { message_ids: string[]; active_turn_id: string | null },
+    hydrationEpoch: number,
+    observationAtRequestStart?: ActiveTurnWindowObservation,
+  ) => void;
   completeTurn: (
     sessionId: string,
     turnId: string,
@@ -488,6 +507,23 @@ export type AppState = KanbanSlice & {
     },
   ) => void;
   setMessagesLoading: (sessionId: string, loading: boolean) => void;
+  replacePromptMessages: (
+    sessionId: string,
+    messages: Message[],
+    meta?: { hasMore?: boolean; oldestCursor?: string | null },
+  ) => void;
+  prependPromptMessages: (
+    sessionId: string,
+    messages: Message[],
+    meta?: { hasMore?: boolean; oldestCursor?: string | null },
+  ) => void;
+  installAuthoritativePromptMessages: (
+    sessionId: string,
+    messages: Message[],
+    meta: { hasMore: boolean; oldestCursor: string | null },
+  ) => void;
+  setPromptMessagesLoading: (sessionId: string, loading: boolean) => void;
+  setPromptMessagesLoadingMore: (sessionId: string, loading: boolean) => void;
   setTaskSession: (
     session: TaskSession,
     hydrationEpochAtRequestStart?: TaskSessionHydrationEpoch,
@@ -498,6 +534,10 @@ export type AppState = KanbanSlice & {
     pendingAction: TaskPendingAction | null,
     revision?: TaskPendingActionRevision,
     taskId?: string,
+  ) => void;
+  setWorkspaceRecoveryProjection: (
+    sessionIds: string[],
+    projection: WorkspaceRecoveryProjection,
   ) => void;
   removeTaskSession: (taskId: string, sessionId: string) => void;
   setTaskSessionsForTask: (
@@ -598,12 +638,21 @@ export type AppState = KanbanSlice & {
       currentModelId: string;
       models: SessionModelEntry[];
       configOptions: ConfigOptionEntry[];
+      configOptionsSettled?: boolean;
+      /** Provider-reported config values from the last settled snapshot. */
+      confirmedConfigOptions?: Record<string, string>;
+      confirmedConfigOptionsExecutionId?: string;
+      pendingConfirmedConfigOptions?: {
+        executionId: string;
+        values: Record<string, string>;
+      };
       configBaseline?: Record<string, string>;
       settingsPolicy?: "provider_restored";
       /** Set when the session started on the profile's fallback model. */
       fallbackModel?: string;
     },
   ) => void;
+  invalidateConfirmedConfigOptions: (sessionId: string, executionId?: string) => void;
   // Prompt usage actions
   setPromptUsage: (sessionId: string, usage: PromptUsageEntry) => void;
   bumpSessionUsageInvalidation: (sessionId: string) => void;
@@ -706,11 +755,14 @@ export type AppState = KanbanSlice & {
 
 // Most callers hydrate a fully-shaped slice per top-level key (see
 // mergeInitialState / hydrateState), but `system` is a grab-bag of many
-// independently-fetched fields (info, diskUsage, updates, ...). Callers that
+// independently-fetched fields (info, updates, ...). Callers that
 // only have one piece of it (e.g. update notification settings from the
 // settings boot payload) must be able to pass a partial `system` object
 // without fabricating placeholder values for the rest.
-export type HydrationState = Omit<Partial<AppState>, "system" | "quickChat"> & {
+export type HydrationState = Omit<
+  Partial<AppState>,
+  "system" | "quickChat" | "gitStatusDisplay"
+> & {
   quickChat?: Partial<AppState["quickChat"]>;
   system?: Partial<AppState["system"]>;
   // The Needs-you Inbox boot-hydration producer's raw wire shape, carried

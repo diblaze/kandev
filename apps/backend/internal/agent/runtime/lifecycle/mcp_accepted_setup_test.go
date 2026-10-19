@@ -2,9 +2,12 @@ package lifecycle
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/kandev/kandev/internal/agent/agents"
+	"github.com/kandev/kandev/internal/agentctl/types/streams"
 	"github.com/kandev/kandev/pkg/agent"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,9 +65,9 @@ func TestMCPInitialPromptRecordsAcceptedSetup(t *testing.T) {
 		dispatched <- struct{}{}
 		execution.promptDoneCh <- PromptCompletionSignal{StopReason: "test-complete"}
 	}, nil)
-	execution.rememberMCPSetup(&mcpconfig.EffectiveMCPResolution{DesiredRevision: 0, Setup: &mcpconfig.MCPSetupSnapshot{Version: 1, Servers: []mcpconfig.MCPSetupServer{}}})
+	operation := prepareMCPResolution(&mcpconfig.EffectiveMCPResolution{DesiredRevision: 0, Setup: &mcpconfig.MCPSetupSnapshot{Version: 1, Servers: []mcpconfig.MCPSetupServer{}}})
 	agentConfig := &testAgent{id: "test-agent", enabled: true, runtimeConfig: &agents.RuntimeConfig{Cmd: agents.NewCommand("test-agent"), Protocol: agent.ProtocolACP, SessionConfig: agents.SessionConfig{}}}
-	if err := mgr.initializeACPSession(context.Background(), execution, agentConfig, "initial work", nil, nil); err != nil {
+	if err := mgr.initializeACPSession(operation.context(context.Background()), execution, agentConfig, "initial work", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	state, err := repo.GetMCPSelectionState(context.Background(), execution.SessionID)
@@ -97,5 +100,31 @@ func TestMCPStaleStateUpdatesDoNotUndoAcceptedSetup(t *testing.T) {
 		if got.ApplyState != mcpconfig.SessionMCPApplyStateApplied || got.AcceptedSetup == nil {
 			t.Fatalf("stale update undid acceptance: %#v", got)
 		}
+	}
+}
+
+func TestMCPPreparedOperationRetainsItsOwnResolution(t *testing.T) {
+	result := &mcpconfig.EffectiveMCPResolution{DesiredRevision: 2,
+		Setup:     &mcpconfig.MCPSetupSnapshot{Version: 1, Servers: []mcpconfig.MCPSetupServer{{DefinitionID: "before", Revision: 2, RuntimeName: "docs", DisplayName: "Docs", Enabled: true}}},
+		Servers:   []mcpconfig.ResolvedServer{{Name: "docs", Type: mcpconfig.ServerTypeStdio, Command: "node", Args: []string{"before"}, Env: map[string]string{"TOKEN": "private-value"}, DefinitionID: "before", DefinitionRevision: 2}},
+		Decisions: []mcpconfig.MCPResolutionDecision{{DefinitionID: "excluded", RuntimeName: "protected", ReasonCode: "secret_resolution_failed", Origins: []mcpconfig.SelectionOrigin{{Scope: mcpconfig.SelectionScopeRepository, OwnerID: "repo"}}}},
+	}
+	operation := prepareMCPResolution(result)
+	result.DesiredRevision = 3
+	result.Setup.Servers[0].DefinitionID = "after"
+	result.Servers[0].Args[0] = "after"
+	result.Servers[0].Env["TOKEN"] = "after"
+	result.Decisions[0].Origins[0].OwnerID = "after"
+	setup, revision, captured := capturedMCPSetup(operation.context(context.Background()))
+	if !captured || revision != 2 || setup.Servers[0].DefinitionID != "before" || operation.servers[0].Args[0] != "before" || operation.servers[0].Env["TOKEN"] != "private-value" {
+		t.Fatal("prepared operation changed with resolver state")
+	}
+	metadata := streams.MCPResolutionFromContext(operation.context(context.Background()))
+	if metadata[1].Origins[0].OwnerID != "repo" {
+		t.Fatal("origin was not frozen")
+	}
+	encoded, _ := json.Marshal(metadata)
+	if strings.Contains(string(encoded), "private-value") {
+		t.Fatal("secret entered safe context")
 	}
 }

@@ -198,14 +198,17 @@ function ConfiguredMCPServers({
 }
 
 function MCPMarketplaceView({
+  workspaceId,
   data,
   onSaved,
 }: {
+  workspaceId: string;
   data: ReturnType<typeof useMCPWorkspaceSettings>;
   onSaved: () => void;
 }) {
   return (
     <MCPMarketplace
+      workspaceId={workspaceId}
       entries={data.marketplace?.entries ?? []}
       stale={data.marketplace?.stale ?? false}
       degraded={data.marketplace?.degraded ?? false}
@@ -395,6 +398,7 @@ export function MCPSettings({ workspaceId }: MCPSettingsProps) {
         />
       ) : (
         <MCPMarketplaceView
+          workspaceId={workspaceId}
           data={data}
           onSaved={() => toast({ title: t("settings:mcpSaved"), variant: "success" })}
         />

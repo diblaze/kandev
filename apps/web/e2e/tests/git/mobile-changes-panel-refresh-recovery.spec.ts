@@ -27,6 +27,7 @@ test.describe("Mobile Changes panel Git refresh recovery", () => {
     git.createFile(filePath, "mobile refresh recovery content\n");
 
     const bridge = await routeGitStatusRefresh(testPage);
+    bridge.holdFreshGitRefreshRequests();
     const gate = createGitEnrichmentGate(backend.tmpDir);
     gate.arm();
 
@@ -43,6 +44,7 @@ test.describe("Mobile Changes panel Git refresh recovery", () => {
           repository_ids: [seedData.repositoryId],
         },
       );
+      if (!task.session_id) throw new Error("The Git refresh task should have a session identity");
       const { sessions } = await apiClient.listTaskSessions(task.id);
       const environmentId = sessions[0]?.task_environment_id;
       if (!environmentId) throw new Error("The task session should have an environment identity");
@@ -54,6 +56,9 @@ test.describe("Mobile Changes panel Git refresh recovery", () => {
       await testPage.getByRole("button", { name: "Changes" }).tap();
       const panel = testPage.getByTestId("mobile-changes-panel");
       await expect(panel).toBeVisible();
+      // Admit the foreground read after the controlled enrichment command has started.
+      await bridge.waitForHeldFreshGitRefreshRequests(1, task.session_id);
+      bridge.releaseFreshGitRefreshRequests();
       const initialResponse = await bridge.waitForResponse("fresh", priorFreshResponses);
       expect(initialResponse.success).toBe(true);
       expect(bridge.responseIncludesFile("fresh", filePath)).toBe(true);
@@ -91,7 +96,7 @@ test.describe("Mobile Changes panel Git refresh recovery", () => {
       const diffSheet = testPage.getByTestId("mobile-diff-sheet");
       await expect(diffSheet).toBeVisible();
       await expect(diffSheet.getByTestId("mobile-diff-sheet-close")).toBeVisible();
-      await expect(diffSheet.getByText("Diff is loading")).toBeVisible();
+      await expect(diffSheet.getByText("Diff is unavailable", { exact: true })).toBeVisible();
       const viewportHeight = testPage.viewportSize()?.height ?? 0;
       expect(viewportHeight).toBeGreaterThan(0);
       await expect
@@ -122,7 +127,7 @@ test.describe("Mobile Changes panel Git refresh recovery", () => {
       await expect(refreshStatus).toContainText("Loading changes...");
 
       await expect(fileRow).toBeVisible();
-      await expect(diffSheet.getByText("Diff is loading")).toBeVisible();
+      await expect(diffSheet.getByText("Diff is loading", { exact: true })).toBeVisible();
       await prCapture.screenshot("git-refresh-recovery-mobile-pending", {
         caption: "The selected pending diff stays full-height while automatic Git recovery runs",
       });
@@ -137,6 +142,7 @@ test.describe("Mobile Changes panel Git refresh recovery", () => {
       await expect(refreshStatus).toHaveCount(0);
     } finally {
       gate.dispose();
+      bridge.releaseFreshGitRefreshRequests();
     }
   });
 

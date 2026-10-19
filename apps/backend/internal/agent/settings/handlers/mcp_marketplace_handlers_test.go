@@ -65,7 +65,7 @@ func TestMCPMarketplaceRoutesRequireReviewAndInstallSelectedChoice(t *testing.T)
 	}
 	cache := &handlerRegistryCache{entries: []registry.Entry{{
 		Name: "com.example/tools", Description: "Publisher tools", Version: "1.2.3", Revision: 1, Status: registry.StatusActive,
-		Packages: []registry.Package{{RegistryType: "npm", Identifier: "@example/tools", Version: "1.2.3", Transport: registry.Transport{Type: "stdio"}}},
+		Packages: []registry.Package{{RegistryType: "npm", Identifier: "@example/tools", Version: "1.2.3", Transport: registry.Transport{Type: "stdio"}, EnvironmentVariables: []registry.KeyValueInput{{Name: "TOKEN", IsSecret: true, IsRequired: true}, {Name: "REGION", IsRequired: true}}}},
 	}}}
 	syncer := registry.NewSyncService(nil, cache)
 	repo := &catalogHandlerRepository{definitions: make(map[string]*mcpconfig.MCPServerDefinition)}
@@ -86,7 +86,7 @@ func TestMCPMarketplaceRoutesRequireReviewAndInstallSelectedChoice(t *testing.T)
 		t.Fatalf("search result = %#v", result)
 	}
 
-	install := performCatalogRequest(router, http.MethodPost, "/api/v1/workspaces/workspace-1/mcp-marketplace/install", `{"identity":"com.example/tools@1.2.3","expected_revision":1,"choice_id":"package-0","runtime_name":"tools","secret_bindings":[{"input_name":"TOKEN","secret_id":"secret-1"}]}`, "test-interlock")
+	install := performCatalogRequest(router, http.MethodPost, "/api/v1/workspaces/workspace-1/mcp-marketplace/install", `{"identity":"com.example/tools@1.2.3","expected_revision":1,"choice_id":"package-0","runtime_name":"tools","input_values":{"REGION":"eu west"},"secret_bindings":[{"input_name":"TOKEN","secret_id":"secret-1"}]}`, "test-interlock")
 	if install.Code != http.StatusCreated {
 		t.Fatalf("install status/body = %d/%s", install.Code, install.Body.String())
 	}
@@ -94,7 +94,7 @@ func TestMCPMarketplaceRoutesRequireReviewAndInstallSelectedChoice(t *testing.T)
 		t.Fatalf("definitions = %#v", repo.definitions)
 	}
 	for _, definition := range repo.definitions {
-		if definition.Configuration.PackageVersion != "1.2.3" || definition.Source != mcpconfig.DefinitionSourceRegistry || definition.SecretBindings[0].SecretID != "secret-1" {
+		if definition.Configuration.Env["REGION"] != "eu west" || definition.Configuration.Env["TOKEN"] != "" || definition.Configuration.PackageVersion != "1.2.3" || definition.Source != mcpconfig.DefinitionSourceRegistry || definition.SecretBindings[0].SecretID != "secret-1" {
 			t.Fatalf("installed definition = %#v", definition)
 		}
 	}

@@ -51,8 +51,8 @@ export function useChartPlotVisibility() {
 
     const root = getScrollRoot(plot);
     const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry.isIntersecting) return;
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
         setIsNearViewport(true);
         observer.disconnect();
       },

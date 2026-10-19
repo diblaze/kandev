@@ -91,7 +91,7 @@ test.describe("File tree Download", () => {
     git.createFile(fileName, fileContent);
     git.stageAll();
     git.commit("seed download file");
-    git.exec("git push origin main");
+    git.pushMainWithRetry();
 
     const session = await setupTask({
       testPage,
@@ -133,7 +133,7 @@ test.describe("File tree Download", () => {
     git.createFile("subdir/inside.txt", "child");
     git.stageAll();
     git.commit("seed subdir");
-    git.exec("git push origin main");
+    git.pushMainWithRetry();
 
     const session = await setupTask({
       testPage,

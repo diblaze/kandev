@@ -379,8 +379,6 @@ function ProfileEditor({
     setSaveStatus,
     markProfileSubmitted,
     acceptProfileSaveResponse,
-    settingsAgents,
-    syncAgentsToStore,
     toast,
     onUtilityConflict: setUtilityConflict,
   });

@@ -179,6 +179,20 @@ type taskEnvironmentMaterializationFinalizer interface {
 	FinalizeTaskEnvironmentMaterialization(context.Context, *models.TaskEnvironment, []*models.TaskEnvironmentRepo, string) error
 }
 
+// taskEnvironmentMaterializationReleaser stores failed for the creating
+// environment that a session still owns. A claim that another session took
+// over is left alone. Legacy test stores without it keep the full-row update.
+type taskEnvironmentMaterializationReleaser interface {
+	FailTaskEnvironmentMaterialization(context.Context, string) (bool, error)
+}
+
+// failedTaskEnvironmentReelector makes a session the owner of a failed task
+// environment that never created anything physical. Legacy test stores without
+// it keep refusing failed environments.
+type failedTaskEnvironmentReelector interface {
+	ReelectFailedTaskEnvironmentMaterialization(context.Context, string, string) (bool, error)
+}
+
 // taskEnvironmentTransitionPersister commits an existing environment rebind
 // and its repository inventory as one durable operation. Legacy adapters may
 // omit it and use the compatibility persistence path in executor_execute.go.
@@ -458,6 +472,12 @@ type PromptTurnIDSetter interface {
 	SetPromptTurnID(ctx context.Context, agentExecutionID, turnID string) error
 }
 
+// InitialDeliverySubmissionIDSetter binds a persisted first message to a
+// prepared execution before the harness process can receive its initial prompt.
+type InitialDeliverySubmissionIDSetter interface {
+	SetInitialDeliverySubmissionID(ctx context.Context, agentExecutionID, submissionID string) error
+}
+
 // RemoteRuntimeStatus mirrors runtime status details needed by orchestrator/UI.
 type RemoteRuntimeStatus struct {
 	RuntimeName   agentruntime.Runtime
@@ -503,13 +523,21 @@ type AgentProfileInfo struct {
 
 // LaunchAgentRequest contains parameters for launching an agent
 type LaunchAgentRequest struct {
+	// ResumePassthrough selects conversation resume independently of runtime ownership.
+	ResumePassthrough            bool
 	RequiredNativeConversationID string
-	TaskID                       string
-	TaskScope                    lifecycle.TaskLaunchScope
-	SessionSettingsPolicy        ResumeSettingsPolicy
-	WorkspaceID                  string // Kandev workspace ID — used to build scratch dir for repo-less tasks
-	SessionID                    string
-	TaskEnvironmentID            string // Env owning this session (shared across sessions in the same task)
+	InterruptedSubmissionID      string
+	InterruptedStreamID          string
+	InterruptedHarnessGeneration uint64
+	CandidateExecutionID         string
+	OnExecutionAllocated         func(context.Context, string) error
+
+	TaskID                string
+	TaskScope             lifecycle.TaskLaunchScope
+	SessionSettingsPolicy ResumeSettingsPolicy
+	WorkspaceID           string // Kandev workspace ID — used to build scratch dir for repo-less tasks
+	SessionID             string
+	TaskEnvironmentID     string // Env owning this session (shared across sessions in the same task)
 	// WorkspaceReuseRequired selects attach-only preparation of an already-ready
 	// task environment. It must never be inferred from a sibling execution ID.
 	WorkspaceReuseRequired bool
@@ -522,6 +550,17 @@ type LaunchAgentRequest struct {
 	TaskTitle                         string // Human-readable task title for semantic worktree naming
 	AgentProfileID                    string
 	TurnID                            string // Durable Kandev turn for the initial prompt, when present
+	// ForceContextContinuation bypasses native resume and starts a new native
+	// conversation with the bounded prompt in TaskDescription. It is set only
+	// by the explicit continue_from_history recovery action.
+	ForceContextContinuation bool
+	// ReplaceNativeConversation marks an explicit fresh start that replaces a
+	// committed native conversation. The launch uses the next harness
+	// generation and its own delivery stream.
+	ReplaceNativeConversation bool
+	// RecoveryAction carries a server-side explicit recovery settlement through
+	// the launch boundary. It is never accepted from the client wire request.
+	RecoveryAction string
 	// OfficeAgentProfileID is the stable Office identity. AgentProfileID stays
 	// the concrete execution profile inside the executor for compatibility.
 	OfficeAgentProfileID string
@@ -543,16 +582,30 @@ type LaunchAgentRequest struct {
 	// every managed runtime value and can perform the final strict resolution.
 	EnvironmentDefinitions        []runtimeenv.Definition
 	EnvironmentResolutionRequired bool
-	ACPSessionID                  string              // ACP session ID to resume, if available
-	ModelOverride                 string              // If set, use this model instead of the profile's model
-	ExecutorType                  string              // Executor type (e.g., "local", "worktree", "local_docker") - determines runtime
-	ExecutorConfig                map[string]string   // Executor config (docker_host, git_token, etc.)
-	PreviousExecutionID           string              // Previous execution ID for runtime reconnect
-	McpMode                       string              // MCP tool mode: "task" (default), "task-title-pending", "config", "office", or "automation"
-	McpProviders                  []string            // Normalized provider capabilities attached to the task
-	McpProfile                    *mcpprofile.Context // Backend-owned base surface and additive MCP capabilities
-	IsEphemeral                   bool                // Ephemeral task (quick chat) — enables fallback workspace creation
-	WorkspacePath                 string              // Optional host folder for repo-less tasks (overrides scratch fallback)
+	ACPSessionID                  string // ACP session ID to resume, if available
+	// Durable delivery identity is persisted with the session continuity
+	// record and propagated to agentctl for generation fencing.
+	DeliveryStreamID            string
+	DeliveryIncarnationID       string
+	DeliveryHarnessGeneration   uint64
+	InitialDeliverySubmissionID string
+	// SuppressBootStatusMessage is set only for silent restart restore so
+	// startup does not create a lifecycle-only transcript turn.
+	SuppressBootStatusMessage bool
+	// BeforeAgentStart runs inside the executor before it starts the harness.
+	// It receives the final prompt after handover context is composed.
+	// The callback is never forwarded into the runtime request.
+	BeforeAgentStart      func(context.Context, string, string) error
+	ModelOverride         string              // If set, use this model instead of the profile's model
+	ExecutorType          string              // Executor type (e.g., "local", "worktree", "local_docker") - determines runtime
+	ExecutorConfig        map[string]string   // Executor config (docker_host, git_token, etc.)
+	PreviousExecutionID   string              // Previous execution ID for runtime reconnect
+	McpMode               string              // MCP tool mode: "task" (default), "task-title-pending", "config", "office", or "automation"
+	McpProviders          []string            // Normalized provider capabilities attached to the task
+	McpProfile            *mcpprofile.Context // Backend-owned base surface and additive MCP capabilities
+	IsEphemeral           bool                // Ephemeral task (quick chat) — enables fallback workspace creation
+	WorkspacePath         string              // Optional host folder for repo-less tasks (overrides scratch fallback)
+	OriginalWorkspacePath string              // First agent-visible path used for native restore policy
 
 	// IsPassthrough is the session's mode snapshot (TaskSession.IsPassthrough)
 	// at session-creation time. Forwarded to the lifecycle manager so
@@ -690,6 +743,11 @@ const McpModeOffice = mcpmode.Office
 // created by a user-configured automation.
 const McpModeAutomation = mcpmode.Automation
 
+// McpModeCoordinator selects the fixed six-tool MCP surface for a workspace
+// coordinator's conversation session
+// (docs/specs/coordinator/system-design/copilot.md#principal-and-mode).
+const McpModeCoordinator = mcpmode.Coordinator
+
 // McpModeManagedConversation selects the isolated managed-conversation MCP surface.
 const McpModeManagedConversation = "managed-conversation"
 
@@ -699,6 +757,12 @@ type LaunchOptions struct {
 	OfficeAgentProfileID string
 	ExecutorID           string
 	TurnID               string
+	// DeliverySubmissionID binds a persisted direct first message to the
+	// initial agentctl prompt.
+	DeliverySubmissionID string
+	// BeforeAgentStart binds the first-prompt identity after the execution
+	// exists. Final payload admission runs after runtime preparation.
+	BeforeAgentStart func(context.Context, string, string) error
 	// OnExecutionAdmitted runs after the launch path has identified and
 	// persisted the execution that will receive this turn, but before its
 	// process is started. Callers use this boundary to bind turn-scoped
@@ -707,17 +771,18 @@ type LaunchOptions struct {
 	// OnInitialPromptAccepted transfers startup ownership after lifecycle reports
 	// that the initial prompt was accepted by the provider. OnInitialPromptFailed
 	// closes that ownership when delivery fails before acceptance.
-	OnInitialPromptAccepted func(executionID string)
-	OnInitialPromptFailed   func()
-	Prompt                  string
-	PriorACPSession         string // ACP session ID to resume for the same concrete profile
-	WorkflowStepID          string
-	StartAgent              bool
+	OnInitialPromptAccepted     func(executionID string)
+	OnInitialPromptFailed       func()
+	BeforeInitialPromptDispatch func(context.Context, string, string, []v1.MessageAttachment) error
+	Prompt                      string
+	PriorACPSession             string // ACP session ID to resume for the same concrete profile
+	WorkflowStepID              string
+	StartAgent                  bool
 	// RefuseIfAgentRunning makes peer-message admission fail closed when the
 	// selected session already has an active agent. Other internal launch paths
 	// retain their existing workspace reuse behavior.
 	RefuseIfAgentRunning bool
-	McpMode              string // MCP tool mode: empty task default, McpModeTaskTitlePending, McpModeConfig, McpModeOffice, or McpModeAutomation
+	McpMode              string // MCP tool mode: empty task default, McpModeTaskTitlePending, McpModeConfig, McpModeOffice, McpModeAutomation, McpModeCoordinator, or McpModeManagedConversation
 	McpProfile           *mcpprofile.Context
 	Attachments          []v1.MessageAttachment
 	Env                  map[string]string
@@ -945,6 +1010,13 @@ type SessionStartingWithOptionsFunc func(
 // when another teardown path already owns that execution.
 type ExecutionCleanupClaimFunc func(sessionID, agentExecutionID string) bool
 
+// CancelledResumeExecutionCleanupFunc delegates exact startup teardown to the
+// orchestrator so service cancellation and late process startup share ownership.
+type CancelledResumeExecutionCleanupFunc func(
+	ctx context.Context,
+	taskID, sessionID, agentExecutionID, resumeAttemptID string,
+)
+
 // ExecutionStopOwnerRegistrationFunc records that an explicit teardown path
 // owns one exact session execution. Registration is advisory: the explicit
 // stop still runs, while orphan cleanup uses the record to avoid duplicating it.
@@ -1028,17 +1100,38 @@ type GitLabCredentialResolver interface {
 	ResolveGitLabExecutionCredentials(ctx context.Context, workspaceID string) (host, token string, err error)
 }
 
+// CoordinatorLookup resolves a coordinator conversation task to its
+// coordinator and reports whether that coordinator's agent and executor
+// profiles are both usable, for the fail-closed coordinator-session-start
+// check (docs/specs/coordinator/system-design/copilot.md#fail-closed).
+// Implemented by *coordinator.Service.
+type CoordinatorLookup interface {
+	CoordinatorForConversationTask(ctx context.Context, taskID string) (coordinatorID string, ok bool, err error)
+	CoordinatorProfilesReady(ctx context.Context, coordinatorID string) (bool, error)
+	Phase2Enabled() bool
+}
+
 // Executor manages agent execution for tasks
 type Executor struct {
-	agentManager      AgentManagerClient
-	attachmentReader  AttachmentReader
-	repo              executorStore
-	secretStore       secrets.SecretStore
-	shellPrefs        ShellPreferenceProvider
-	capabilities      ExecutorTypeCapabilities
-	gitlabCredentials GitLabCredentialResolver
-	logger            *logger.Logger
-	canvasesEnabled   bool
+	autonomousExecutorContext func(context.Context, string, string) (context.Context, error)
+	executorAdmission         func(context.Context, string, string, string) (context.Context, error)
+	agentManager              AgentManagerClient
+	attachmentReader          AttachmentReader
+	repo                      executorStore
+	secretStore               secrets.SecretStore
+	shellPrefs                ShellPreferenceProvider
+	capabilities              ExecutorTypeCapabilities
+	gitlabCredentials         GitLabCredentialResolver
+	logger                    *logger.Logger
+	canvasesEnabled           bool
+
+	// coordinators resolves a coordinator conversation task to its
+	// coordinator and reports profile readiness, for the fail-closed
+	// coordinator-session-start check in resolveTaskSessionMCPMode/Profile
+	// (docs/specs/coordinator/system-design/copilot.md#fail-closed). nil
+	// (unset) means the coordinator feature is off or this executor was
+	// never wired with it — a coordinator-origin task then fails to start.
+	coordinators CoordinatorLookup
 
 	gitCredentialIssuer            GitCredentialLeaseIssuer
 	gitCredentialBrokerURL         string
@@ -1092,6 +1185,9 @@ type Executor struct {
 	// orchestrator so coordinator graceful stop and launch cleanup cannot both
 	// tear down the same execution.
 	onExecutionCleanupClaim ExecutionCleanupClaimFunc
+	// Callback for cancelled resume startup cleanup, which must share the
+	// orchestrator's retryable exact-execution teardown claim.
+	onCancelledResumeExecutionCleanup CancelledResumeExecutionCleanupFunc
 
 	// Callback for registering explicit exact-execution teardown ownership before
 	// a legacy stop persists CANCELLED. The requested stop always runs.
@@ -1491,6 +1587,12 @@ func (e *Executor) SetOnExecutionCleanupClaim(fn ExecutionCleanupClaimFunc) {
 	e.onExecutionCleanupClaim = fn
 }
 
+// SetOnCancelledResumeExecutionCleanup delegates cancelled startup teardown to
+// the orchestrator's shared exact-execution cleanup owner.
+func (e *Executor) SetOnCancelledResumeExecutionCleanup(fn CancelledResumeExecutionCleanupFunc) {
+	e.onCancelledResumeExecutionCleanup = fn
+}
+
 // SetOnExecutionStopOwnerRegistration sets the explicit-stop ownership registrar.
 func (e *Executor) SetOnExecutionStopOwnerRegistration(fn ExecutionStopOwnerRegistrationFunc) {
 	e.onExecutionStopOwnerRegistration = fn
@@ -1589,6 +1691,14 @@ func (e *Executor) SetCapabilities(c ExecutorTypeCapabilities) {
 // SetGitLabCredentialResolver wires workspace-scoped GitLab execution auth.
 func (e *Executor) SetGitLabCredentialResolver(resolver GitLabCredentialResolver) {
 	e.gitlabCredentials = resolver
+}
+
+// SetCoordinatorLookup wires the coordinator lookup used by the fail-closed
+// coordinator-session-start check. Guarded by the caller on the coordinator
+// feature flag; an Executor with no lookup set refuses every
+// coordinator-origin task (docs/specs/coordinator/system-design/copilot.md#fail-closed).
+func (e *Executor) SetCoordinatorLookup(lookup CoordinatorLookup) {
+	e.coordinators = lookup
 }
 
 // ProbeBackgroundWorkloads samples a session's agent process for

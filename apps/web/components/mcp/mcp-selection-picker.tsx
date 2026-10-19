@@ -137,7 +137,7 @@ function ServerRow({
         aria-labelledby={nameId}
         aria-describedby={detailsId}
         checked={checked}
-        disabled={disabled || !server.enabled}
+        disabled={disabled || (!server.enabled && !checked)}
         onCheckedChange={(value) => onChange(value === true)}
       />
       <span className="min-w-0 flex-1">

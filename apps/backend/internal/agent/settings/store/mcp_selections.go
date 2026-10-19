@@ -354,7 +354,7 @@ func deleteMCPSelectionRows(ctx context.Context, tx *sqlx.Tx, definitionID strin
 		"task_mcp_selections",
 		"task_session_mcp_selections",
 	} {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE mcp_server_id = ?`, definitionID); err != nil {
+		if _, err := tx.ExecContext(ctx, tx.Rebind(`DELETE FROM `+table+` WHERE mcp_server_id = ?`), definitionID); err != nil {
 			return err
 		}
 	}

@@ -4,11 +4,11 @@
  * same workspace action with a touch-sized target.
  */
 import { expect, test } from "../../fixtures/test-base";
+import { expectTouchSquareControl } from "../../helpers/control-sizing";
 import { installFixturePlugin, PLUGIN_ID } from "../../helpers/plugin-fixture";
 import { MobileKanbanPage } from "../../pages/mobile-kanban-page";
 
 const SLOT_TEST_ID = "e2e-sidebar-workspace-actions";
-const TOUCH_TARGET_LAYOUT_TOLERANCE_PX = 0.5;
 
 test.describe("Mobile plugin workspace actions", () => {
   test.afterEach(async ({ apiClient }) => {
@@ -32,13 +32,7 @@ test.describe("Mobile plugin workspace actions", () => {
     await expect(slot).toHaveAttribute("data-workspace-id", seedData.workspaceId);
     await expect(slot).toHaveAttribute("data-presentation", "mobile");
 
-    const box = await slot.boundingBox();
-    expect(box).not.toBeNull();
-    // 2.75rem is the authored 44px touch target. Chromium can report the
-    // computed height just below that integer after rem-to-device-pixel
-    // conversion (for example, 43.99993896484375px).
-    expect(box!.height).toBeGreaterThanOrEqual(44 - TOUCH_TARGET_LAYOUT_TOLERANCE_PX);
-    expect(box!.width).toBeGreaterThanOrEqual(44 - TOUCH_TARGET_LAYOUT_TOLERANCE_PX);
+    await expectTouchSquareControl(slot);
 
     await slot.tap();
     await expect(slot).toHaveAttribute("data-clicked", "true");

@@ -146,12 +146,18 @@ export type MCPMarketplaceChoice = {
 };
 
 export type MCPMarketplaceArgument = {
+  type?: string;
+  isRequired?: boolean;
+  isSecret?: boolean;
+  format?: string;
+  variables?: Record<string, MCPMarketplaceInput>;
   name?: string;
   value?: string;
   description?: string;
 };
 
 export type MCPMarketplaceInput = {
+  variables?: Record<string, MCPMarketplaceInput>;
   name?: string;
   value?: string;
   description?: string;
@@ -189,6 +195,7 @@ export type MCPMarketplaceInstallInput = {
   runtime_name?: string;
   display_name?: string;
   secret_bindings?: MCPSecretBinding[];
+  input_values?: Record<string, string>;
 };
 
 export type MCPResolutionSummary = {

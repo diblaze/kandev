@@ -52,12 +52,28 @@ func (m *Manager) getAgentConfigAndProfileForExecution(ctx context.Context, exec
 	}
 
 	agentTypeName := profileInfo.AgentName
-	agentConfig, ok := m.registry.Get(agentTypeName)
-	if !ok {
-		return nil, nil, fmt.Errorf("agent type not found: %s", agentTypeName)
+	agentConfig, err := m.resolveLaunchableAgent(agentTypeName)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	return agentConfig, profileInfo, nil
+}
+
+// resolveLaunchableAgent returns the registry agent for a resolved agent type
+// name. Virtual execution families (such as the dynamic routing family) own
+// no subprocess: selecting one for a direct launch must fail closed here
+// with ErrVirtualProfile instead of reaching command building, where the
+// empty virtual command would surface only as a generic empty-command error.
+func (m *Manager) resolveLaunchableAgent(agentTypeName string) (agents.Agent, error) {
+	agentConfig, ok := m.registry.Get(agentTypeName)
+	if !ok {
+		return nil, fmt.Errorf("agent type %q not found in registry", agentTypeName)
+	}
+	if agents.IsVirtualAgent(agentConfig) {
+		return nil, fmt.Errorf("agent type %q: %w", agentTypeName, ErrVirtualProfile)
+	}
+	return agentConfig, nil
 }
 
 // resolveMcpServers centralizes MCP resolution for a session:
@@ -65,22 +81,11 @@ func (m *Manager) getAgentConfigAndProfileForExecution(ctx context.Context, exec
 // - applies executor-scoped transport rules, allow/deny lists, URL rewrites, and env injection,
 // - converts to ACP stdio server definitions used during session initialization.
 func (m *Manager) resolveMcpServers(ctx context.Context, execution *AgentExecution, agentConfig agents.Agent) ([]agentctltypes.McpServer, error) {
-	if execution == nil {
-		return nil, nil
+	op, err := m.prepareExecutionMCP(ctx, execution, agentConfig)
+	if err != nil {
+		return nil, err
 	}
-	if m.mcpResolver != nil && execution.WorkspaceID != "" {
-		result, err := m.resolveEffectiveMCPResolution(ctx, mcpconfig.ResolutionContext{
-			WorkspaceID: execution.WorkspaceID, RepositoryIDs: execution.RepositoryIDs,
-			ProfileID: execution.AgentProfileID, TaskID: execution.TaskID,
-			SessionID: execution.SessionID,
-		}, execution.AgentProfileID, execution.MetadataSnapshot(), agentConfig, execution.RuntimeName)
-		if err != nil {
-			return nil, err
-		}
-		execution.rememberMCPSetup(result)
-		return mcpconfig.ToACPServers(result.Servers), nil
-	}
-	return m.resolveMcpServersWithParams(ctx, execution.AgentProfileID, execution.MetadataSnapshot(), agentConfig)
+	return op.servers, nil
 }
 
 func (m *Manager) resolveMcpServersForLaunch(ctx context.Context, req *LaunchRequest, agentConfig agents.Agent) ([]agentctltypes.McpServer, error) {
@@ -288,13 +293,15 @@ func (m *Manager) initializeACPSession(ctx context.Context, execution *AgentExec
 	profileModel, profileMode, profileConfigOptions, policy := m.resolveProfileSessionConfigAndPolicy(ctx, execution.AgentProfileID)
 	runtimeModel, runtimeMode, runtimeConfigOptions := m.sessionRuntimeOverrides(ctx, execution)
 	startupGeneration := execution.startupAttemptSnapshot()
-	setup, revision, captured := execution.capturedMCPSetup()
+	setup, revision, captured := capturedMCPSetup(ctx)
 	markBootReady := func(executionID string) error {
 		return m.markBootReadyForStartup(context.Background(), executionID, startupGeneration)
 	}
-	setupAccepted := func() {
-		if captured && execution.startupAttemptSnapshot() == startupGeneration {
-			m.recordAcceptedMCPSetupOperation(context.Background(), execution, setup, revision)
+	setupAccepted := func(attemptID string) {
+		if captured {
+			execution.withStartupAttempt(startupGeneration, func(string) {
+				m.recordAcceptedMCPSetupOperation(context.Background(), execution, setup, revision, attemptID)
+			})
 		}
 	}
 	// The effective runtime model (user-selected, persisted session state)

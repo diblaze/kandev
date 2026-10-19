@@ -400,7 +400,7 @@ func workflowEventsField(owner string) FieldDescriptor {
 	triggers := []string{
 		"on_enter", "on_turn_start", "on_turn_complete", "on_exit", "on_comment",
 		"on_blocker_resolved", "on_children_completed", "on_approval_resolved", "on_heartbeat",
-		"on_budget_alert", "on_agent_error",
+		"on_budget_alert", "on_agent_error", "on_pr_merged", "on_pr_closed",
 	}
 	properties := make(map[string]any, len(triggers))
 	for _, trigger := range triggers {
@@ -475,6 +475,7 @@ func repositorySetDomain() DomainDescriptor {
 func executorDomain() DomainDescriptor {
 	owner := "execution"
 	return supportedDomain("execution", "executor", "Executors", "Execution target settings.", owner, ScopeResource, TargetRules{Scope: ScopeResource, RequiresResourceID: true},
+		integrationNullableWritable("executor", "owner_user_id", "Owner", "Optional personal executor owner; null shares the resource.", "string", owner, "execution.manage"),
 		domainWritable("executor", "name", "Name", "Executor name.", "string", owner, "execution.manage"),
 		domainWritable("executor", "type", "Type", "Executor runtime type.", "string", owner, "execution.manage"),
 		domainWritable("executor", "status", "Status", "Whether the executor accepts work.", "string", owner, "execution.manage"),
@@ -486,6 +487,7 @@ func executorDomain() DomainDescriptor {
 func executorProfileDomain() DomainDescriptor {
 	owner := "execution"
 	return supportedDomain("execution", "executor_profile", "Executor profiles", "Named executor presets.", owner, ScopeResource, TargetRules{Scope: ScopeResource, RequiresResourceID: true},
+		integrationNullableWritable("executor_profile", "owner_user_id", "Owner", "Optional personal executor owner; null shares the resource.", "string", owner, "execution.manage"),
 		domainWritable("executor_profile", "name", "Name", "Profile name.", "string", owner, "execution.manage"),
 		domainWritable("executor_profile", "mcp_policy", "MCP policy", "MCP policy for this executor profile.", "string", owner, "execution.manage"),
 		domainWritable("executor_profile", "config", "Configuration", "Validated executor profile configuration.", "object", owner, "execution.manage"),
@@ -645,7 +647,8 @@ func userSettingsDomain() DomainDescriptor {
 		"github_default_query_presets", "GitHub query presets", "object", "gitlab_saved_presets", "GitLab saved presets", "object", "azure_devops_browse_preferences", "Azure DevOps browse preferences", "object",
 		"default_utility_agent_id", "default utility agent", "string", "default_utility_model", "default utility model", "string", "default_utility_agent_profile_id", "default utility profile", "string",
 		"keyboard_shortcuts", "keyboard shortcuts", "object", "terminal_link_behavior", "terminal link behavior", "string", "terminal_font_family", "terminal font family", "string",
-		"terminal_font_size", "terminal font size", "integer", "changes_panel_layout", "changes panel layout", "string", "last_seen_display", "last seen display", "string", "agent_tab_close_behavior", "agent tab close behavior", "string",
+		"terminal_font_size", "terminal font size", "integer", "changes_panel_layout", "changes panel layout", "string", "last_seen_display", "last seen display", "string", "message_time_display", "message time display", "string", "agent_tab_close_behavior", "agent tab close behavior", "string",
+		"sidebar_fast_actions_enabled", "sidebar fast action icons", "boolean", "sidebar_new_task_style", "sidebar New Task style", "string",
 		"sidebar_hover_enabled", "sidebar hover enabled", "boolean", "sidebar_hover_delay_ms", "sidebar hover delay", "integer",
 		"system_metrics_display", "system metrics display", "object", "app_status_bar_enabled", "status bar", "boolean", "resolve_session_hostnames", "resolve hostnames", "boolean",
 		"app_status_bar_order", "status bar order", "object", "quick_chat_tab_order_by_workspace", "quick chat tab order", "object", "kanban_hidden_step_ids", "hidden kanban steps", "object",
@@ -662,6 +665,13 @@ func userSettingsDomain() DomainDescriptor {
 			field.Schema = map[string]any{"type": "object"}
 		}
 		switch values[index] {
+		case "sidebar_fast_actions_enabled":
+			field.SettingsHref = "/settings/preferences/layouts?tab=sidebar"
+			field.DefaultBehavior = "false for new users; true for existing users without a saved value"
+		case "sidebar_new_task_style":
+			field.SettingsHref = "/settings/preferences/layouts?tab=sidebar"
+			field.DefaultBehavior = "simple for new users; compact for existing users without a saved value"
+			field.Schema = map[string]any{"type": "string", "enum": []string{"simple", "compact"}}
 		case "keyboard_shortcuts":
 			field.Schema = keyboardShortcutsSchema()
 		case "sidebar_task_color_patch":

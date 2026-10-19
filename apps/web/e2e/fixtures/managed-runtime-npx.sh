@@ -5,7 +5,6 @@ cache_root=${NPM_CONFIG_CACHE:-${npm_config_cache:-"$HOME/.npm"}}
 package_spec=${3:-}
 preference=${2:-}
 shift_count=3
-managed_package_name=opencode-ai
 real_npx=${KANDEV_E2E_REAL_NPX:-/usr/bin/npx}
 mock_agent=${E2E_MOCK_AGENT_PATH:-/usr/local/bin/mock-agent}
 failure_mode=${E2E_NPX_MODE:-stale-etarget}
@@ -31,7 +30,7 @@ fi
 # deterministic. Let every other package or invocation use the environment's
 # real npm implementation unless the host test explicitly mocks it.
 case "$package_spec" in
-	"$managed_package_name"@*) ;;
+	opencode-ai@*|@opencode/cli@*) ;;
 	*)
 		if [ "${KANDEV_E2E_NPX_MOCK_OTHERS:-false}" = "true" ]; then
 			shift "$shift_count"
@@ -102,6 +101,19 @@ if [ "$failure_mode" != "stale-etarget" ]; then
 			exit 2
 			;;
 	esac
+	if [ -n "${E2E_NPX_RETRY_RELEASE_FILE:-}" ]; then
+		: > "$E2E_NPX_RETRY_RELEASE_FILE.waiting"
+		remaining=600
+		while [ ! -f "$E2E_NPX_RETRY_RELEASE_FILE" ]; do
+			remaining=$((remaining - 1))
+			if [ "$remaining" -eq 0 ]; then
+				printf 'managed runtime retry fixture was not released\n' >&2
+				exit 98
+			fi
+			sleep 0.1
+		done
+		rm -f "$E2E_NPX_RETRY_RELEASE_FILE.waiting"
+	fi
 	shift "$shift_count"
 	exec "$mock_agent" "$@"
 fi

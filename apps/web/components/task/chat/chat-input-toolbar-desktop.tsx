@@ -130,6 +130,7 @@ function DesktopRightSection(props: {
   showCollapsed: boolean;
   rightItems: ToolbarItemConfig[];
   sessionId: string | null;
+  detailActive: boolean;
   taskId: string | null;
   taskTitle?: string;
   hideAgentControls: boolean;
@@ -153,7 +154,7 @@ function DesktopRightSection(props: {
       {!props.showCollapsed && (
         <CollapsibleItems items={props.rightItems} testIdPrefix="toolbar-item-" />
       )}
-      <TokenUsageDisplay sessionId={props.sessionId} />
+      <TokenUsageDisplay sessionId={props.sessionId} detailActive={props.detailActive} />
       {props.planModeEnabled && !props.isAgentBusy && props.onImplementPlan && (
         <ImplementPlanButton
           onClick={props.onImplementPlan}
@@ -270,6 +271,7 @@ export function DesktopChatInputToolbar(props: DesktopToolbarProps) {
         showCollapsed={showCollapsed}
         rightItems={rightItems}
         sessionId={props.sessionId}
+        detailActive={props.detailActive ?? true}
         taskId={props.taskId}
         taskTitle={props.taskTitle}
         hideAgentControls={props.hideAgentControls}

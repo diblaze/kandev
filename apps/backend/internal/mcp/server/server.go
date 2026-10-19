@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/kandev/kandev/internal/agentctl/types/streams"
 	"github.com/kandev/kandev/internal/common/logger"
 	"github.com/kandev/kandev/internal/common/mcpmode"
+	mcporigin "github.com/kandev/kandev/internal/mcp/origin"
 	"github.com/kandev/kandev/internal/mcp/plugintools"
 	mcpprofile "github.com/kandev/kandev/internal/mcp/profile"
 	mcpproviders "github.com/kandev/kandev/internal/mcp/providers"
@@ -36,6 +38,9 @@ type BackendClient interface {
 	// RequestPayload sends a request to the backend and unmarshals the response.
 	RequestPayload(ctx context.Context, action string, payload, result interface{}) error
 }
+
+const rejectedTransferToolAuditTimeout = 2 * time.Second
+const rejectedTransferToolAuditAttempts = 3
 
 type backendSessionSetter interface {
 	SetSessionID(sessionID string)
@@ -60,6 +65,9 @@ const (
 	// ModeAutomation registers the fixed workspace coordinator catalog for
 	// scheduled automation agents.
 	ModeAutomation = mcpmode.Automation
+	// ModeCoordinator registers the fixed six-tool catalog for a workspace
+	// coordinator's conversation session.
+	ModeCoordinator = mcpmode.Coordinator
 	// ModeManagedConversation exposes only the selected plugin agent tools.
 	ModeManagedConversation = "managed-conversation"
 )
@@ -99,7 +107,7 @@ func locatorCount(locators ...string) int {
 // normalizeMode returns a valid MCP mode, defaulting unknown values to ModeTask.
 func normalizeMode(mode string) string {
 	switch mode {
-	case ModeConfig, ModeExternal, ModeOffice, ModeAutomation, ModeTaskTitlePending:
+	case ModeConfig, ModeExternal, ModeOffice, ModeAutomation, ModeTaskTitlePending, ModeCoordinator:
 		return mode
 	default:
 		return ModeTask
@@ -298,8 +306,9 @@ func newServerWithProfile(backend BackendClient, sessionID, taskID string, log *
 	hooks.AddAfterInitialize(func(ctx context.Context, _ any, _ *mcp.InitializeRequest, _ *mcp.InitializeResult) {
 		s.observeMCPRequest(ctx, streams.MCPAttachmentEvidenceInitializeObserved, 0, "")
 	})
-	hooks.AddBeforeCallTool(func(_ context.Context, _ any, request *mcp.CallToolRequest) {
+	hooks.AddBeforeCallTool(func(_ context.Context, id any, request *mcp.CallToolRequest) {
 		s.restoreCanonicalToolName(request)
+		stampTransportRequestID(request, id)
 	})
 	hooks.AddAfterListTools(func(ctx context.Context, _ any, _ *mcp.ListToolsRequest, result *mcp.ListToolsResult) {
 		s.presentTransportToolNames(result)
@@ -367,6 +376,8 @@ func modeForProfile(profileContext mcpprofile.Context) string {
 		return ModeOffice
 	case mcpprofile.SurfaceAutomation:
 		return ModeAutomation
+	case mcpprofile.SurfaceCoordinator:
+		return ModeCoordinator
 	case mcpprofile.SurfaceKanbanTask:
 		if profileContext.HasCapability(mcpprofile.CapabilityTaskTitle) {
 			return ModeTaskTitlePending
@@ -616,7 +627,7 @@ func opaqueMCPConnectionID(connectionID string) string {
 func (s *Server) RegisterRoutes(router gin.IRouter) {
 	router.GET("/sse", gin.WrapH(s.sseServer.SSEHandler()))
 	router.POST("/message", gin.WrapH(s.sseServer.MessageHandler()))
-	router.Any("/mcp", gin.WrapH(s.httpServer))
+	router.Any("/mcp", gin.WrapH(s.streamableHTTPHandler()))
 
 	s.logger.Info("registered MCP routes", zap.String("sse", "/sse"), zap.String("http", "/mcp"))
 }
@@ -627,7 +638,7 @@ func (s *Server) RegisterRoutes(router gin.IRouter) {
 func (s *Server) RegisterBackendRoutes(router gin.IRouter) {
 	router.GET("/mcp/sse", gin.WrapH(s.sseServer.SSEHandler()))
 	router.POST("/mcp/message", gin.WrapH(s.sseServer.MessageHandler()))
-	router.Any("/mcp", gin.WrapH(s.httpServer))
+	router.Any("/mcp", gin.WrapH(s.streamableHTTPHandler()))
 
 	s.logger.Info("registered MCP backend routes",
 		zap.String("sse", "/mcp/sse"),
@@ -690,6 +701,9 @@ func (s *Server) wrapHandlerWithArgumentLogging(toolName string, handler server.
 		var result *mcp.CallToolResult
 		var err error
 		if validationErr != nil {
+			if toolName == "transfer_task_kandev" {
+				s.auditRejectedTransferTool(ctx, req.GetRawArguments())
+			}
 			result = mcp.NewToolResultError(validationErr.Error())
 		} else {
 			result, err = handler(ctx, validatedReq)
@@ -739,6 +753,32 @@ func (s *Server) wrapHandlerWithArgumentLogging(toolName string, handler server.
 	}
 }
 
+func (s *Server) auditRejectedTransferTool(ctx context.Context, arguments any) {
+	payload := make(map[string]any)
+	if provided, ok := arguments.(map[string]any); ok {
+		for key, value := range provided {
+			payload[key] = value
+		}
+	}
+	payload["audit_attempt_id"] = uuid.NewString()
+	var ignored map[string]interface{}
+	auditCtx, cancel := context.WithTimeout(mcporigin.WithTrustedInternalCall(context.WithoutCancel(ctx)), rejectedTransferToolAuditTimeout)
+	defer cancel()
+	var err error
+	for attempt := 0; attempt < rejectedTransferToolAuditAttempts; attempt++ {
+		err = s.backend.RequestPayload(auditCtx, ws.ActionMCPAuditTaskTransferAttempt, payload, &ignored)
+		if err == nil {
+			return
+		}
+		if auditCtx.Err() != nil {
+			break
+		}
+	}
+	if err != nil {
+		s.logger.Warn("failed to durably audit rejected transfer tool call", zap.Error(err))
+	}
+}
+
 // SetMode changes the MCP server mode and re-registers tools accordingly.
 // This allows reconfiguring the tool set after initial creation (e.g., when
 // a session transitions to plan/config mode on a pre-existing workspace).
@@ -755,13 +795,19 @@ func (s *Server) SetMode(mode string) {
 	}
 	previousMode := s.mode
 	capabilities := s.profile.Capabilities
-	if normalizedMode == ModeAutomation {
-		s.legacyModeCapabilities = slices.Clone(capabilities)
-		// The automation surface is a fixed coordinator catalog and never
-		// carries task-local capabilities. The snapshot lets a later legacy
-		// mode change restore the profile that was active before automation.
+	if isFixedCatalogMode(normalizedMode) {
+		// Only snapshot when entering a fixed mode from a non-fixed one.
+		// Fixed catalogs never carry task-local capabilities themselves, so a
+		// fixed-to-fixed transition (e.g. coordinator -> automation) would
+		// otherwise re-snapshot the already-nil current capabilities over the
+		// real snapshot taken on the first transition, losing it.
+		if !isFixedCatalogMode(previousMode) {
+			s.legacyModeCapabilities = slices.Clone(capabilities)
+		}
+		// The snapshot lets a later legacy mode change restore the profile
+		// that was active before the switch.
 		capabilities = nil
-	} else if previousMode == ModeAutomation {
+	} else if isFixedCatalogMode(previousMode) {
 		capabilities = slices.Clone(s.legacyModeCapabilities)
 	}
 	s.mode = normalizedMode
@@ -771,10 +817,18 @@ func (s *Server) SetMode(mode string) {
 	} else {
 		s.profile = s.profile.WithoutCapability(mcpprofile.CapabilityTaskTitle)
 	}
-	if normalizedMode != ModeAutomation {
+	if !isFixedCatalogMode(normalizedMode) {
 		s.legacyModeCapabilities = slices.Clone(s.profile.Capabilities)
 	}
 	s.rebuildTools()
+}
+
+// isFixedCatalogMode reports whether mode uses a fixed tool catalog that never
+// carries task-local capabilities (docs/specs/coordinator/system-design/
+// copilot.md#attended-only), mirroring mcpprofile.Legacy's own exclusion of
+// SurfaceAutomation and SurfaceCoordinator from CapabilityUserQuestion.
+func isFixedCatalogMode(mode string) bool {
+	return mode == ModeAutomation || mode == ModeCoordinator
 }
 
 func surfaceForMode(mode string) mcpprofile.Surface {
@@ -787,6 +841,8 @@ func surfaceForMode(mode string) mcpprofile.Surface {
 		return mcpprofile.SurfaceOfficeTask
 	case ModeAutomation:
 		return mcpprofile.SurfaceAutomation
+	case ModeCoordinator:
+		return mcpprofile.SurfaceCoordinator
 	default:
 		return mcpprofile.SurfaceKanbanTask
 	}
@@ -842,6 +898,16 @@ func (s *Server) SetProfile(profileContext mcpprofile.Context) {
 	s.rebuildTools()
 }
 
+// sameCoordinatorToolPolicy compares two bindings by their marshalled form.
+func sameCoordinatorToolPolicy(left, right *mcpprofile.CoordinatorToolPolicy) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	l, lerr := mcpprofile.MarshalCoordinatorToolPolicy(*left)
+	r, rerr := mcpprofile.MarshalCoordinatorToolPolicy(*right)
+	return lerr == nil && rerr == nil && l == r
+}
+
 func sameProfile(left, right mcpprofile.Context) bool {
 	if left.Surface != right.Surface || len(left.Capabilities) != len(right.Capabilities) || len(left.Providers) != len(right.Providers) {
 		return false
@@ -855,6 +921,9 @@ func sameProfile(left, right mcpprofile.Context) bool {
 		if left.Providers[i] != right.Providers[i] {
 			return false
 		}
+	}
+	if !sameCoordinatorToolPolicy(left.CoordinatorToolPolicy, right.CoordinatorToolPolicy) {
+		return false
 	}
 	if (left.ManagedToolPolicy == nil) != (right.ManagedToolPolicy == nil) {
 		return false
@@ -1116,18 +1185,21 @@ func (s *Server) profileToolGroups() []profileToolGroup {
 	office := surfaceEnabled(mcpprofile.SurfaceOfficeTask)
 	kanban := surfaceEnabled(mcpprofile.SurfaceKanbanTask)
 	automation := surfaceEnabled(mcpprofile.SurfaceAutomation)
+	coordinatorSurface := surfaceEnabled(mcpprofile.SurfaceCoordinator)
 	if s.profile.Surface == mcpprofile.SurfaceManagedConversation {
 		return nil
 	}
 	return []profileToolGroup{
 		{name: "configuration-automations", enabled: config, register: func(s *Server) { s.registerConfigAutomationTools() }},
 		{name: "automation", enabled: automation, register: func(s *Server) { s.registerAutomationTools() }},
+		{name: "coordinator", enabled: coordinatorSurface, register: func(s *Server) { s.registerCoordinatorTools() }},
 		{name: "configuration-workflows", enabled: func(ctx mcpprofile.Context) bool { return config(ctx) || external(ctx) }, register: func(s *Server) { s.registerConfigWorkflowTools() }},
 		{name: "configuration-agents", enabled: func(ctx mcpprofile.Context) bool { return config(ctx) || external(ctx) }, register: func(s *Server) { s.registerConfigAgentTools() }},
 		{name: "configuration-mcp", enabled: func(ctx mcpprofile.Context) bool { return config(ctx) || external(ctx) }, register: func(s *Server) { s.registerConfigMcpTools() }},
 		{name: "configuration-prompts", enabled: func(ctx mcpprofile.Context) bool { return config(ctx) || external(ctx) }, register: func(s *Server) { s.registerConfigPromptTools() }},
 		{name: "configuration-executors", enabled: func(ctx mcpprofile.Context) bool { return config(ctx) || external(ctx) }, register: func(s *Server) { s.registerConfigExecutorTools() }},
 		{name: "configuration-tasks", enabled: func(ctx mcpprofile.Context) bool { return config(ctx) || external(ctx) }, register: func(s *Server) { s.registerConfigTaskTools() }},
+		{name: "task-transfer", enabled: func(ctx mcpprofile.Context) bool { return config(ctx) || external(ctx) || office(ctx) }, register: func(s *Server) { s.registerTaskTransferTool() }},
 		{name: "configuration-settings", enabled: func(ctx mcpprofile.Context) bool { return config(ctx) || external(ctx) }, register: func(s *Server) { s.registerConfigSettingsTools() }},
 		{name: "external-create-task", enabled: external, register: func(s *Server) { s.registerCreateTaskTool() }},
 		{name: "external-questions", enabled: external, register: func(s *Server) { s.registerQuestionAnsweringTools() }},
@@ -1158,6 +1230,30 @@ func (s *Server) profileToolGroups() []profileToolGroup {
 		{name: "diagnostics", enabled: kanban, register: func(s *Server) { s.registerDiagnosticBundleTool() }},
 		{name: "canvas-authoring", enabled: andProfilePredicates(kanban, capabilityEnabled(mcpprofile.CapabilityCanvas)), register: func(s *Server) { s.registerCanvasTools() }},
 	}
+}
+
+func (s *Server) registerTaskTransferTool() {
+	s.mcpServer.AddTool(
+		mcp.NewTool("transfer_task_kandev",
+			mcp.WithDescription("Atomically transfer one exact task identity to an authorized workspace and equivalent workflow lane. Requires the current source placement and generation, a unique idempotency key, and the preserve-task-identity-v1 policy. Ordinary task agents cannot access this tool."),
+			mcp.WithReadOnlyHintAnnotation(false),
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(false),
+			mcp.WithString("task_id", mcp.Required(), mcp.Description("Exact task UUID to preserve")),
+			mcp.WithString("expected_source_workspace_id", mcp.Required()),
+			mcp.WithString("expected_source_workflow_id", mcp.Required()),
+			mcp.WithString("expected_source_workflow_step_id", mcp.Required()),
+			mcp.WithString("expected_task_updated_at", mcp.Required(), mcp.Description("Current task updated_at in RFC3339Nano format")),
+			mcp.WithString("destination_workspace_id", mcp.Required()),
+			mcp.WithString("destination_workflow_id", mcp.Required()),
+			mcp.WithString("destination_workflow_step_id", mcp.Description("Stable destination lane ID; provide this or destination_workflow_step_name")),
+			mcp.WithString("destination_workflow_step_name", mcp.Description("Exact destination lane name; accepted only when uniquely mapped")),
+			mcp.WithString("idempotency_key", mcp.Required()),
+			mcp.WithString("preservation_policy", mcp.Required(), mcp.Description("Must be preserve-task-identity-v1")),
+		),
+		s.wrapHandler("transfer_task_kandev", s.transferTaskHandler()),
+	)
 }
 
 func (s *Server) registerAgentPermissionTools() {
@@ -1191,7 +1287,7 @@ func (s *Server) registerTools() {
 			group.register(s)
 		}
 	}
-	if s.profile.Surface != mcpprofile.SurfaceAutomation {
+	if s.profile.Surface != mcpprofile.SurfaceAutomation && s.profile.Surface != mcpprofile.SurfaceCoordinator {
 		s.registerPluginTools()
 	}
 	s.logger.Info("registered MCP tools",
@@ -1314,12 +1410,12 @@ func (s *Server) registerKanbanTools() {
 	)
 	s.mcpServer.AddTool(
 		mcp.NewTool("move_task_kandev",
-			mcp.WithDescription(`Move a task to a different workflow step. A request naming the task's current workflow and step, without entry options, returns "applied" with the stored task because the destination already holds; no retry is needed. Only an actual step change is deferred to turn-end while the source session is RUNNING or STARTING. Idle-session and admin step changes apply immediately. Returns a move-result envelope: "disposition" is "applied" for a completed move or current-step no-op, or "deferred" when a step change was recorded for turn-end; "task" is the stored or moved task. An optioned step change also returns "move_id" and the accepted "entry_options" so you can correlate the one-shot override with the eventual entry.`),
+			mcp.WithDescription(`Move a task to a different workflow step. A request naming the task's current workflow and step, without entry options, returns "applied" with the stored task because the destination already holds; no retry is needed. Only an actual step change is deferred to turn-end while the source session is RUNNING or STARTING. Idle-session and admin step changes apply immediately. Returns a move-result envelope: "disposition" is "applied" for a completed move or current-step no-op, or "deferred" when a step change was recorded for turn-end; "task" is the stored or moved task. An optioned step change also returns "move_id" and the accepted "entry_options" so you can correlate the one-shot override with the eventual entry. Moving to a manual step that does not start an agent on entry (for example Waiting, Blocked, or Done) must not carry a prompt or entry_options; such a call is rejected with a validation error. Record the instruction in the task description or plan instead.`),
 			mcp.WithString("task_id", mcp.Required(), mcp.Description("The task ID")),
 			mcp.WithString("workflow_id", mcp.Required(), mcp.Description("Target workflow ID")),
 			mcp.WithString("workflow_step_id", mcp.Required(), mcp.Description("Target workflow step ID")),
 			mcp.WithNumber("position", mcp.Description("Requested position (0-based); the server determines arrival order, and a current-step request preserves the stored position.")),
-			mcp.WithString("prompt", mcp.Description("Optional hand-off message for the receiving agent at a new step. Only actual step changes are deferred during an active turn; non-empty prompts are invalid for a current-step request.")),
+			mcp.WithString("prompt", mcp.Description("Optional hand-off message for the receiving agent at a new step. Only actual step changes are deferred during an active turn; non-empty prompts are invalid for a current-step request. Omit it when the target step does not start an agent on entry.")),
 			moveTaskEntryOptionsToolOption(),
 		),
 		s.wrapHandler("move_task_kandev", s.moveTaskHandler()),

@@ -28,6 +28,8 @@ This page is the startup-configuration reference. Executor-specific fields are c
 
 Startup sources are read once and later sources override earlier ones. Web settings are stored separately and do not join the YAML and environment-variable precedence chain.
 
+Persistent web preferences are stored separately from startup configuration. **Settings > Preferences > Task behavior > Conversation > Message time** controls whether transcript timestamps use relative, absolute short, or absolute long labels. The other form remains available on hover or by tapping the timestamp. This is a per-user preference stored in the database, not a `config.yaml` key or environment variable.
+
 ## Load order and lifecycle
 
 At backend startup, later sources override earlier ones:
@@ -99,7 +101,7 @@ When `server.host` is unset, `server.hosts` may provide a YAML list of bind addr
 
 SQLite is the supported default and enables WAL mode. PostgreSQL deployments must provision the database, network policy, TLS trust, backups, and credentials before starting Kandev. Passing the password in an environment variable avoids putting it in YAML but still exposes it to processes/administrators allowed to inspect the environment; use your platform's secret injection controls.
 
-`database.path` is an advanced SQLite file-path override. The **Settings → System → Database** and **Backups** pages use that exact file, its WAL files, and the sibling `backups/` directory. Restore stages `<configured-database-path>.new`, quiesces scheduling and active workers, validates the checkpoint result, closes the SQLite pool, and uses rollback-capable quarantine replacement for the configured file and WAL sidecars. Restart Kandev immediately after a successful restore. When the override is empty, the default path remains `<home>/data/kandev.db` and the backup directory remains `<home>/data/backups/`. Kandev does not move snapshots from another directory automatically. The System restore endpoint is SQLite-only; use PostgreSQL recovery tools for PostgreSQL.
+`database.path` is an advanced SQLite file-path override. The **Settings → System → Database** and **Backups** pages use that exact file, its WAL files, and the sibling `backups/` directory. Restore stages `<configured-database-path>.new` and verifies its SQLite integrity. An invalid snapshot fails without replacing current data, interrupting database-backed work, or requiring a restart. After verification succeeds, restore quiesces scheduling and active workers, validates the checkpoint result, closes the SQLite pool, and uses rollback-capable quarantine replacement for the configured file and WAL sidecars. Restart Kandev immediately after a successful restore. When the override is empty, the default path remains `<home>/data/kandev.db` and the backup directory remains `<home>/data/backups/`. Kandev does not move snapshots from another directory automatically. The System restore endpoint is SQLite-only; use PostgreSQL recovery tools for PostgreSQL.
 
 ### Default SQLite continuity
 
@@ -195,6 +197,31 @@ parsing, while a zero or negative YAML duration is rejected at startup with
 environment value falls back to `2h`, and non-positive values from a profile
 default are ignored, leaving the `2h` default in effect. The environment
 variable overrides YAML, and changes require a backend restart.
+
+
+### Backend delivery retention
+
+These startup values apply to SQLite and PostgreSQL. Restart the backend after a change.
+Invalid durations, zero values, and values outside the ranges stop startup.
+Environment values override YAML. These values do not configure the agentctl journal.
+
+| YAML key | Environment variable | Default | Range |
+| --- | --- | --- | --- |
+| `tasks.deliveryRetention.payloadGrace` | `KANDEV_TASK_DELIVERY_RETENTION_PAYLOAD_GRACE` | `1h` | `1m` to `720h` |
+| `tasks.deliveryRetention.replayAge` | `KANDEV_TASK_DELIVERY_RETENTION_REPLAY_AGE` | `24h` | `1h` to `720h` |
+| `tasks.deliveryRetention.replayEvents` | `KANDEV_TASK_DELIVERY_RETENTION_REPLAY_EVENTS` | `10000` | 100 to 100000 |
+| `tasks.deliveryRetention.interval` | `KANDEV_TASK_DELIVERY_RETENTION_INTERVAL` | `1m` | `10s` to `1h` |
+| `tasks.deliveryRetention.batchRows` | `KANDEV_TASK_DELIVERY_RETENTION_BATCH_ROWS` | `200` | 1 to 200 |
+| `tasks.deliveryRetention.batchBytes` | `KANDEV_TASK_DELIVERY_RETENTION_BATCH_BYTES` | `4194304` | 1048576 to 4194304 |
+
+`interval` controls idle rechecks after work is exhausted or maintenance is busy. Productive cleanup continues immediately without inter-batch or inter-pass sleeps.
+
+`batchRows` sets a candidate ceiling. Background event and settled-prompt batches target at most 50 candidates, respecting lower configured ceilings. Other cleanup batches can use the configured ceiling.
+
+Automatic cleanup preserves canonical history and unresolved recovery evidence.
+Grace controls eligible raw payload removal. Replay age and event count bound recent duplicate receipts.
+Safety checks apply at every configured value. Protected data has no forced expiry.
+See [delivery retention operations](operations.md#backend-delivery-retention) for backups, rollback, logs, and physical reclamation.
 
 ### Capacity and managed-process startup settings
 
@@ -325,6 +352,13 @@ Active and closed backend files use at most 256 MiB in total. Kandev removes the
 Normal launches write info and above to the file and warn and above to stdout. `--debug` writes debug and above to the file while stdout remains warn and above. `--verbose` writes info and above to both. The format default becomes JSON when `KUBERNETES_SERVICE_HOST` is non-empty or `KANDEV_ENV` is exactly `production`/`prod`; otherwise it is text.
 
 Debug output may contain repository paths, subprocess output, prompts, file content, and tool-call data. Treat it as sensitive.
+
+Managed agentctl children use `AGENTCTL_LOG_FORMAT=json` so their stdout
+records pass through the backend relay's privacy projection. Approved probe
+diagnostics remain in the message; unrelated structured fields are omitted. The
+backend overrides an inherited value. `AGENTCTL_LOG_FORMAT` still configures
+agentctl processes started independently; it does not change the backend's
+`logging.format` setting.
 
 ### Repository, worktree, and clone paths
 
@@ -537,7 +571,6 @@ Copying this entire file is unnecessary and can freeze old defaults in a deploym
 | `features.auth`                  | `KANDEV_FEATURES_AUTH`                    | off                | Experimental authentication, users, per-user workspaces, and team access.                                                                                                                                                                                                                                                                                                                                      |
 | `features.multiTenancy`          | `KANDEV_FEATURES_MULTI_TENANCY`           | off                | Experimental organizations above authenticated users. Requires `features.auth`; startup is refused otherwise.                                                                                                                                                                                                                                                                                                  |
 | `features.dynamicAgentRouting`   | `KANDEV_FEATURES_DYNAMIC_AGENT_ROUTING`   | off                | Experimental dynamic profiles with ordered provider-error fallback.                                                                                                                                                                                                                                                                                                                                            |
-| `features.providerInterruptionContinuation` | `KANDEV_FEATURES_PROVIDER_INTERRUPTION_CONTINUATION` | off | Experimental same-conversation continuation after supported Cursor ACP interruptions with output or completed reads. High risk, restart required. Writes and uncertain work remain manual. See [session recovery](sessions-and-review.md#experimental-interruption-continuation). |
 | `features.lspBrowserContinuity` | `KANDEV_FEATURES_LSP_BROWSER_CONTINUITY` | on | Retains supported task-host language-server leases across browser disconnects for up to one hour. Restart required; an explicit false value restores browser-owned cleanup. |
 | `features.canvases`              | `KANDEV_FEATURES_CANVASES`                | off                | Experimental agent-authored isolated web-app canvases for tasks and workspaces. High risk.                                                                                                                                                                                                                                                                                                                     |
 | `features.needsYouInbox`         | `KANDEV_FEATURES_NEEDS_YOU_INBOX`         | off                | Inbox for clarification questions and failed tasks in the active workspace. The Failed tab shows a bounded list with its own count.                                                                                                                                                                                                                                                                            |

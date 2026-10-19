@@ -61,6 +61,10 @@ type WorkspaceTracker struct {
 	// attached to this workspace. They are deliberately separate from workDir:
 	// a link may point outside the workspace, but only to one of these roots.
 	allowedSourceRoots []string
+	// recoveryArtifactExclusions contains exact, backend-authenticated paths
+	// hidden from workspace discovery. It never changes file access rules.
+	recoveryArtifactExclusions []string
+	recoveryExclusionRevision  uint64
 	// repositoryName identifies the repository this tracker covers when the
 	// agent's workspace is a multi-repo task root. Stamped onto every emitted
 	// GitStatusUpdate / FileListUpdate so the frontend can key per-repo state.
@@ -98,6 +102,7 @@ type WorkspaceTracker struct {
 	// Current state
 	currentStatus types.GitStatusUpdate
 	currentFiles  types.FileListUpdate
+	allFiles      types.FileListUpdate
 	mu            sync.RWMutex
 
 	// Cached git state for detecting manual operations
@@ -157,6 +162,12 @@ type WorkspaceTracker struct {
 	monitorTickTotalNanos atomic.Int64
 	monitorStatsMu        sync.Mutex
 
+	// Slow-mode backoff counters: consecutive completed scans that observed no
+	// change, one per polling loop because each loop has its own observation.
+	// See slowPollInterval.
+	slowIdleMonitorTicks atomic.Uint32
+	slowIdleGitPollTicks atomic.Uint32
+
 	// updateMu prevents concurrent updateGitStatus calls from the two polling loops.
 	// Polling loops use TryLock (skip if busy); RefreshGitStatus uses Lock (always completes).
 	updateMu sync.Mutex
@@ -207,7 +218,10 @@ type WorkspaceTracker struct {
 	gitStatusDetailsWaitJoined           func()                // Optional test synchronization hook; nil in production.
 	// gitStatusBetweenQueries is an optional test hook invoked between the
 	// tracked and untracked queries. It is nil in production.
-	gitStatusBetweenQueries func()
+	gitStatusBetweenQueries func(context.Context)
+	// pollTimerArmed is an optional test hook invoked each time a polling loop
+	// arms its timer, with the loop name and interval. It is nil in production.
+	pollTimerArmed func(loop string, interval time.Duration)
 
 	// Control
 	stopCh          chan struct{}

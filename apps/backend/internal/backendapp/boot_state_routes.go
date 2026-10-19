@@ -82,7 +82,7 @@ func (b bootStateBuilder) tasksPageBootData(ctx context.Context, req *http.Reque
 	repositorySets := b.repositorySetsForState(ctx, activeWorkspaceID, state)
 	repositoryBranchPolicies := b.repositoryBranchPoliciesForState(ctx, activeWorkspaceID, state)
 	steps := b.workflowStepsForWorkspace(ctx, activeWorkspaceID)
-	tasks, total := b.tasksForWorkspace(ctx, activeWorkspaceID, activeWorkflowID, settingsRepositoryID, tasksListSort)
+	tasks, total := b.tasksForWorkspace(ctx, activeWorkspaceID, activeWorkflowID, settingsRepositoryID, usermodels.TasksListApiSort(tasksListSort))
 	routeData := map[string]any{
 		"activeWorkspaceId":        activeWorkspaceID,
 		"workflows":                workflowsToDTOs(workflows),
@@ -730,6 +730,7 @@ func mapUserSettingsState(response userdto.UserSettingsResponse, workspaceID str
 		"terminalFontSize":                  nullInt(settings.TerminalFontSize),
 		"changesPanelLayout":                changesPanelLayout(settings.ChangesPanelLayout),
 		"lastSeenDisplay":                   lastSeenDisplay(settings.LastSeenDisplay),
+		"messageTimeDisplay":                usermodels.NormalizeMessageTimeDisplay(settings.MessageTimeDisplay),
 		"agentTabCloseBehavior":             usermodels.NormalizeAgentTabCloseBehavior(settings.AgentTabCloseBehavior),
 		"azureDevOpsBrowsePreferences":      settings.AzureDevOpsBrowsePreferences,
 		"systemMetricsDisplay": map[string]any{
@@ -737,6 +738,8 @@ func mapUserSettingsState(response userdto.UserSettingsResponse, workspaceID str
 			"simplified":   settings.SystemMetricsDisplay.Simplified,
 		},
 		"appStatusBarEnabled":               settings.AppStatusBarEnabled,
+		"sidebarFastActionsEnabled":         settings.SidebarFastActionsEnabled,
+		"sidebarNewTaskStyle":               settings.SidebarNewTaskStyle,
 		"sidebarHoverEnabled":               settings.SidebarHoverEnabled,
 		"sidebarHoverDelayMs":               settings.SidebarHoverDelayMs,
 		"resolveSessionHostnames":           settings.ResolveSessionHostnames,
@@ -849,6 +852,7 @@ func mapKanbanTaskState(task taskdto.TaskDTO) map[string]any {
 		"isRemoteExecutor":            task.IsRemoteExecutor,
 		"foregroundActivity":          task.ForegroundActivity,
 		"workflowStepId":              task.WorkflowStepID,
+		"identifier":                  nullString(task.Identifier),
 		"title":                       task.Title,
 		"description":                 task.Description,
 		"position":                    task.Position,

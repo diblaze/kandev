@@ -391,6 +391,7 @@ export type TaskFormInputsHandle = {
   getValue: () => string;
   setValue: (v: string) => void;
   getAttachments: () => FileAttachment[];
+  clearAttachments?: () => void;
 };
 
 export type DialogFormState = {

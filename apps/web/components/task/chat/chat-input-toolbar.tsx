@@ -22,6 +22,7 @@ export type ChatInputToolbarProps = {
   mcpSelection?: TaskSessionMCPSelection | null;
   onPlanModeChange: (enabled: boolean) => void;
   sessionId: string | null;
+  detailActive?: boolean;
   taskId: string | null;
   taskTitle?: string;
   taskDescription: string;
@@ -117,6 +118,7 @@ function MinimalToolbar({
 }
 
 const toolbarDefaults = {
+  detailActive: true,
   planModeAvailable: true,
   mcpServers: [] as string[],
   submitKey: "cmd_enter" as const,
@@ -174,6 +176,7 @@ export const ChatInputToolbar = memo(function ChatInputToolbar(rawProps: ChatInp
         mcpAttachmentHistory={props.mcpAttachmentHistory}
         mcpSelection={props.mcpSelection}
         sessionId={props.sessionId}
+        detailActive={props.detailActive}
         taskId={props.taskId}
         taskTitle={props.taskTitle}
         onAttachFiles={props.onAttachFiles}

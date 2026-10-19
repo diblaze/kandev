@@ -283,7 +283,19 @@ func TestApplyPendingSessionMCPFailurePreservesAppliedRevision(t *testing.T) {
 	}
 }
 
-func newSessionMCPClient(t *testing.T, failResume, supportsResume, supportsLoad bool) (*agentctl.Client, <-chan string, func()) {
+func newSessionMCPClient(t *testing.T, failResume, supportsResume, supportsLoad bool, beforeSession ...func()) (*agentctl.Client, <-chan string, func()) {
+	var beforeRequest func(string)
+	if len(beforeSession) > 0 {
+		beforeRequest = func(action string) {
+			if action == "agent.session.load" {
+				beforeSession[0]()
+			}
+		}
+	}
+	return newSessionMCPClientWithHooks(t, failResume, supportsResume, supportsLoad, beforeRequest)
+}
+
+func newSessionMCPClientWithHooks(t *testing.T, failResume, supportsResume, supportsLoad bool, beforeRequest func(string)) (*agentctl.Client, <-chan string, func()) {
 	t.Helper()
 	actions := make(chan string, 8)
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
@@ -303,6 +315,9 @@ func newSessionMCPClient(t *testing.T, failResume, supportsResume, supportsLoad 
 				continue
 			}
 			actions <- msg.Action
+			if beforeRequest != nil {
+				beforeRequest(msg.Action)
+			}
 			var response *ws.Message
 			switch msg.Action {
 			case "agent.initialize":

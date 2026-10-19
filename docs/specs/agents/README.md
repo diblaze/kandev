@@ -38,6 +38,8 @@ session-activity authority remain with Tasks and Platform.
 - [Agent Resume and Runtime Recovery](requirements/agent-resume-runtime-recovery.md)
 - [Agent Rich Output](requirements/agent-rich-output.md)
 - [Agent Stall Recovery](requirements/agent-stall-recovery.md)
+- [Google Antigravity ACP Agent](requirements/antigravity-acp-agent.md)
+- [Agent Install Detection Bounds](requirements/agent-install-detection-bounds.md)
 - [Collapsible Agent Blocks on the Agents Settings Page](requirements/collapsible-agent-blocks.md)
 - [Cursor Subagent Metadata](requirements/cursor-subagent-metadata.md)
 - [Dynamic Agent Routing Rollout Blockers](requirements/dynamic-agent-routing-rollout-blockers.md)
@@ -52,6 +54,10 @@ session-activity authority remain with Tasks and Platform.
 - [Mock-agent slow command duration syntax](requirements/mock-agent-slow-duration.md)
 - [Native Code Review](requirements/native-code-review.md)
 - [No Silent Model Fallback](requirements/no-silent-model-fallback.md)
+- [Harness session continuity](requirements/harness-session-continuity.md) (draft)
+- [Agent MCP Timeout Budgets](requirements/mcp-timeout-budgets.md)
+- [No Silent Model Fallback](requirements/no-silent-model-fallback.md), including
+  profile-selector warning placement and executor-authoritative task warnings.
 - [Copy agent configuration to isolated executors](requirements/portable-agent-configuration.md)
 - [Disable an Agent Profile](requirements/profile-disable.md)
 - [Agent Profile Recent Use](requirements/profile-recent-use.md)
@@ -59,15 +65,23 @@ session-activity authority remain with Tasks and Platform.
 - [Agent Roles — Security, QA, and DevOps](requirements/roles.md)
 - [Managed npm runtime recovery](requirements/managed-npm-runtime-recovery.md)
 - [Managed Agent Runtime Versions and Updates](requirements/runtime-updates.md)
+- [MCP Bridge Reliability](requirements/mcp-bridge-reliability.md)
+- [MCP Protocol Compatibility](requirements/mcp-protocol-compatibility.md)
+- [MCP tool discovery guidance](requirements/mcp-tool-discovery-guidance.md)
 - [Simplify the agent settings profile layout](requirements/settings-profile-layout.md)
 - [Spawn Session Effective Agent Profile](requirements/spawn-session-effective-profile.md)
 - [Subagent context persistence](requirements/subagent-context-persistence.md)
 - [Profile-backed Utility Agents](requirements/utility-agent-profiles.md)
 - [Workspace MCP Configuration](requirements/workspace-mcp-configuration.md)
+- [Plan injection budget](requirements/plan-injection-budget-01.md)
+- [Probe Failure Diagnostics](requirements/probe-failure-diagnostics.md)
 
 ### System design
 
 - [Agent Resume and Runtime Recovery](system-design/agent-resume-runtime-recovery.md)
+- [Google Antigravity ACP Agent](system-design/antigravity-acp-agent.md)
+- [Agent Install Detection Bounds](system-design/agent-install-detection-bounds.md)
+- [Harness session continuity](system-design/harness-session-continuity.md) (draft)
 - [Injected Skill Naming](system-design/injected-skill-naming.md)
 - [Injected Skill Naming Migration](system-design/injected-skill-naming-migration.md)
 - [Dynamic Agent Routing System Design Part 1](system-design/dynamic-agent-routing-01.md)
@@ -78,6 +92,11 @@ session-activity authority remain with Tasks and Platform.
 - [Managed Agent Runtime Versions and Updates System Design Part 1](system-design/runtime-updates-01.md)
 - [Managed Agent Runtime Versions and Updates System Design Part 2](system-design/runtime-updates-02.md)
 - [Managed npm runtime recovery](system-design/managed-npm-runtime-recovery.md)
+- [Managed Runtime Default Activation](system-design/runtime-default-activation.md)
+- [MCP Bridge Reliability](system-design/mcp-bridge-reliability.md)
+- [Agent MCP Timeout Budgets](system-design/mcp-timeout-budgets.md)
+- [MCP Protocol Compatibility](system-design/mcp-protocol-compatibility.md)
+- [MCP tool discovery guidance](system-design/mcp-tool-discovery-guidance.md)
 - [Subagent context persistence System Design Part 1](system-design/subagent-context-persistence-01.md)
 - [Subagent context persistence System Design Part 2](system-design/subagent-context-persistence-02.md)
 - [Subagent context persistence System Design Part 3](system-design/subagent-context-persistence-03.md)
@@ -89,6 +108,10 @@ session-activity authority remain with Tasks and Platform.
 - [Profile-backed Utility Agents](system-design/utility-agent-profiles.md)
 - [Workspace MCP Configuration](system-design/workspace-mcp-configuration.md)
 - [Workspace MCP pending comparison](system-design/workspace-mcp-pending-changes.md)
+- [Workspace MCP setup and resolution delivery](system-design/workspace-mcp-resolution-delivery.md)
+- [Plan injection budget System Design Part 1](system-design/plan-injection-budget-01.md)
+- [Plan injection budget System Design Part 2](system-design/plan-injection-budget-02.md)
+- [Probe Failure Diagnostics](system-design/probe-failure-diagnostics.md)
 
 ## Migration record
 

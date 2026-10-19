@@ -31,6 +31,11 @@ and distinguish adding a definition from installing/starting a server.
 
 ## Functional finding: global profile catalog picker is absent
 
+**Delivery disposition (2026-10-19):** the user deferred this UI to unstarted
+follow-up `ee292a1d-3d53-4b86-965c-6fe4a8ae217e`. The reproduction below remains
+valid; this PR does not claim to complete the global-profile picker. Existing
+workspace-scoped global-profile association/resolution contracts remain intact.
+
 [Profile MCP routing](../../../apps/web/app/settings/agents/[agentId]/profile-mcp-config-card.tsx:450)
 returns the catalog picker only when a saved profile has `workspaceId` supplied.
 [The profile page](../../../apps/web/components/settings/agent-profile-page.tsx:314)

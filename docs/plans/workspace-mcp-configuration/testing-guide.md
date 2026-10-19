@@ -4,10 +4,11 @@ Start with the [inheritance task](http://localhost:48595/t/f2a32026-ffcc-458a-86
 and open **MCP plug > Customize**. Allow **25 to 35 minutes** for the main sweep,
 plus **10 to 15 minutes** for the optional real-provider checks.
 
-This guide covers the workspace MCP feature and the local follow-up fixes on
-`feature/unify-mcp-store-and-30e`. It describes the local code and isolated
-preview, not proof that the same code is already on GitHub's PR head. The
-commit request does not publish or merge the branch.
+This guide covers PR #3293 and its follow-up fixes. The pod-local links refer to
+the original seeded sandbox, whose running build must be checked before manual
+verification. Current integrated runtime and browser evidence is recorded in
+[merge readiness](merge-readiness.md); older sandbox receipts do not establish
+that the final PR head passed. Publishing the PR does not authorize merging it.
 
 **Review repair coverage (2026-10-19):** sections 3, 4 and 8 cover the single
 repository disclosure, shared choice metadata and mobile Connections geometry.
@@ -32,14 +33,20 @@ and regression evidence.
 not included. Inherited rows should remain read-only in this PR. Workspace-wide
 disabling is a different operation and already exists.
 
-**Known functional gap:** global agent profiles still route to the legacy JSON
-editor instead of the workspace catalog picker. The sandbox's registered agents
-are global, so the full profile-picker UI cannot be completed there. This was
-reproduced before this guide and is documented in the
-[consistency review](ux-consistency-review.md#functional-finding-global-profile-catalog-picker-is-absent).
-Record it as an unresolved PR coverage gap, not a successful profile test. The
-PR's declared global-profile scope needs resolution or an explicit scope change
-before claiming that requirement is complete.
+**Deferred profile UI:** global agent profiles still use the legacy JSON editor.
+The user explicitly moved global-profile catalog navigation and management/status
+clarity to unstarted follow-up task `ee292a1d-3d53-4b86-965c-6fe4a8ae217e`, based on
+this PR. Workspace-owned profiles have the shared picker. The original sandbox
+agents are global, so do not count their legacy editor as a successful catalog
+picker test. Existing API/resolution support for workspace-scoped global-profile
+associations is separate from the deferred UI. The original reproduction is in
+the [consistency review](ux-consistency-review.md#functional-finding-global-profile-catalog-picker-is-absent).
+
+### Review repair checks
+
+In Configured, edit an existing executable with arguments containing spaces, an empty argument and a path. Change only its description, save, reopen and confirm each argument retains its own row. Add an environment value and bind a credential through Secret bindings; after saving and reopening, the reference remains selected and its value is never displayed. Repeat on a phone and check every control is reachable without horizontal scrolling.
+
+In Marketplace, inspect a choice with required inputs. Add MCP server stays disabled until required values and secret references are complete. Unsupported variable substitutions or argument inputs explain why the choice is unavailable. In a direct selection list, a previously selected definition that was later disabled can be unchecked but cannot be newly selected. In Connections, an unreadable secret produces an unavailable row with a safe explanation while other MCPs continue to attach.
 
 ## Surface map
 

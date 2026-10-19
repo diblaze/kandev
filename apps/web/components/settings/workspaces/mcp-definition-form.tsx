@@ -10,6 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@kandev/ui/textarea";
 import { IconArrowLeft, IconDeviceFloppy } from "@tabler/icons-react";
 import { useSettingsSaveContributor } from "@/components/settings/settings-save-provider";
+import { MCPArgumentsField } from "./mcp-arguments-field";
+import { MCPSecretFields, MCPValueFields } from "./mcp-config-fields";
+import {
+  mcpValueRows,
+  mcpValueRecord,
+  validMCPInputNames,
+  type MCPValueRow,
+} from "@/components/mcp/mcp-config-inputs";
 import type {
   MCPDefinitionInput,
   MCPExecutionMode,
@@ -26,11 +34,13 @@ type FormDraft = {
   mode: MCPExecutionMode;
   transport: MCPTransport;
   command: string;
-  args: string;
+  args: string[];
   url: string;
   packageName: string;
   packageVersion: string;
   configuration: MCPServerConfiguration;
+  environment: MCPValueRow[];
+  headers: MCPValueRow[];
   secretBindings: MCPSecretBinding[];
 };
 
@@ -52,11 +62,13 @@ function emptyDraft(): FormDraft {
     mode: "existing_executable",
     transport: "stdio",
     command: "",
-    args: "",
+    args: [],
     url: "",
     packageName: "",
     packageVersion: "",
     configuration: {},
+    environment: [],
+    headers: [],
     secretBindings: [],
   };
 }
@@ -85,29 +97,36 @@ function draftFromServer(server?: MCPServerDefinition | null): FormDraft {
     mode: server.execution_mode,
     transport: server.transport,
     command: config?.command ?? "",
-    args: (config?.args ?? []).join(" "),
+    args: [...(config?.args ?? [])],
     url: config?.url ?? "",
     packageName: config?.package_name ?? "",
     packageVersion: config?.package_version ?? "",
     configuration: cloneConfiguration(config),
+    environment: mcpValueRows(config.env),
+    headers: mcpValueRows(config.headers),
     secretBindings: [...(server.secret_bindings ?? [])],
   };
 }
 
 function toConfiguration(draft: FormDraft): MCPServerConfiguration {
-  if (draft.mode === "remote") return { ...draft.configuration, url: draft.url.trim() };
+  const configuration = {
+    ...draft.configuration,
+    env: mcpValueRecord(draft.environment, draft.mode === "remote" ? [] : draft.secretBindings),
+    headers: mcpValueRecord(draft.headers, draft.mode === "remote" ? draft.secretBindings : []),
+  };
+  if (draft.mode === "remote") return { ...configuration, url: draft.url.trim() };
   if (draft.mode === "managed_package") {
     return {
-      ...draft.configuration,
+      ...configuration,
       package_type: "npm",
       package_name: draft.packageName.trim(),
       package_version: draft.packageVersion.trim(),
     };
   }
   return {
-    ...draft.configuration,
+    ...configuration,
     command: draft.command.trim(),
-    args: draft.args.trim() ? draft.args.trim().split(/\s+/) : [],
+    args: [...draft.args],
   };
 }
 
@@ -139,6 +158,14 @@ function validateDraft(draft: FormDraft, t: (key: string) => string): string | n
   }
   if (draft.mode === "existing_executable" && !draft.command.trim()) {
     return t("settings:mcpCommandRequired");
+  }
+  const values = draft.mode === "remote" ? draft.headers : draft.environment;
+  if (
+    !validMCPInputNames(values.map((row) => row.name)) ||
+    !validMCPInputNames(draft.secretBindings.map((binding) => binding.input_name)) ||
+    draft.secretBindings.some((binding) => !binding.secret_id)
+  ) {
+    return t("settings:mcpInputsInvalid");
   }
   return null;
 }
@@ -247,14 +274,7 @@ function ModeFields({
         placeholder="node"
         description={t("settings:mcpExecutableHelp")}
       />
-      <FormField
-        id="mcp-args"
-        label={t("settings:mcpArguments")}
-        value={draft.args}
-        onChange={(args) => setDraft({ args })}
-        placeholder="server.js"
-        description={t("settings:mcpArgumentsHelp")}
-      />
+      <MCPArgumentsField values={draft.args} onChange={(args) => setDraft({ args })} />
     </>
   );
 }
@@ -294,10 +314,12 @@ function MCPDefinitionFormHeader({
 }
 
 function MCPDefinitionFormBody({
+  workspaceId,
   draft,
   setDraft,
   error,
 }: {
+  workspaceId: string;
   draft: FormDraft;
   setDraft: (next: Partial<FormDraft>) => void;
   error: string | null;
@@ -351,6 +373,18 @@ function MCPDefinitionFormBody({
         <p className="text-xs text-muted-foreground">{t(`settings:mcpModeHelp_${draft.mode}`)}</p>
       </div>
       <ModeFields draft={draft} setDraft={setDraft} />
+      <MCPValueFields
+        title={t(draft.mode === "remote" ? "settings:mcpHeaders" : "settings:mcpEnvironment")}
+        values={draft.mode === "remote" ? draft.headers : draft.environment}
+        onChange={(values) =>
+          setDraft(draft.mode === "remote" ? { headers: values } : { environment: values })
+        }
+      />
+      <MCPSecretFields
+        workspaceId={workspaceId}
+        bindings={draft.secretBindings}
+        onChange={(secretBindings) => setDraft({ secretBindings })}
+      />
       {error && (
         <p className="text-sm text-destructive" role="alert">
           {error}
@@ -415,7 +449,12 @@ export function MCPDefinitionForm({
       data-testid="mcp-definition-form"
     >
       <MCPDefinitionFormHeader server={server} saving={saving} onClose={onClose} />
-      <MCPDefinitionFormBody draft={draft} setDraft={setDraft} error={error} />
+      <MCPDefinitionFormBody
+        workspaceId={workspaceId}
+        draft={draft}
+        setDraft={setDraft}
+        error={error}
+      />
     </section>
   );
 }

@@ -43,10 +43,14 @@ export function resolveRecoveryHistoryState(
   const currentStamp = currentError ? lastAgentErrorStamp(currentError) : undefined;
   const activeOwner = ownerMessageId === comment.id;
   const isHistorical = Boolean(messageStamp && currentStamp && messageStamp !== currentStamp);
+  const cleanupFailure = normalizeAgentErrorCauses(metadata.causes).some(
+    (cause) => cause.operation === "resume" && cause.code === "runtime_cleanup_failed",
+  );
   if (
     activeOwner ||
     isRecoveryMessageDismissed(comment, metadata, sessionMetadata) ||
-    isHistorical
+    isHistorical ||
+    cleanupFailure
   ) {
     return { activeOwner };
   }
@@ -173,7 +177,7 @@ function historicalRecoveryPresentation(
 ) {
   const causes = normalizeAgentErrorCauses(metadata?.causes);
   if (!hasHistoricalRecoveryEvidence(causes, metadata)) return null;
-  return buildRecoveryCardModel({
+  const recoveryModel = buildRecoveryCardModel({
     error: {
       session_id: comment.session_id ?? undefined,
       stamp: String(metadata?.recovery_stamp ?? metadata?.error_stamp ?? ""),
@@ -189,6 +193,13 @@ function historicalRecoveryPresentation(
     recoveryNotice: null,
     translate,
   });
+  if (metadata?.phase !== "bootstrap" && causes.length === 0) {
+    return {
+      ...recoveryModel,
+      summary: readableFailureSummary(comment.content) ?? translate("task:anErrorOccurred"),
+    };
+  }
+  return recoveryModel;
 }
 
 function hasHistoricalRecoveryEvidence(
@@ -196,6 +207,8 @@ function hasHistoricalRecoveryEvidence(
   metadata: ActionMeta | undefined,
 ): boolean {
   return (
-    causes.length > 0 || Boolean(metadata?.phase || metadata?.attempt_id || metadata?.execution_id)
+    causes.length > 0 ||
+    metadata?.phase === "bootstrap" ||
+    Boolean(metadata?.attempt_id || metadata?.execution_id)
   );
 }

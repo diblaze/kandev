@@ -1603,6 +1603,8 @@ func TestHandleTaskPRCIAutomationAutoMergeUsesPartialSyncMatch(t *testing.T) {
 		HeadSHA:        "head-a",
 		LastSyncedAt:   &now,
 	}
+	stale := *pr
+	stale.LastSyncedAt = nil
 	ghSvc := &mockGitHubService{
 		ciOptionsResp: &github.TaskCIOptionsResponse{
 			TaskID:           "task-1",
@@ -1613,8 +1615,11 @@ func TestHandleTaskPRCIAutomationAutoMergeUsesPartialSyncMatch(t *testing.T) {
 	}
 	svc.SetGitHubService(ghSvc)
 
-	if err := svc.handleTaskPRCIAutomation(ctx, pr); err != nil {
+	if err := svc.handleTaskPRCIAutomation(ctx, &stale); err != nil {
 		t.Fatalf("handle auto-merge: %v", err)
+	}
+	if ghSvc.triggerPRSyncAllCalls != 1 {
+		t.Fatalf("sync calls = %d, want 1", ghSvc.triggerPRSyncAllCalls)
 	}
 	if ghSvc.mergeCalls != 1 {
 		t.Fatalf("expected matching partial sync result to merge, got %d calls", ghSvc.mergeCalls)
@@ -3400,7 +3405,7 @@ func TestHandleTaskCIOptionsUpdatedRecordsPartialSyncFailureOnlyForUnsyncedPRs(t
 	}
 }
 
-func TestStartTaskPRCIAutomationSkipsDuplicateInFlightPR(t *testing.T) {
+func TestStartTaskPRCIAutomationCoalescesDuplicateInFlightPR(t *testing.T) {
 	ctx := context.Background()
 	repo := setupTestRepo(t)
 	seedTaskAndSession(t, repo, "task-1", "session-1", models.TaskSessionStateRunning)
@@ -3422,8 +3427,9 @@ func TestStartTaskPRCIAutomationSkipsDuplicateInFlightPR(t *testing.T) {
 
 	close(block)
 	waitForCIAutomationIdle(t, svc, "task-1|repo-1|42", 200*time.Millisecond)
-	svc.startTaskPRCIAutomation(ctx, pr)
 	waitForCIOptionsCalls(t, ghSvc, 2, 200*time.Millisecond)
+	svc.startTaskPRCIAutomation(ctx, pr)
+	waitForCIOptionsCalls(t, ghSvc, 3, 200*time.Millisecond)
 }
 
 func waitForCIOptionsCalls(t *testing.T, ghSvc *mockGitHubService, want int, timeout time.Duration) {

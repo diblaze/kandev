@@ -33,18 +33,24 @@ type Icon struct {
 
 // Argument represents a Registry runtime or package argument.
 type Argument struct {
-	Name        string `json:"name,omitempty"`
-	Value       string `json:"value,omitempty"`
-	Description string `json:"description,omitempty"`
+	Type        string                   `json:"type,omitempty"`
+	IsRequired  bool                     `json:"isRequired,omitempty"`
+	IsSecret    bool                     `json:"isSecret,omitempty"`
+	Format      string                   `json:"format,omitempty"`
+	Variables   map[string]KeyValueInput `json:"variables,omitempty"`
+	Name        string                   `json:"name,omitempty"`
+	Value       string                   `json:"value,omitempty"`
+	Description string                   `json:"description,omitempty"`
 }
 
 // KeyValueInput represents a Registry environment variable or header input.
 type KeyValueInput struct {
-	Name        string `json:"name,omitempty"`
-	Value       string `json:"value,omitempty"`
-	Description string `json:"description,omitempty"`
-	IsRequired  bool   `json:"isRequired,omitempty"`
-	IsSecret    bool   `json:"isSecret,omitempty"`
+	Variables   map[string]KeyValueInput `json:"variables,omitempty"`
+	Name        string                   `json:"name,omitempty"`
+	Value       string                   `json:"value,omitempty"`
+	Description string                   `json:"description,omitempty"`
+	IsRequired  bool                     `json:"isRequired,omitempty"`
+	IsSecret    bool                     `json:"isSecret,omitempty"`
 }
 
 // Transport is the transport object nested in a Registry package or remote.
@@ -160,6 +166,7 @@ type InstallRequest struct {
 	RuntimeName      string
 	DisplayName      string
 	SecretBindings   []SecretBindingInput
+	InputValues      map[string]string
 }
 
 // SecretBindingInput carries a workspace secret reference selected during review.

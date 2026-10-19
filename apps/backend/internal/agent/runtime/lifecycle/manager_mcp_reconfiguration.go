@@ -5,16 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kandev/kandev/internal/agent/mcpconfig"
+	agentctl "github.com/kandev/kandev/internal/agent/runtime/agentctl"
 	agentctltypes "github.com/kandev/kandev/internal/agentctl/types"
+	"github.com/kandev/kandev/internal/agentctl/types/streams"
 	v1 "github.com/kandev/kandev/pkg/api/v1"
 	"go.uber.org/zap"
 )
 
 const (
-	sessionMCPFailureResume = "session_resume_failed"
-	sessionMCPFailureLoad   = "session_load_failed"
+	sessionMCPFailureResume             = "session_resume_failed"
+	sessionMCPFailureLoad               = "session_load_failed"
+	sessionMCPReconfigurationTimeout    = 2 * time.Minute
+	sessionMCPFailurePersistenceTimeout = 5 * time.Second
 )
 
 // RequestSessionMCPReconfiguration schedules an MCP update for an existing
@@ -36,6 +41,8 @@ func (m *Manager) RequestSessionMCPReconfiguration(ctx context.Context, sessionI
 // ACP session is idle. promptLifecycleMu is held across the provider call so
 // no turn can start while the agent changes its session configuration.
 func (m *Manager) applyPendingSessionMCP(ctx context.Context, sessionID string) error {
+	ctx, cancel := context.WithTimeout(ctx, sessionMCPReconfigurationTimeout)
+	defer cancel()
 	state, err := m.mcpStateRepo.GetMCPSelectionState(ctx, sessionID)
 	if errors.Is(err, mcpconfig.ErrMCPSelectionStateNotFound) {
 		return nil
@@ -51,12 +58,26 @@ func (m *Manager) applyPendingSessionMCP(ctx context.Context, sessionID string) 
 		return m.saveDeferredSessionMCP(ctx, sessionID)
 	}
 
+	generation := execution.startupAttemptSnapshot()
+	var applyErr error
+	accepted := execution.withStartupAttempt(generation, func(string) { applyErr = m.applyPendingSessionMCPLeased(ctx, execution) })
+	if !accepted {
+		return m.savePendingSessionMCP(ctx, sessionID)
+	}
+	return applyErr
+}
+
+// Startup callbacks take their lease before the prompt lock. Keep that order
+// across the bounded reconnect and acceptance, without acquiring it again.
+func (m *Manager) applyPendingSessionMCPLeased(ctx context.Context, execution *AgentExecution) error {
+	sessionID := execution.SessionID
+
 	execution.promptLifecycleMu.Lock()
 	defer execution.promptLifecycleMu.Unlock()
 	// The selection can change while the execution lock is being acquired.
 	// Re-read it here so this operation cannot apply an older revision and
 	// overwrite the newer request's state when it completes.
-	state, err = m.mcpStateRepo.GetMCPSelectionState(ctx, sessionID)
+	state, err := m.mcpStateRepo.GetMCPSelectionState(ctx, sessionID)
 	if errors.Is(err, mcpconfig.ErrMCPSelectionStateNotFound) {
 		return nil
 	}
@@ -69,14 +90,19 @@ func (m *Manager) applyPendingSessionMCP(ctx context.Context, sessionID string) 
 	if execution.Status != v1.AgentStatusReady {
 		return m.savePendingSessionMCP(ctx, sessionID)
 	}
-	if execution.IsPassthrough || execution.agentctl == nil || execution.ACPSessionID == "" {
+	client, release := execution.AcquireAgentCtlClient()
+	defer release()
+	if execution.IsPassthrough || client == nil || execution.ACPSessionID == "" {
+		return m.saveDeferredSessionMCP(ctx, sessionID)
+	}
+	if !client.SupportsSessionResume() && !client.SupportsSessionLoad() {
 		return m.saveDeferredSessionMCP(ctx, sessionID)
 	}
 
-	return m.reconfigureIdleSessionMCP(ctx, execution, state)
+	return m.reconfigureIdleSessionMCP(ctx, execution, state, client)
 }
 
-func (m *Manager) reconfigureIdleSessionMCP(ctx context.Context, execution *AgentExecution, state mcpconfig.SessionMCPSelectionState) error {
+func (m *Manager) reconfigureIdleSessionMCP(ctx context.Context, execution *AgentExecution, state mcpconfig.SessionMCPSelectionState, client *agentctl.Client) error {
 	sessionID := execution.SessionID
 
 	// session/load and session/resume can reset provider-owned runtime settings.
@@ -88,42 +114,48 @@ func (m *Manager) reconfigureIdleSessionMCP(ctx context.Context, execution *Agen
 	if err != nil {
 		return m.saveFailedSessionMCP(ctx, sessionID, state.DesiredRevision, err)
 	}
-	servers, err := m.resolveMcpServers(ctx, execution, agentConfig)
+	if runtime := agentConfig.Runtime(); runtime != nil && runtime.ProjectMCPStrategy != nil {
+		return m.saveDeferredSessionMCP(ctx, sessionID)
+	}
+
+	operation, err := m.prepareExecutionMCP(ctx, execution, agentConfig)
 	if err != nil {
 		return m.saveFailedSessionMCP(ctx, sessionID, state.DesiredRevision, err)
 	}
-	setup, revision, captured := execution.capturedMCPSetup()
+	setup, revision, captured := operation.setup, operation.revision, operation.captured
 	if !captured {
 		revision = state.DesiredRevision
 	}
-	if mcpErr := m.applySessionMCPWithAgent(ctx, execution, servers); mcpErr != nil {
+	attemptID, mcpErr := m.applySessionMCPWithAgent(operation.context(ctx), client, execution, operation.servers)
+	if mcpErr != nil {
 		return m.saveFailedSessionMCP(ctx, sessionID, revision, mcpErr)
 	}
-	if err := m.restoreSessionRuntimeConfig(ctx, execution, execution.ACPSessionID, runtimeConfig); err != nil {
+	if err := m.restoreSessionRuntimeConfigWithClient(ctx, execution, client, execution.ACPSessionID, runtimeConfig); err != nil {
 		return m.saveFailedSessionMCP(ctx, sessionID, state.DesiredRevision, err)
 	}
-	return m.saveAppliedSessionMCP(ctx, sessionID, revision, execution.agentctl.GetLastAttachmentAttemptID(), setup)
+	return m.saveAppliedSessionMCP(ctx, sessionID, revision, attemptID, setup)
 }
 
-func (m *Manager) applySessionMCPWithAgent(ctx context.Context, execution *AgentExecution, servers []agentctltypes.McpServer) error {
+func (m *Manager) applySessionMCPWithAgent(ctx context.Context, client *agentctl.Client, execution *AgentExecution, servers []agentctltypes.McpServer) (string, error) {
 	var err error
-	client := execution.agentctl
+	var attemptID string
 	if client.SupportsSessionResume() {
-		err = client.ResumeSession(ctx, execution.ACPSessionID, execution.WorkspacePath, servers)
+		attemptID, err = client.ResumeSessionWithResult(ctx, execution.ACPSessionID, execution.WorkspacePath, servers)
 		if err == nil {
-			return nil
+			return attemptID, nil
 		}
 		if !client.SupportsSessionLoad() {
-			return fmt.Errorf("%s: %w", sessionMCPFailureResume, err)
+			return "", fmt.Errorf("%s: %w", sessionMCPFailureResume, err)
 		}
 	}
 	if client.SupportsSessionLoad() {
-		if err := client.LoadSession(ctx, execution.ACPSessionID, servers); err != nil {
-			return fmt.Errorf("%s: %w", sessionMCPFailureLoad, err)
+		attemptID, err = client.LoadSessionWithResult(ctx, execution.ACPSessionID, servers, streams.SessionSettingsPolicyStrict)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", sessionMCPFailureLoad, err)
 		}
-		return nil
+		return attemptID, nil
 	}
-	return errors.New("agent does not support session resume or load")
+	return "", errors.New("agent does not support session resume or load")
 }
 
 func (m *Manager) savePendingSessionMCP(ctx context.Context, sessionID string) error {
@@ -141,10 +173,14 @@ func (m *Manager) saveDeferredSessionMCP(ctx context.Context, sessionID string) 
 			return
 		}
 		state.ApplyState = mcpconfig.SessionMCPApplyStateDeferredRestart
+		state.FailureCode = ""
+		state.FailureSummary = ""
 	})
 }
 
 func (m *Manager) saveFailedSessionMCP(ctx context.Context, sessionID string, operationRevision int64, cause error) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sessionMCPFailurePersistenceTimeout)
+	defer cancel()
 	code := sessionMCPFailureResume
 	if strings.Contains(cause.Error(), sessionMCPFailureLoad) {
 		code = sessionMCPFailureLoad

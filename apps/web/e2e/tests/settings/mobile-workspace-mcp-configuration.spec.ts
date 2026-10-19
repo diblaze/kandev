@@ -1,3 +1,4 @@
+import { checkMCPSetupInputs, checkUnsupportedMCPArguments } from "../../helpers/mcp-setup-inputs";
 import { checkRepositoryMCPPicker } from "../../helpers/mcp-picker-consistency";
 import { expect, test } from "../../fixtures/test-base";
 import type { ApiClient } from "../../helpers/api-client";
@@ -20,6 +21,21 @@ async function cleanupMCPServers(apiClient: ApiClient, workspaceId: string) {
 test.describe("Workspace MCP configuration on mobile", () => {
   test.afterEach(async ({ apiClient, seedData }) => {
     await cleanupMCPServers(apiClient, seedData.workspaceId);
+  });
+
+  test("preserves arguments and configures values and scoped secret references", async ({
+    testPage,
+    apiClient,
+    seedData,
+  }) => {
+    await checkMCPSetupInputs(testPage, apiClient, seedData.workspaceId, true);
+  });
+
+  test("explains unsupported argument inputs without overflowing the phone review", async ({
+    testPage,
+    seedData,
+  }) => {
+    await checkUnsupportedMCPArguments(testPage, seedData.workspaceId, true);
   });
 
   test("opens repository MCP choices through one disclosure", async ({

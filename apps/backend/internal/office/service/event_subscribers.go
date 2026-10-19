@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -124,13 +125,16 @@ type TaskUpdatedData struct {
 
 // CommentPostedData represents a comment event payload.
 type CommentPostedData struct {
-	TaskID                 string `json:"task_id"`
-	CommentID              string `json:"comment_id"`
-	AuthorID               string `json:"author_id"`
-	AuthorType             string `json:"author_type"`
-	AssigneeAgentProfileID string `json:"assignee_agent_profile_id"`
-	EngineDispatched       string `json:"engine_dispatched"`
-	Source                 string `json:"source"`
+	TaskID                   string `json:"task_id"`
+	CommentID                string `json:"comment_id"`
+	AuthorID                 string `json:"author_id"`
+	AuthorType               string `json:"author_type"`
+	AssigneeAgentProfileID   string `json:"assignee_agent_profile_id"`
+	EngineDispatched         string `json:"engine_dispatched"`
+	EngineRetrySuppressed    string `json:"engine_retry_suppressed"`
+	Source                   string `json:"source"`
+	WorkflowStepID           string `json:"workflow_step_id"`
+	WorkflowStepTransitionID string `json:"workflow_step_transition_id"`
 }
 
 // ApprovalResolvedData represents an approval resolved event payload.
@@ -1293,7 +1297,7 @@ func (s *Service) queueTaskAssignedRun(
 	if fields == nil || !fields.IsFromOffice {
 		return nil
 	}
-	// The current step must accept an auto-started run before this wake is
+	// The current step and blockers must permit assignment before this wake is
 	// queued. See shared.IsAssignmentWakeEligible for the fail-open rationale.
 	if !shared.IsAssignmentWakeEligible(ctx, s.logger, s.repo, s.workflowStepGetter, taskID, "event_subscribers.queue_task_assigned_run") {
 		return nil
@@ -1539,7 +1543,8 @@ func (s *Service) queueCommentRun(ctx context.Context, data CommentPostedData) e
 	if data.TaskID == "" || data.CommentID == "" {
 		return nil
 	}
-	if data.EngineDispatched == commentkeys.EngineDispatchedValue {
+	if data.EngineDispatched == commentkeys.EngineDispatchedValue ||
+		data.EngineRetrySuppressed == commentkeys.EngineDispatchedValue {
 		return nil
 	}
 	// A session-bridged comment mirrors a turn that already ran; it must
@@ -1558,11 +1563,23 @@ func (s *Service) queueCommentRun(ctx context.Context, data CommentPostedData) e
 		return nil
 	}
 	key := commentkeys.TaskComment(data.CommentID)
+	payload := engine.OnCommentPayload{
+		CommentID: data.CommentID,
+		AuthorID:  data.AuthorID,
+	}
+	if data.WorkflowStepID != "" || data.WorkflowStepTransitionID != "" {
+		if data.WorkflowStepID == "" || data.WorkflowStepTransitionID == "" {
+			return fmt.Errorf("comment retry has incomplete workflow entry identity")
+		}
+		transitionID, err := strconv.ParseInt(data.WorkflowStepTransitionID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("parse comment retry workflow entry identity: %w", err)
+		}
+		payload.RetryWorkflowStepID = data.WorkflowStepID
+		payload.RetryWorkflowStepTransitionID = transitionID
+	}
 	return s.dispatchEngineTrigger(ctx, data.TaskID, engine.TriggerOnComment,
-		engine.OnCommentPayload{
-			CommentID: data.CommentID,
-			AuthorID:  data.AuthorID,
-		}, key)
+		payload, key)
 }
 
 // handleApprovalResolved dispatches an on_approval_resolved trigger to

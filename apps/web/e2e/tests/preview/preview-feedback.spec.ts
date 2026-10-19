@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { test } from "../../fixtures/test-base";
+import { mockTurnGate } from "../../helpers/mock-turn-gate";
 import { typeWhileBusy, waitForComposerQueueMode } from "../../helpers/type-while-busy";
 import { routeMainWebSocketWithPreviewFeedbackCreateFailure } from "../../helpers/ws-drop";
 import {
@@ -12,14 +13,16 @@ import {
 } from "./preview-feedback-helpers";
 
 test.describe("Web preview feedback", () => {
-  test.describe.configure({ retries: 1, timeout: 180_000 });
+  test.describe.configure({ retries: 0, timeout: 180_000 });
 
   test("persists multi-route captures and sends them directly or through the queue", async ({
     testPage,
     apiClient,
     seedData,
+    backend,
   }) => {
     const server = await startPreviewServer();
+    const busyTurn = mockTurnGate(backend.tmpDir, "Preview blocking turn completed");
     const createFailure = await routeMainWebSocketWithPreviewFeedbackCreateFailure(testPage);
     try {
       const { session, frame } = await openBrowserPreview(
@@ -63,8 +66,9 @@ test.describe("Web preview feedback", () => {
       await expect(testPage.getByTestId("preview-feedback-draft")).toContainText("$42.00");
       await saveDraft(testPage, "Explain how this generated total was calculated");
 
-      await chooseCapture(testPage, "Select screenshot region", frame);
-      await dragScreenshotRegion(testPage, frame.locator("#save"));
+      await chooseCapture(testPage, "Select screenshot region");
+      await waitForScreenshotCaptureMode(frame);
+      await dragScreenshotRegion(testPage, frame, frame.locator("#save"));
       const screenshotDraft = testPage.getByTestId("preview-feedback-draft");
       await expect(screenshotDraft.getByRole("img", { name: "Screenshot preview" })).toBeVisible({
         timeout: 15_000,
@@ -74,8 +78,9 @@ test.describe("Web preview feedback", () => {
 
       const failedScreenshotComment = "Keep this screenshot comment after create fails";
       createFailure.failNextCreate();
-      await chooseCapture(testPage, "Select screenshot region", frame);
-      await dragScreenshotRegion(testPage, frame.locator("#save"));
+      await chooseCapture(testPage, "Select screenshot region");
+      await waitForScreenshotCaptureMode(frame);
+      await dragScreenshotRegion(testPage, frame, frame.locator("#save"));
       const failedDraft = testPage.getByTestId("preview-feedback-draft");
       await expect(failedDraft.getByRole("img", { name: "Screenshot preview" })).toBeVisible({
         timeout: 15_000,
@@ -181,7 +186,10 @@ test.describe("Web preview feedback", () => {
       await testPage.keyboard.press("Escape");
       await session.waitForChatIdle({ timeout: 45_000 });
 
-      await session.sendMessage("/slow 5s");
+      await session.sendMessage(busyTurn.prompt);
+      await expect(
+        session.activeChat().getByText("Queue blocking turn started", { exact: true }),
+      ).toBeVisible();
       await waitForComposerQueueMode(testPage);
       await session.addBrowserPanel();
       await session.clickTab("Browser");
@@ -198,6 +206,7 @@ test.describe("Web preview feedback", () => {
       await typeWhileBusy(testPage, editor, "Apply the queued preview feedback");
       await session.submitButton().click();
       await expect(testPage.getByTestId("queue-chip")).toBeVisible({ timeout: 15_000 });
+      await busyTurn.release();
 
       const queuedMessage = session
         .activeChat()
@@ -210,6 +219,7 @@ test.describe("Web preview feedback", () => {
       await session.waitForChatIdle({ timeout: 45_000 });
       await expect(session.activeChat()).not.toContainText("1 preview feedback item");
     } finally {
+      await busyTurn.release();
       await apiClient.updateRepository(seedData.repositoryId, { dev_script: "" });
       await server.close();
     }

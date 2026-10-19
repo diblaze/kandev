@@ -506,6 +506,9 @@ func (m *Manager) openNoFollowWorktreePath(worktreePath string) (storageworkspac
 }
 
 func (m *Manager) openReusableWorktreePath(ctx context.Context, worktreePath string, wt *Worktree) (storageworkspaces.DirectoryHandle, bool, error) {
+	if _, err := m.validateWorkspaceAdoptionBinding(ctx, wt); err != nil {
+		return nil, false, err
+	}
 	handle, err := m.validateWorktreePathSafe(worktreePath)
 	if err != nil {
 		return nil, false, err
@@ -1282,9 +1285,16 @@ func (m *Manager) fetchBranchToLocalWithPolicy(
 	if isFetchRefusedCheckedOut(outputStr) {
 		if result := m.retryFetchAsRemoteTrackingRef(ctx, repoPath, branch, prNumber, required); result != nil {
 			if required && result.Warning != "" {
+				detail := strings.TrimSpace(result.WarningDetail)
+				if detail == "" {
+					detail = strings.TrimSpace(result.Warning)
+				}
+				m.logger.Warn("required checkout branch refresh could not verify the refreshed ref",
+					zap.String("branch", branch),
+					zap.String("detail", detail))
 				return nil, fmt.Errorf(
-					"required refresh of checkout branch %q could not verify the refreshed ref: %w",
-					branch, ErrGitCommandFailed,
+					"required refresh of checkout branch %q could not verify the refreshed ref: %s: %w",
+					branch, detail, ErrGitCommandFailed,
 				)
 			}
 			return result, nil
@@ -2178,7 +2188,7 @@ func (m *Manager) recreate(ctx context.Context, existing *Worktree, req CreateRe
 	}
 	refreshedStartPoint := ""
 	if shouldRefreshRecreatedBranch(req, recoveredFromHead, emptyRemoteBaseRef) {
-		sourceBranch, selectedRef, prepareErr := m.prepareRecreatedBranch(ctx, existing, req)
+		sourceBranch, selectedRef, prepareErr := m.prepareRecreatedBranch(ctx, existing, req, exists)
 		if prepareErr != nil {
 			return nil, prepareErr
 		}
@@ -2301,11 +2311,21 @@ func (m *Manager) recreate(ctx context.Context, existing *Worktree, req CreateRe
 }
 
 func (m *Manager) prepareRecreatedBranch(
-	ctx context.Context, existing *Worktree, req CreateRequest,
+	ctx context.Context, existing *Worktree, req CreateRequest, localBranchExists bool,
 ) (string, string, error) {
 	sourceBranch := existing.Branch
 	if req.CheckoutBranch != "" {
 		sourceBranch = req.CheckoutBranch
+	}
+	// Ordinary task branches can remain local until the user publishes them.
+	if localBranchExists && req.CheckoutBranch == "" && req.PRNumber == 0 {
+		remoteExists, err := m.branchExists(ctx, req.RepositoryPath, "refs/remotes/origin/"+sourceBranch)
+		if err != nil {
+			return sourceBranch, "", err
+		}
+		if !remoteExists {
+			return sourceBranch, existing.Branch, nil
+		}
 	}
 	selectedRef, err := m.prepareBranchFromRefreshedOrigin(
 		ctx, req.RepositoryPath, existing.Branch, sourceBranch, req.PRNumber,

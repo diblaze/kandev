@@ -29,6 +29,7 @@ import (
 func provideLifecycleManager(
 	ctx context.Context,
 	cfg *config.Config,
+	runtimeOwner *agentctl.RuntimeOwner,
 	log *logger.Logger,
 	eventBus bus.EventBus,
 	agentSettingsRepo settingsstore.Repository,
@@ -42,6 +43,7 @@ func provideLifecycleManager(
 	mcpPrincipalScoper lifecycle.MCPPrincipalScoper,
 	recoveryDeadlineStart time.Time,
 	inheritedRecordScope lifecycle.InheritedRecordScope,
+	peerCapabilities []string,
 	workspaceInfoProvider lifecycle.WorkspaceInfoProvider,
 	workspaceRecoveryErrorReporter lifecycle.WorkspaceRecoveryErrorReporter,
 	passthroughSessionProvider lifecycle.PassthroughSessionProvider,
@@ -61,30 +63,18 @@ func provideLifecycleManager(
 	executorRegistry := lifecycle.NewExecutorRegistry(log)
 
 	// Standalone runtime is always available (agentctl is a core service)
-	controlClient := agentctl.NewControlClient(
-		cfg.Agent.StandaloneHost,
-		cfg.Agent.StandalonePort,
-		log,
-		agentctl.WithControlAuthToken(cfg.Agent.StandaloneAuthToken),
-	)
-	standaloneExec := lifecycle.NewStandaloneExecutor(
-		controlClient,
-		cfg.Agent.StandaloneHost,
-		cfg.Agent.StandalonePort,
-		log,
-	)
-	// Per-instance servers enforce the same single rotating credential as
-	// the control server -- see the field doc on config.AgentConfig.
-	standaloneExec.SetAuthToken(cfg.Agent.StandaloneAuthToken)
+	standaloneExec := lifecycle.NewStandaloneExecutor(nil, "", 0, log)
+	standaloneExec.SetRuntimeOwner(runtimeOwner)
+	if len(peerCapabilities) > 0 {
+		standaloneExec.SetPeerCapabilities(peerCapabilities)
+	}
 
 	// Create InteractiveRunner for passthrough mode (no WorkspaceTracker, uses callbacks)
 	interactiveRunner := process.NewInteractiveRunner(nil, log, 2*1024*1024) // 2MB buffer
 	standaloneExec.SetInteractiveRunner(interactiveRunner)
 
 	executorRegistry.Register(standaloneExec)
-	log.Info("Standalone runtime registered with passthrough support",
-		zap.String("host", cfg.Agent.StandaloneHost),
-		zap.Int("port", cfg.Agent.StandalonePort))
+	log.Info("Standalone runtime registered with passthrough support")
 
 	// Keep cache cleanup on the shared resolver so SSH, Sprites, Kubernetes, and
 	// Desktop helper use can trigger it after a complete Docker mount inventory.
@@ -144,6 +134,7 @@ func provideLifecycleManager(
 	}
 	importLegacyMCPProfiles(ctx, log, agentSettingsRepo, legacyWorkspaceSource, mcpService)
 	registerMCPDeletionCleanup(eventBus, agentSettingsRepo, log)
+	lifecycleMgr.SetRuntimeOwner(runtimeOwner)
 
 	// Persistence writer for executors_running, wired before Start runs its
 	// recovery pass: Start reads ListLiveStandaloneExecutorsRunning to build

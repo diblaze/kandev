@@ -64,7 +64,7 @@ literal; use `::symlink` for a filename ending in `:symlink`.
 
 ## Prerequisites and trust boundary
 
-The repository must be a valid Git checkout in the executor workspace and the session's `agentctl` must be reachable. Remote commands use the remote named `origin`; configure its URL and credentials in the executor where the command runs before relying on Pull, Push, or change-request creation. Rebase and Merge use `origin` when it exists, or a local base branch when it does not. The workspace's provider automation identity does not replace the task's Git credential policy or executor-local SSH setup; see [Executors](executors.md#workspace-automation-identity-and-task-git-transport).
+The repository must be a valid Git checkout in the executor workspace and the session's `agentctl` must be reachable. Pull follows the current branch's configured upstream remote and source ref, even when the remote or branch name differs from `origin` or the local branch. Managed contribution tasks retain their validated source remote and branch. Configure the selected remote's URL and credentials in the executor where the command runs. Ordinary Push and change-request creation use `origin`, subject to the managed routing described below. Rebase and Merge use `origin` when it exists, or a local base branch when it does not. The workspace's provider automation identity does not replace the task's Git credential policy or executor-local SSH setup; see [Executors](executors.md#workspace-automation-identity-and-task-git-transport).
 
 Git commands from the agent shell and Git actions from the **Changes** panel use different permission paths. The Changes panel sends its Git action through Kandev to `agentctl`. It does not run the action inside the agent shell. The agent shell remains subject to the selected agent's permission mode.
 
@@ -134,7 +134,30 @@ Managed worktrees can remain registered to an older repository clone after the r
 
 If a worktree contains local changes, Resume or **Restore workspace** stops before agent startup and offers **Move files and resume**. Kandev leaves the original worktree untouched until you confirm. It then preserves a recovery snapshot and copies tracked, untracked, and ignored file content, deletions, file modes, and symbolic links to the replacement worktree. Git's index and staging choices do not transfer, so stage the files again before committing. Review the changes after recovery. Kandev blocks worktrees with unsupported filters, sparse checkout, or submodules.
 
+After Kandev completes the relocation, keep using the replacement worktree. New commits, amended commits, rebases, and local edits stay there. A completed relocation record does not pin the branch to the commit from transfer. Resume, **Restore workspace**, and a backend restart use the current worktree. Kandev checks its Git and managed-clone identity before startup.
+
+If an older Kandev version shows `published replacement commit could not be verified` after you continue work, upgrade Kandev. Then select Resume or **Restore workspace**. The corrected version checks the current branch and managed-clone identity. It does not reset the branch or discard changes.
+
 If an older task still shows a generic recovery error, use Resume or **Restore workspace** once to check the current workspace and reveal the relocation action. A busy inspection leaves every checkout unchanged. Wait for it to finish, then retry manually.
+
+After upgrading, select **Move files and resume** to retry an older blocked
+snapshot caused only by lost file permissions. Kandev checks the original
+checkout and retained snapshot again. It then creates a new snapshot and
+resumes the existing provider conversation. The retry keeps the failed snapshot
+and original checkout for inspection. Git's index and staging choices do not
+transfer; stage files again before committing.
+
+Kandev refuses this retry if content, entry names, symbolic-link targets, the
+required set-ID identity changes during verification, or the new snapshot or
+replacement cannot preserve that identity. A retained set-ID bit in the old
+snapshot must also have the same required identity as the original. When an old
+snapshot lost the bit, its copied owner does not determine the original
+identity. Kandev reads the required UID or GID from the verified original and
+checks it for changes before preserving it on the new snapshot and replacement.
+The host must support preserving each required UID or GID.
+
+Keep both copies and inspect them manually when verification refuses the retry.
+An upgrade does not retry a blocked snapshot automatically.
 
 For a new task branch, the repository default template is:
 
@@ -142,7 +165,7 @@ For a new task branch, the repository default template is:
 feature/{title}-{suffix}
 ```
 
-`{title}` is an ASCII-safe, lower-case task-title slug and `{suffix}` is a short collision-avoidance value. Repository settings can change the template. When `pull_before_worktree` is omitted it defaults to `true`: Kandev attempts to refresh and verify the base branch before creating or recreating the worktree. The public configuration defaults both fetch and fast-forward pull timeouts to 60 seconds. When a usable local base exists, authentication, network, timeout, missing-ref, divergent-ref, and uncertain-ancestry errors produce a credential-safe warning and Kandev creates the worktree from that local base. The warning states that remote changes may be missing. When no usable local base exists, Kandev must materialize the requested branch from the remote; a failed refresh or missing remote ref stops task preparation with a repository-specific launch error. Explicit remote-only refs and remote executors keep this strict materialization behavior.
+`{title}` is an ASCII-safe, lower-case task-title slug and `{suffix}` is a short collision-avoidance value. Repository settings can change the template. When registering a repository, an omitted `pull_before_worktree` defaults to `true`: Kandev attempts to refresh and verify the base branch before creating or recreating the worktree. Later repository settings saves preserve the current default branch and refresh choice when those fields are omitted, including when another save changes them before a rename finishes. The public configuration defaults both fetch and fast-forward pull timeouts to 60 seconds. When a usable local base exists, authentication, network, timeout, missing-ref, divergent-ref, and uncertain-ancestry errors produce a credential-safe warning and Kandev creates the worktree from that local base. The warning states that remote changes may be missing. When no usable local base exists, Kandev must materialize the requested branch from the remote; a failed refresh or missing remote ref stops task preparation with a repository-specific launch error. Explicit remote-only refs and remote executors keep this strict materialization behavior.
 Without an explicit cross-repository target, Kandev uses the current base branch for a numbered GitHub PR. If Git proves that the requested base branch was deleted, Kandev can use a configured fallback branch, often the repository default, only after it refreshes and verifies that fallback. Kandev shows a warning with both branch names. Other PR refresh errors stop preparation.
 
 An explicit fork target has no default fallback. Kandev stops preparation if it cannot fetch or verify that target. Kandev does not create a worktree from an unverified local or remote-tracking branch.
@@ -268,78 +291,129 @@ sensitive data.
 
 ### Repair inconsistent worktree inventory
 
-A healthy checkout can disagree with its saved branch, repository ID, or task
-root. This can produce “advanced from audited commit”, “incomplete worktree
-identity”, or “owned by another task” errors. These messages require inspection:
-they can also indicate a real ownership or commit change. Repeated resume or
-cleanup attempts do not repair inconsistent inventory.
+Use the source maintenance utility when healthy Git checkouts disagree with
+saved worktree ownership, branch, repository, or task-root records. Duplicate
+physical-worktree claims now stop normal admission and cleanup with an ambiguous
+inventory ownership error. Repeated resume or cleanup attempts do not repair them.
 
-The source maintenance command `cmd/worktree-inventory-repair` supports explicit
-repairs for local SQLite installations using the host **Worktree** executor.
-Application and rollback require Linux and permission to inspect host processes
-across all users through `/proc`. An inaccessible process blocks repair; this can
-require a privileged operator. Preview and verification only read state.
-Use a backend build containing the repair startup guard before applying a repair.
-The utility ignores inherited `GIT_*` environment settings; its plan selects the
-repository and checkout paths.
+The utility supports **local SQLite installations and the host Worktree
+executor**. Apply and rollback require Linux and permission to inspect processes
+across all users through `/proc`. PostgreSQL, remote executors, and non-Linux
+application are unsupported. Discovery, preview, and verification only read state.
+Use a backend build with the repair startup guard before applying a repair.
 
-1. Build the utility from `apps/backend`:
+1. **Build the utility** from `apps/backend`:
 
    ```bash
    go build -o worktree-inventory-repair ./cmd/worktree-inventory-repair
+   umask 077
    ```
 
-2. Prepare a private JSON input using the
-   [repair plan fields](https://github.com/kdlbs/kandev/blob/main/apps/backend/internal/task/inventoryrepair/plan.go).
-   Set `version` to `1`, `driver` to `sqlite`, a unique `operation_id`, and absolute
-   `home`, `database`, and `tasks_root` paths. Each repair names an exact worktree,
-   environment, repository, source path, destination path, attached branch, HEAD
-   commit, and source-root task. Every relocation requires a matching `workspaces`
-   entry naming the environment's canonical task root and every bound session.
-   Include an old cleanup job only when its incomplete snapshot needs a linked
-   successor. Omit `expected_rows` and `expected_git` on
-   the first preview; the command fills these observations.
-
-3. Review the preview and retain its `plan` object as the application input:
+2. **Discover duplicate claims** using the installation's absolute paths:
 
    ```bash
-   umask 077
+   ./worktree-inventory-repair --discover \
+     --home /srv/kandev --database /srv/kandev/data.db \
+     --tasks-root /srv/kandev/tasks --limit 50 > discovery.json
+   ```
+
+   Discovery reads database claims without electing an owner or changing Git.
+   Continue with `--after` set to the returned `next_after` cursor until no cursor
+   remains. The default page has 50 physical IDs, with a maximum of 100. Oversized
+   groups are reported without partial selections. Do not treat discovery as
+   authorization to remove a row.
+
+3. **Prepare an explicit private plan.** Use the
+   [repair plan fields](https://github.com/kdlbs/kandev/blob/main/apps/backend/internal/task/inventoryrepair/plan.go)
+   and a unique `operation_id`. Set `driver` to `sqlite` and provide absolute
+   `home`, `database`, and `tasks_root` paths.
+
+   Use `version: 2` for duplicate ownership. Each `repairs` entry names the exact
+   physical ID, canonical environment and repository, attached branch, HEAD,
+   repository path, checkout path, and marked root owner. Set `source_path` and
+   `path` to the same existing checkout. Each corresponding `aliases` entry names
+   its `worktree_id`, one `canonical_row_id`, and the complete `alias_row_ids` list:
+
+   ```json
+   {
+     "worktree_id": "physical-worktree-id",
+     "canonical_row_id": "canonical-inventory-row-id",
+     "alias_row_ids": ["legacy-root-alias-row-id"]
+   }
+   ```
+
+   The canonical checkout must agree with Git registration, the branch and HEAD,
+   the repository record, and the enclosing task's ownership marker. A root alias
+   must belong to that same environment and have no root `.git` metadata.
+
+   For a copied child environment, also provide `redundant_environments` with its
+   `environment_id`, `canonical_environment_id`, saved `group_id`, and complete
+   `session_ids` and `snapshot_ids` lists. Every copied slot must refer to a proven
+   canonical checkout. The saved sharing policy, group ownership, and membership
+   must agree. Include `workspaces` only for explicit workspace-path corrections.
+   Unmatched slots, unknown references, mixed active/deleted claims, and incomplete
+   selections refuse the entire repair.
+
+   Version 2 does not move files or supersede cleanup jobs. Use the existing
+   version-1 plan for a branch correction or explicit relocation. A version-1
+   relocation requires a matching `workspaces` entry with every bound session.
+   Include an old cleanup job only when its incomplete snapshot needs a linked
+   successor. Never edit the old snapshot to make cleanup pass.
+
+4. **Stop consumers and produce a fresh preview.** Stop the backend through its
+   normal service or launcher, and stop processes using the selected task roots.
+   Omit `expected_rows`, `expected_git`, and `expected_consumer_paths` from the
+   initial input. Preview supplies these exact observations:
+
+   ```bash
    ./worktree-inventory-repair --plan input.json > preview.json
    jq '.plan' preview.json > repair.json
    ```
 
-   Check the proposed changes and any `blockers`. Preview preserves tracked,
-   untracked, and ignored files, the index, refs, and ownership markers.
+   Review the selected rows, dependent records, and `blockers`. Keep the complete
+   returned plan. A version-2 repair can preserve an idle `CREATED` or
+   `WAITING_FOR_INPUT` session only after proving that no runtime or host process
+   still uses the workspace. A cleanup job must be cancelled or succeeded.
+   Changed observations require a new preview and review.
 
-4. Stop the backend through its normal service or launcher, and stop processes
-   using the selected task roots. Refresh and review the preview if state changed.
-   Then apply and verify before restarting:
+5. **Apply and verify before restarting:**
 
    ```bash
    ./worktree-inventory-repair --plan repair.json --apply
    ./worktree-inventory-repair --plan repair.json --verify
    ```
 
+   Version 2 removes only selected alias slots, rebinds proven sessions and Git
+   snapshots, and removes fully redundant environments in one transaction.
+   It preserves conversation and resume identities, session states, commits,
+   staged changes, tracked, untracked, and ignored files, refs, and root markers.
+   Existing cancelled cleanup snapshots retain their original bytes.
+
 A held backend lock means an instance still owns the installation. A process
 inspection permission error means the utility cannot establish that consumers
-are absent; use an authorized account with sufficient visibility. Neither error
+are absent. Use an authorized account with sufficient visibility. Neither error
 is a stale-lock signal. Do not delete ownership locks or bypass these checks.
 
 The command retains a private SQLite backup and journal under
-`<home>/inventory-repairs/<operation_id>/`. It moves selected checkouts with
-`git worktree move`, preserves their content and refs, and changes only the
-selected inventory. When a cleanup snapshot needs repair, its original bytes
-remain on the cancelled predecessor; the linked successor captures new source
-evidence through the normal cleanup worker.
+`<home>/inventory-repairs/<operation_id>/`. Version 1 moves explicitly selected
+checkouts with `git worktree move`. When it supersedes a cleanup job, the original
+snapshot stays on the cancelled predecessor and the linked successor captures
+new source evidence through the normal worker.
 
-If interrupted, rerun the same plan with `--apply` to finish or `--rollback` to
-reverse it. Changed inventory or checkout content prevents either operation.
-An unresolved journal blocks backend startup; retain the journal and backup
-until resolved. Startup reports the repair recovery command without suggesting
-a second instance. Verify before restarting; online verification may observe
-concurrent changes. After restart, check the cleanup job and resume the affected
-session. Metadata verification alone does not establish that those operations
-have completed. Normal dirty-checkout, branch, and ownership guards still apply.
+If interrupted, rerun the same saved plan with `--apply` to finish or
+`--rollback` to restore the original records. Rollback restores parent records
+before their dependents. Changed inventory or checkout content prevents recovery.
+An unresolved journal blocks backend startup. Retain its journal and backup,
+resolve the interrupted operation, and verify before restarting.
+
+After restart, resume the affected session or retry archive or confirmed delete
+through the normal task controls. Check the resulting cleanup job separately.
+**Metadata verification does not mean cleanup completed.** Borrowed workspaces
+remain protected, and dirty-file, branch, commit, ownership, and deletion-consent
+checks still apply. An archived borrower session can continue to protect a
+shared checkout. A cascade delete can report pending cleanup after deleting the
+task rows. Inspect the durable cleanup jobs and workspace-group status separately;
+a completed task cleanup job does not clear an older group cleanup error.
 
 ### Named branch policies
 
@@ -412,20 +486,22 @@ All operations below run in the selected repository workspace.
 
 | UI operation | Effective Git behavior | Important consequence |
 |--------------|------------------------|-----------------------|
-| Pull | `git pull origin BRANCH`, optionally with `--rebase`. | Uses the current branch when any upstream exists. With no upstream it falls back to `origin/main`, then `origin/master`, then the current branch. It does not parse an upstream that points to a differently named remote branch. |
+| Pull | `git pull REMOTE SOURCE_REF`, optionally with `--rebase`. | Uses the configured upstream's remote and source ref; managed contributions retain their validated source. With no upstream it falls back to `origin/main`, then `origin/master`, then the current branch on `origin`. Pull leaves upstream configuration and push routing unchanged. |
 | Push | `git push origin CURRENT_BRANCH`; adds `--set-upstream` when requested or no upstream exists. | Force Push uses `--force-with-lease`, not unconditional `--force`. It still rewrites remote history when the lease is valid. Managed Improve Kandev tasks use the branch's prepared fork push remote instead of `origin`. |
 | Rebase | If `origin` exists, fetches `origin BASE` and rebases onto `origin/BASE`. Without `origin`, rebases onto the local `refs/heads/BASE`. | Rewrites local commits. If conflict files are detected from Git output, Kandev attempts `git rebase --abort` automatically and returns the file list. |
 | Merge | If `origin` exists, fetches `origin BASE` and merges `origin/BASE`. Without `origin`, merges the local `refs/heads/BASE`. | Conflicts are deliberately left in the worktree. Resolve and commit them, or use Abort Merge. |
 | Abort | Runs `git merge --abort` or `git rebase --abort`. | Fails when that operation is not in progress or the repository cannot be restored. |
 | Stage | With paths, `git add --` with each path selected literally; with an empty path list, `git add -A`. | Named files select only those files. Actual directories select their subtrees. Empty means all changes, including deletions. |
-| Unstage | With paths, `git reset HEAD --` with each path selected literally; with an empty path list, `git reset HEAD`. | Keeps working-tree content. Named files and actual directory subtrees use the same literal selection as Stage. |
+| Unstage | With paths, `git reset HEAD --` with each path selected literally; with an empty path list, `git reset --`. | Works before the first commit and keeps working-tree content. Named files and actual directory subtrees use the same literal selection as Stage. |
 | Commit | Optionally runs `git add -A`, then `git commit -m MESSAGE`; Amend adds `--amend`. | The normal UI defaults to staging all when it invokes this helper. Amend rewrites `HEAD`. |
-| Discard | Restores tracked paths from `HEAD`; added and untracked files are unstaged and deleted. | Removes both staged and unstaged work. Explicit paths are required, but deletion is not recoverable through Kandev. |
+| Discard | Restores tracked paths from `HEAD`; added and untracked files are unstaged and deleted. A recognized staged rename destination restores the committed source and removes the destination. | Removes both staged and unstaged work. Named files select literal filenames in the selected repository, including both endpoints of an eligible staged rename. An occupied source or unsupported or ambiguous rename is refused before any selected file changes. Explicit non-empty paths are required; deletion is not recoverable through Kandev. |
 | Edit branch | `git branch -m NEW_NAME` for the current local branch. | Does not rename/delete the old remote branch or automatically repair every external reference. Push the new branch explicitly. |
 
 Only one Git operation can run at a time for a given repository operator. A second concurrent request is rejected as “another git operation is already in progress.” Different repositories in a multi-repository workspace have separate operators.
 
 Most Git command failures are normal responses with `success:false`, `error`, and sometimes `conflict_files`; they are not WebSocket transport errors. Read the result body even when the request itself completed. The web client waits 60 seconds for an ordinary Git operation.
+
+Dismiss on a Git push error card hides only that historical message and does not change Git state; later push failures remain visible.
 
 ### Multi-repository tasks
 
@@ -439,6 +515,18 @@ In a multi-repository task, every wire request must identify one repository with
 - The multi-repository toolbar lets you select an individual repository for Commit, Push, Create PR, Pull, Rebase, Merge, or Force Push.
 
 A fan-out can partially succeed. The UI continues after a failure and reports per-repository outcomes; inspect each repository before retrying a history-changing action.
+
+## Background status freshness
+
+Focused tasks keep their normal frequent status updates. Unfocused task tracking
+starts at 30 seconds and, after unchanged scans, can back off to five minutes.
+An unfocused change badge can therefore show a change up to five minutes late
+following a quiet period. Detected changes and polling-mode updates reset the
+interval. Failed reads do not advance the backoff.
+
+Focusing a task requests an immediate scan. Explicit Refresh also scans directly,
+and a completed agent turn requests a final file and Git refresh before idle
+polling is paused. These actions do not wait for the background interval.
 
 ## Commit history and reset behavior
 
@@ -500,7 +588,7 @@ These are the registered Kandev WebSocket actions. Every payload requires `sessi
 | `worktree.commit` | required non-empty `message`; `stage_all`; `amend` |
 | `worktree.stage` | `paths` list of literal repository-relative files or directories; empty means all |
 | `worktree.unstage` | `paths` list of literal repository-relative files or directories; empty means all |
-| `worktree.discard` | required non-empty `paths` list |
+| `worktree.discard` | required non-empty `paths` list of literal repository-relative files in the selected repository; an eligible recognized staged rename destination selects both endpoints |
 | `worktree.create_pr` | required `title`; `body`; `base_branch`; `draft`; response can include `pr_url` and `provider` (`github`, `gitlab`, or `azure_repos`) |
 | `worktree.revert_commit` | required `commit_sha`, which must be exact `HEAD` |
 | `worktree.rename_branch` | required `new_name` |
@@ -557,6 +645,11 @@ Worktree cleanup audits the Git worktree and checkout before it runs the reposit
 - **Reset Environment** is allowed only when no task session is `STARTING` or `RUNNING`. It can optionally push first; a failed requested push aborts the reset. Teardown removes the worktree, preserves unpublished or ambiguous local work, and removes a Kandev-owned local branch only when its exact head is already contained in the recorded integration ref. The next launch materializes a fresh environment.
 - Office handoff cleanup uses the same fail-closed local-branch policy when it releases a worktree.
 
+Archive removes eligible Kandev-owned worktree directories and their staged, unstaged, untracked,
+and ignored files during background cleanup. Commit and push work you need before archiving;
+archive does not wait for a clean checkout or make an automatic commit. Runtime and ownership
+checks still apply. Ordinary local executor repository folders are left in place.
+
 Archive cleanup uses that policy too. If a task is archived before integration, the branch remains. A later full storage-maintenance run can revisit a bounded set of those archived rows and remove the exact local ref after integration is proven. Ref deletion includes the expected head SHA, so an external branch update causes retention instead of deleting the changed ref. Kandev never removes a remote ref through this cleanup.
 
 Before deleting a task or performing a hard reset, commit and push anything you need. Without discard consent, Kandev does not start a cleanup job when the audit finds uncommitted or untracked work. With consent, cleanup scripts run only after the normal worktree audit and perform transient teardown; files they create are removed with the audited checkout. If an audited cleanup script fails, Kandev logs the failure and continues with the same recorded worktree. An audited directory is removed through its pinned no-follow handle, and un-audited fallback cleanup can remove a managed directory without following replacement links. Git metadata is then pruned. Registration pruning and local-branch deletion are verified before the durable cleanup job succeeds; a partial failure remains retryable.
@@ -569,12 +662,69 @@ Before deleting a task or performing a hard reset, commit and push anything you 
 - **Comparison target unavailable:** local Changes and local file status remain usable while a fork comparison target is unavailable. The target's commits, diff, ahead/behind values, and numeric totals remain unavailable until authentication recovers. Refresh Changes or request fresh status to trigger the one explicit re-evaluation; Kandev does not substitute a same-named `origin` branch.
 - **Host GitHub SSH setup:** for host-based Git credentials, run `gh config set git_protocol ssh --host github.com`, restart Kandev, and retry the task. For Docker, SSH, or Sprites, configure the same Git and SSH access in that executor instead of relying on the host.
 - **Merge or Rebase without `origin`:** the selected base branch must exist locally. If it does not, Kandev returns `base branch "BASE" does not exist locally` before changing history. If `origin` exists, Kandev does not fall back to a local branch after a fetch or authentication error.
-- **Pull fetched the wrong branch:** Kandev always uses `origin` and, once any upstream exists, the current local branch name. Align local and remote branch names or use an explicit terminal command.
+- **Unexpected Pull source:** inspect the current branch's upstream with `git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}'` in the selected executor. Pull uses that upstream's configured remote and source ref. For example, local `task-local` tracking `upstream/review` pulls `review` from `upstream`. Managed contribution tasks use their validated source binding. Without an upstream, Pull uses the `origin` fallback described above.
 - **Rebase failed but no rebase remains:** detected rebase conflicts are auto-aborted. Use the returned `conflict_files`, resolve with a manual workflow, or merge instead.
 - **Merge remains conflicted:** this is expected. Resolve and commit, or choose Abort Merge. Do not start another Git operation until the repository is consistent.
 - **Change-request creation failed after push:** the branch may already be remote. Fix `gh`, `glab`, GitLab workspace-token, or `az` authentication as applicable, then retry without assuming the push was rolled back. GitLab retries reuse an existing open MR with the same source and target.
 - **Operation timed out:** inspect status before retrying. A client timeout or lost WebSocket response does not prove the underlying command did nothing.
 - **Multi-repository operation failed at workspace root:** choose the repository in the toolbar or include its exact `repo` subpath in the request.
 - **Missing work after cleanup:** inspect a retained local branch or the remote branch if it was pushed. On unarchive, Kandev recreates a safely compacted managed branch from its recorded exact head before trying remote recovery. Task deletion may already have force-deleted the local branch.
+
+## Adopt a prepared independent checkout
+
+An administrator with workspace management access can explicitly adopt an existing
+independent clone into a damaged host Worktree repository slot. This is separate
+from ordinary healthy-checkout admission and automatic metadata recovery. The
+server may run in Docker; the action still concerns a host Worktree environment,
+not a task using the Docker executor.
+
+Before you preview an adoption, confirm these prerequisites:
+
+- [Authentication](authentication.md) is enabled, and the request uses an administrator session or personal access token. Auth-disabled requests are refused (403).
+- Every runtime consuming the environment is stopped through its normal lifecycle.
+- The existing session is waiting for input.
+- The prepared clone is a direct child of the same owned task root with independent Git metadata.
+- The clone uses the registered origin and the selected branch on an existing commit.
+- Its history contains the registered source branch commit as a real ancestor; replacement refs cannot provide proof.
+- The original pointer identifies missing administration in the registered source.
+- The source Git administration parent is a real directory, or is absent; a symlinked parent is refused.
+
+Escaped ref/object metadata, symlinked Git configuration, legacy grafts,
+promisor packs and external alternate object storage are refused in both the
+registered source and the prepared clone. Ordinary packed refs are supported.
+
+After adoption, archive and deletion retain the validated checkout identity in the
+durable cleanup job, including across backend restart and task-row deletion.
+Discarding an independent task checkout requires explicit discard consent. Cleanup
+removes that task-owned clone while preserving the registered project clone and
+its branches. Changed ownership, replaced paths or missing provenance stop cleanup.
+
+Use the operator HTTP API:
+
+1. POST `/api/v1/tasks/:id/workspace-adoption/preview` with `session_id`, `slot_id`
+   and the absolute `checkout_path`. Preview is read-only and returns an exact
+   selection, filesystem proof and token.
+2. POST `/api/v1/tasks/:id/workspace-adoption/apply` with the complete response as
+   `preview` and a fresh UUID `operation_id`. Reusing that UUID with the identical
+   preview returns the original receipt while its authority remains valid.
+3. GET `/api/v1/tasks/:id/workspace-adoption/:operation_id` to validate the receipt.
+
+Apply preserves the task, session/incarnation, environment, repository attachment,
+slot and logical worktree identifiers, selected branch, task root and ordering.
+For a native single-repository session working inside the selected checkout,
+the environment and bound session working directories move to the candidate in
+the same transaction. Sessions working at the task root retain that directory.
+Both directories and their Git/file contents stay untouched. It does not clone,
+reset, copy files, reconstruct a lost index, create a session or replay a prompt.
+
+Stale selection or filesystem proof returns `WORKSPACE_ADOPTION_REFUSED` (409).
+Malformed requests return `WORKSPACE_ADOPTION_INVALID_REQUEST` (400). Administrator
+and workspace authorization still apply; agent-origin requests are refused.
+The server refuses platforms where it cannot prove stable filesystem identity.
+
+The receipt records exact obsolete marker provenance. Changed ownership, origin,
+branch, marker identity or restored administration invalidates it. It grants no
+filesystem permissions or exemption from an external guard. Deployment SQLite
+repair scripts, existing local receipts and outer guard integration stay local.
 
 Related guides: [Configuration](configuration.md), [Executors](executors.md), [Operations](operations.md), and [WebSocket API](websocket-api.md).

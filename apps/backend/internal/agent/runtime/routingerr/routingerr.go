@@ -54,14 +54,24 @@ const (
 	CodeManagedRuntimeStartup       Code = "managed_runtime_startup"
 	CodeResumeCorrupted             Code = "resume_corrupted"
 	CodeAgentTransportLost          Code = "agent_transport_lost"
+	CodeProviderResourceExhausted   Code = "provider_resource_exhausted"
+	// CodeAccountBlocked is a provider account restriction. Retrying cannot
+	// recover it and repeated requests can extend it, so routing holds the
+	// failing execution profile until its owner releases it.
+	CodeAccountBlocked Code = "account_blocked"
 )
+
+// HoldsUntilRelease reports whether a code suspends its execution profile
+// without expiry or probe, until an explicit owner release.
+func HoldsUntilRelease(code Code) bool {
+	return code == CodeAccountBlocked
+}
 
 // RemediationStartFreshSession is the symbolic RemediationPath value for
 // CodeResumeCorrupted. Unlike CodeNpxCacheCorrupted (whose RemediationPath is
 // a filesystem path to delete), this is a remediation *token* the UI maps to
-// the "start a fresh session" recovery action — there is nothing on disk to
-// clean; the agent's persisted reasoning state is corrupted and only a brand
-// new session recovers.
+// the "start a fresh session" recovery action. It authorizes no disk cleanup
+// and does not establish the underlying cause of a reasoning-history error.
 const RemediationStartFreshSession = "start_fresh_session"
 
 // ModelUnavailableMessage renders the actionable user-facing message for a
@@ -132,10 +142,10 @@ type Error struct {
 func ClassForCode(code Code) Class {
 	switch code {
 	case CodeNetworkUnavailable, CodeProviderUnavailable, CodeProviderOverloaded,
-		CodeModelCapacity, CodeRateLimited, CodeAgentTransportLost:
+		CodeModelCapacity, CodeRateLimited, CodeAgentTransportLost, CodeProviderResourceExhausted:
 		return ClassTransient
 	case CodeAuthRequired, CodeMissingCredentials, CodeSubscriptionRequired,
-		CodeQuotaLimited, CodeModelUnavailable, CodeProviderNotConfigured:
+		CodeQuotaLimited, CodeModelUnavailable, CodeProviderNotConfigured, CodeAccountBlocked:
 		return ClassHard
 	default:
 		return ClassUnclassified
@@ -362,6 +372,12 @@ func applyInvariants(e *Error) *Error {
 	case CodeProviderUnavailable, CodeUnknownProvider:
 		e.AutoRetryable = true
 		e.FallbackAllowed = true
+	case CodeAccountBlocked:
+		// The owner resolves the restriction with the provider. Another
+		// candidate may serve the work, but the same account must not retry.
+		e.AutoRetryable = false
+		e.FallbackAllowed = true
+		e.UserAction = false
 	case CodeProviderOverloaded:
 		// 529 Overloaded is a transient, server-side condition. Retrying the
 		// same provider after a short backoff is the right move; falling back
@@ -376,9 +392,8 @@ func applyInvariants(e *Error) *Error {
 		e.AutoRetryable = false
 		e.FallbackAllowed = false
 	case CodeResumeCorrupted:
-		// The agent's persisted reasoning state is poisoned. Retrying the
-		// resume hits the same 400, and falling back to another provider
-		// can't fix a session-state problem — only a fresh session does.
+		// Reasoning-history diagnostics require manual recovery. Their
+		// classification does not authorize automatic retry or fallback.
 		e.UserAction = true
 		e.AutoRetryable = false
 		e.FallbackAllowed = false
@@ -390,6 +405,13 @@ func applyInvariants(e *Error) *Error {
 		// model-availability problem. Retrying the same provider is expected to
 		// succeed (the resume token belongs to the current provider), so
 		// falling back to another provider can't fix it and isn't offered.
+		e.AutoRetryable = true
+		e.FallbackAllowed = false
+		e.UserAction = false
+	case CodeProviderResourceExhausted:
+		// Exact Cursor retriable resource exhaustion is transient and
+		// auto-retryable against the same provider without fallback or
+		// user action.
 		e.AutoRetryable = true
 		e.FallbackAllowed = false
 		e.UserAction = false

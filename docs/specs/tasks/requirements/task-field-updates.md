@@ -6,7 +6,7 @@ owners:
   - kandev
 ---
 
-# Task field update requirements
+# Task and workflow field update requirements
 
 ## Overview
 
@@ -19,12 +19,21 @@ contract defines hierarchy validity. Neither defines omission across concurrent 
 updates. This is the smallest missing persistence contract, rather than another sidebar or
 incident specification.
 
+Criteria .8 through .12 define the explicit metadata-merge path.
+Criteria .1 through .7 remain the previously active ordinary-field contract.
+REQ-TASKS-FIELD-UPDATES-002 extends this contract to ordinary workflow updates.
+Existing task criteria and lifecycle remain unchanged.
+
 ## Terms and boundary
 
 An **ordinary update** is a request-driven partial task update. A supplied field expresses
 intent; omission leaves that field alone. An explicit empty value expresses existing clear or
 empty-value behavior, subject to the field's existing validation. Null currently has the same
 meaning as omission for nullable request pointers, metadata, and repository inputs.
+
+An **explicit metadata merge** supplies ordinary metadata keys through the existing merge
+service path (including the task port-forwarding preference endpoint). Its keys are intent,
+not a replacement document. This differs from supplying metadata on an ordinary update.
 
 The guarantee applies between ordinary updates and against participating field-scoped writers
 listed in the paired design. Intentional full-snapshot internal writes and exact/versioned
@@ -74,6 +83,80 @@ an earlier observation of the task.
   replacement remains its separate atomic operation; its failure does not roll back an
   already committed task-row edit, and suppresses the combined update's success evidence.
 
+- **AC-TASKS-FIELD-UPDATES-001.8:** When two admitted explicit metadata merges supply disjoint
+  ordinary top-level keys and both succeed, the task shall retain both intents in either
+  commit order, including independent services and database connections. A merge shall apply
+  supplied keys to current metadata and preserve omitted keys. Same-key competing merges
+  shall apply the later successful intent under the supported value rules; there is no
+  independent nested-key concurrency guarantee.
+- **AC-TASKS-FIELD-UPDATES-001.9:** A metadata merge shall preserve all task scalar fields and
+  associations. Between a merge and an ordinary update that omits metadata, both intents shall
+  survive either commit order. Current scalar and field-scoped metadata writes committed
+  before the merge shall survive when outside its supplied intent; later scalar writers
+  remain field-scoped. An explicit ordinary metadata replacement or intentional full-snapshot
+  writer retains its own contract, including permitted deletion or overwriting of an earlier
+  merge; a later merge shall preserve that writer's current values outside its supplied keys.
+- **AC-TASKS-FIELD-UPDATES-001.10:** A merge shall preserve current server-owned deferred-launch,
+  step-handoff, handoff provenance, Office causation and generated-title ownership under their
+  existing owner rules, including absence after an owner removes a record. It shall preserve
+  materialized workspace mode/group identity. Request-owned maps shall remain unchanged.
+  Nil or empty merge input shall preserve keys, with the existing successful-update timestamp
+  behavior. Explicit ordinary null and nested values shall keep the supported dialect and
+  pending-title semantics documented in the design; omission shall not imply null deletion.
+- **AC-TASKS-FIELD-UPDATES-001.11:** A metadata-only merge shall not fabricate task state or
+  workflow transitions, transition-ledger or step-entry rows, entry dispatch, runner changes,
+  parent/workspace row changes, completion effects or association changes from an earlier
+  observation. Existing authorization, reference admission and owner commands shall retain
+  their rules. The metadata mutation and its timestamp shall commit atomically for all
+  supplied keys; encoding, storage, cancellation or missing-task failure shall leave no
+  partial mutation or successful update/state-change evidence, retaining typed error causes.
+- **AC-TASKS-FIELD-UPDATES-001.12:** The registered port-forwarding preference endpoint shall
+  use the explicit metadata-merge contract through unchanged request, response and error
+  shapes. After a successful merge, responses and task-update events shall describe the same
+  postcommit observation, which may include a later commit. A failed postcommit read shall
+  retain the existing error and suppressed-publication behavior despite a committed mutation.
+  No total event order or exact mutation receipt is introduced.
+
+## Workflow amendment
+
+### REQ-TASKS-FIELD-UPDATES-002: Preserve ordinary workflow partial edits
+
+**Intent:** A successful workflow edit shall not restore omitted fields from an earlier
+observation. Tasks owns persisted workflow definitions and request presence, independently
+of their editor or transport. The existing task contract remains active.
+
+An ordinary workflow update supplies any subset of name, description, prompt and default
+profile. Omission and the existing nullable-pointer null input leave that field alone.
+Explicit empty strings retain their existing empty/clear meanings. Full editor drafts
+intentionally supply all four editable fields and therefore replace all four.
+
+#### Acceptance criteria
+
+- **AC-TASKS-FIELD-UPDATES-002.1:** Successful disjoint ordinary workflow updates shall retain
+  both edits in either write order, including independent services and database connections.
+  This includes name versus prompt and ordinary edits versus participating visibility or
+  provenance writes outside their supplied fields.
+- **AC-TASKS-FIELD-UPDATES-002.2:** Omitted fields shall retain current values; explicit empty,
+  mixed supplied fields, profile normalization and empty-request timestamp behavior shall
+  retain their meanings. Same-field competing ordinary edits shall leave the later successful
+  value. Unrelated workflow identity, template, style, visibility and provenance stay unchanged.
+- **AC-TASKS-FIELD-UPDATES-002.3:** Version-fenced workflow commands shall retain conflict checks
+  and fail closed when fencing is unavailable. Conflicting, missing, deterministically cancelled
+  before write admission or statement-rejected mutations shall leave no partial fields/timestamp
+  change and no successful update evidence. This does not reverse an already committed mutation
+  or infer its commit outcome from a transport failure. Existing authorization and read-only
+  workflow rules remain in force.
+- **AC-TASKS-FIELD-UPDATES-002.4:** Registered REST/WS requests shall retain supplied presence,
+  DTO/error/event shapes. Successful response and event shall use the operation's persisted
+  workflow observation, without total event order or a promise to include concurrent/later
+  commits. Desktop and phone clients receive it through unchanged interfaces.
+- **AC-TASKS-FIELD-UPDATES-002.5:** Full editor, sync and import updates shall retain all supplied
+  replacement behavior, including empty values. There is no promise to merge stale full drafts
+  or later intentional snapshots in fields they supply. Ordering, steps and lifecycle operations
+  retain their existing contracts.
+
+Delivery: [preserve disjoint workflow edits](../../../plans/disjoint-workflow-edits/plan.md).
+
 ## Adjacent contracts
 
 - [Parent admission](subtask-reparenting-drag-drop.md) owns cycle, depth, workspace, archive,
@@ -85,7 +168,8 @@ an earlier observation of the task.
 
 ## Out of scope
 
-Global revisions, arbitrary per-key metadata merging, cross-request event order, new conflict
+Global revisions, arbitrary merging outside the explicit merge service path, cross-request
+event order, new conflict
 policy for same-field edits, atomic composition with repository preparation/replacement, changes
 to exact commands, Office scheduling, runner admission, launch policy, cascading lifecycle,
 schema, frontend layout/copy/navigation, or new workflow fields on a transport. Existing

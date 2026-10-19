@@ -1,6 +1,6 @@
 ---
 created: 2026-09-01
-status: complete
+status: in_progress
 requirements:
   - REQ-AGENTS-WORKSPACE-MCP-CONFIGURATION-001
   - REQ-AGENTS-WORKSPACE-MCP-CONFIGURATION-002
@@ -11,6 +11,7 @@ requirements:
   - REQ-AGENTS-WORKSPACE-MCP-CONFIGURATION-007
 system_design:
   - ../../specs/agents/system-design/workspace-mcp-configuration.md
+  - ../../specs/agents/system-design/workspace-mcp-resolution-delivery.md
 legacy_specs: []
 ---
 
@@ -219,10 +220,24 @@ Wave 6:
 - [x] [Task 08: Cover MCP user journeys](task-08-cover-mcp-user-journeys.md)
 - [x] [Task 09: Update public MCP documentation](task-09-update-public-mcp-documentation.md)
 
+Wave 7 (user-authorized PR review remediation):
+
+- [x] [Task 10: Repair independent review findings](task-10-review-remediation.md)
+- [x] [Task 11: Complete definition setup inputs](task-11-complete-setup-inputs.md)
+- [x] [Task 12: Carry resolution decisions to attachment evidence](task-12-resolution-evidence.md)
+
+Delivery scope exception approved by the user: global-profile catalog navigation,
+management/usage clarity and neutral delivery presentation belong to unstarted
+follow-up `ee292a1d-3d53-4b86-965c-6fe4a8ae217e`. This delivery does not claim the
+global-profile picker UI complete; existing scoped association/resolution stays.
+
 Execution is sequential in the primary conversation. Wave labels identify
 dependency readiness and do not authorize subagents.
 
 ## Verification results
+
+The following receipts describe the original implementation before the current-main
+integration. Final integrated evidence is tracked in [merge readiness](merge-readiness.md).
 
 - `env -u KANDEV_INTERNAL_CONFIG_FILE -u KANDEV_INTERNAL_CONFIG_HOME_FILE make -C apps/backend test` passed for the full Go backend suite.
 - `make -C apps/backend build`, `make -C apps/backend e2e-plugin-package`, and `pnpm run build:e2e` passed.

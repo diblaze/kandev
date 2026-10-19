@@ -80,6 +80,16 @@ export async function getWorkspaceAction(id: string): Promise<Workspace> {
   return fetchJson<Workspace>(`${apiBaseUrl}/api/v1/workspaces/${id}`);
 }
 
+export async function cloneWorkspaceAction(
+  id: string,
+  payload: { name: string },
+): Promise<Workspace> {
+  return fetchJson<Workspace>(`${apiBaseUrl}/api/v1/workspaces/${encodeURIComponent(id)}/clone`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function createWorkspaceAction(payload: {
   name: string;
   description?: string;
@@ -308,6 +318,31 @@ export async function createRepositoryAction(payload: {
         secret_bindings: payload.secret_bindings,
       }),
     },
+  );
+}
+
+/**
+ * Registers a provider-hosted repository in the workspace without a task. The
+ * backend verifies the locator (URL parser for built-in hosts, plugin
+ * inspection for plugin providers) and answers with the existing repository
+ * when the workspace already has one with that provider identity.
+ */
+export async function registerRemoteRepositoryAction(
+  workspaceId: string,
+  payload: {
+    remote_url: string;
+    default_branch?: string;
+    provider?: string;
+    provider_host?: string;
+    provider_scope?: string;
+    provider_repo_id?: string;
+    provider_owner?: string;
+    provider_name?: string;
+  },
+) {
+  return fetchJson<Repository>(
+    `${apiBaseUrl}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/repositories/remote`,
+    { method: "POST", body: JSON.stringify(payload) },
   );
 }
 

@@ -145,6 +145,11 @@ type Adapter struct {
 
 	// Update channel
 	updatesCh chan AgentEvent
+	// Emission is serialized independently of mu so control events flush pending
+	// shell output without holding the adapter state lock during backpressure.
+	updateEmitMu       sync.Mutex
+	shellSnapshots     shellSnapshotState
+	shellSnapshotTimer *time.Timer
 
 	// notifQueue decouples the ACP SDK's notification goroutine from the
 	// per-notification processing we do in handleACPUpdate. The SDK's inbound
@@ -360,24 +365,31 @@ type Adapter struct {
 
 // promptTurnState holds synchronization for one in-flight session/prompt RPC.
 type promptTurnState struct {
-	endTurn            context.CancelCauseFunc
-	rpcDone            chan struct{}
-	abortCh            chan struct{}
-	handoffCh          chan struct{}
-	providerErrorCh    chan openCodeStderrDiagnostic
-	promptGeneration   uint64
-	evidenceMu         sync.Mutex
-	codexSystemError   bool
-	codexCapacity      bool
-	codexUsageLimit    *streams.ProviderError
-	cursorRetriable    bool
-	cursorRetriableAt  time.Time
-	continuationTools  map[string]bool
-	continuationUnsafe bool
-	allowHandoff       bool
-	handedOff          bool
-	gateOwned          bool
-	finishing          bool
+	endTurn                     context.CancelCauseFunc
+	rpcDone                     chan struct{}
+	abortCh                     chan struct{}
+	handoffCh                   chan struct{}
+	providerErrorCh             chan openCodeStderrDiagnostic
+	promptGeneration            uint64
+	evidenceMu                  sync.Mutex
+	codexSystemError            bool
+	codexCapacity               bool
+	codexUsageLimit             *streams.ProviderError
+	cursorRetriableMsg          string
+	cursorRetriableComplete     bool
+	cursorRetriableAt           time.Time
+	continuationTools           map[string]bool
+	continuationPermissions     uint16
+	continuationPermissionTools map[string]struct{}
+	continuationUnsafe          bool
+	capacityTools               map[string]capacityToolEvidence
+	capacityUnknown             bool
+	capacityBackground          bool
+	capacityPermissions         int
+	allowHandoff                bool
+	handedOff                   bool
+	gateOwned                   bool
+	finishing                   bool
 }
 
 func (t *promptTurnState) observeCodexEvidence(systemError, capacity bool) {
@@ -433,15 +445,16 @@ func (t *promptTurnState) hasCodexSystemError() bool {
 	return t.codexSystemError
 }
 
-func (t *promptTurnState) setCursorRetriable() {
+func (t *promptTurnState) setCursorRetriable(msg string, complete bool) {
 	if t == nil {
 		return
 	}
 	t.evidenceMu.Lock()
-	if !t.cursorRetriable {
+	if t.cursorRetriableMsg == "" {
 		t.cursorRetriableAt = time.Now().UTC()
 	}
-	t.cursorRetriable = true
+	t.cursorRetriableMsg = msg
+	t.cursorRetriableComplete = complete
 	t.evidenceMu.Unlock()
 }
 
@@ -450,26 +463,34 @@ func (t *promptTurnState) clearCursorRetriable() {
 		return
 	}
 	t.evidenceMu.Lock()
-	t.cursorRetriable = false
+	t.cursorRetriableMsg = ""
+	t.cursorRetriableComplete = false
 	t.cursorRetriableAt = time.Time{}
 	t.evidenceMu.Unlock()
 }
 
 func (t *promptTurnState) cursorRetriableFailure() bool {
-	failure, _ := t.cursorRetriableFailureAt()
+	failure, _, _, _ := t.cursorRetriableFailureDetails()
 	return failure
 }
 
 func (t *promptTurnState) cursorRetriableFailureAt() (bool, time.Time) {
+	failure, _, occurredAt, _ := t.cursorRetriableFailureDetails()
+	return failure, occurredAt
+}
+
+func (t *promptTurnState) cursorRetriableFailureDetails() (bool, string, time.Time, bool) {
 	if t == nil {
-		return false, time.Time{}
+		return false, "", time.Time{}, false
 	}
 	t.evidenceMu.Lock()
 	defer t.evidenceMu.Unlock()
-	return t.cursorRetriable, t.cursorRetriableAt
+	return t.cursorRetriableMsg != "", t.cursorRetriableMsg, t.cursorRetriableAt, t.cursorRetriableComplete
 }
 
 type asyncTurnFinalizer struct {
+	messageID   string
+	activeTools map[string]struct{}
 	timer       *time.Timer
 	seq         uint64
 	promptEpoch uint64
@@ -510,6 +531,8 @@ func NewAdapter(cfg *shared.Config, log *logger.Logger) *Adapter {
 		lifetimeCancel:            cancel,
 		closedCh:                  make(chan struct{}),
 	}
+	a.shellSnapshotTimer = time.NewTimer(shellSnapshotInterval)
+	a.shellSnapshotTimer.Stop()
 	a.wakeup = newWakeupScheduler(l, a.fireWakeup)
 	// Start the update worker before returning so any caller that connects
 	// the SDK (Initialize, or any future direct wiring) always has a live
@@ -783,6 +806,14 @@ func (a *Adapter) SetPermissionHandler(handler PermissionHandler) {
 // context makes the wait cancelable during shutdown. Do not hold a.mu while
 // waiting; Close needs the write lock to cancel the context and unblock us.
 func (a *Adapter) sendUpdate(event AgentEvent) {
+	a.updateEmitMu.Lock()
+	defer a.updateEmitMu.Unlock()
+	a.flushShellSnapshotLocked()
+	a.shellSnapshots = shellSnapshotState{}
+	a.sendUpdateNow(event)
+}
+
+func (a *Adapter) sendUpdateNow(event AgentEvent) {
 	a.mu.RLock()
 	if a.closed {
 		a.mu.RUnlock()

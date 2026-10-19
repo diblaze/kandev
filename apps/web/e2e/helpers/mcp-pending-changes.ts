@@ -203,6 +203,7 @@ export async function checkMCPPendingChanges(
     // Return to real lifecycle evidence and watch idle acceptance clear the list.
     await page.unrouteAll({ behavior: "wait" });
     await session.cancelAgentButton().click();
+    await session.waitForChatIdle({ timeout: 30_000, requireEditable: true });
     await openMCPComposerCustomization(page);
     await expect
       .poll(

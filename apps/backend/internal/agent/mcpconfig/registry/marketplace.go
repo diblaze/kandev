@@ -115,6 +115,10 @@ func selectChoice(choices []Choice, choiceID string) (Choice, error) {
 }
 
 func definitionInputForChoice(entry Entry, choice Choice, request InstallRequest) (mcpconfig.CreateDefinitionInput, error) {
+	choice, err := prepareChoiceInputs(choice, request)
+	if err != nil {
+		return mcpconfig.CreateDefinitionInput{}, err
+	}
 	runtimeName := strings.TrimSpace(request.RuntimeName)
 	if runtimeName == "" {
 		runtimeName = defaultRuntimeName(entry.Name)
@@ -140,7 +144,7 @@ func definitionInputForChoice(entry Entry, choice Choice, request InstallRequest
 		input.ExecutionMode = mcpconfig.ExecutionModeRemote
 		input.Transport = remoteTransport(choice.Transport)
 		input.Configuration.URL = choice.URL
-		applyRegistryInputs(&input.Configuration, nil, choice.Headers, choice.Variables)
+		applyRegistryInputs(&input.Configuration, nil, choice.Headers)
 	case "package":
 		input.ExecutionMode = mcpconfig.ExecutionModeManagedPackage
 		input.Transport = mcpconfig.ServerTypeStdio
@@ -151,7 +155,7 @@ func definitionInputForChoice(entry Entry, choice Choice, request InstallRequest
 		input.Configuration.PackageExecutable = choice.RuntimeHint
 		input.Configuration.PackageRuntimeArguments = argumentValues(choice.RuntimeArguments)
 		input.Configuration.PackageArguments = argumentValues(choice.PackageArguments)
-		applyRegistryInputs(&input.Configuration, choice.EnvironmentVariables, choice.Headers, choice.Variables)
+		applyRegistryInputs(&input.Configuration, choice.EnvironmentVariables, choice.Headers)
 	default:
 		return mcpconfig.CreateDefinitionInput{}, ErrMarketplaceChoiceUnsupported
 	}
@@ -205,6 +209,9 @@ func entryChoices(entry Entry) []Choice {
 			Variables:            cloneVariables(packageChoice.Transport.Variables),
 		}
 		choice.Selectable, choice.UnsupportedReason = packageSupported(packageChoice)
+		if reason := unsupportedChoiceInputs(choice); reason != "" {
+			choice.Selectable, choice.UnsupportedReason = false, reason
+		}
 		choices = append(choices, choice)
 	}
 	for index, remote := range entry.Remotes {
@@ -214,6 +221,9 @@ func entryChoices(entry Entry) []Choice {
 			Headers: append([]KeyValueInput(nil), remote.Headers...), Variables: cloneVariables(remote.Variables),
 		}
 		choice.Selectable, choice.UnsupportedReason = remoteSupported(transport, endpoint)
+		if reason := unsupportedChoiceInputs(choice); reason != "" {
+			choice.Selectable, choice.UnsupportedReason = false, reason
+		}
 		choices = append(choices, choice)
 	}
 	return choices
@@ -290,6 +300,9 @@ func argumentValues(arguments []Argument) []string {
 	values := make([]string, 0, len(arguments))
 	for _, argument := range arguments {
 		if strings.TrimSpace(argument.Value) != "" {
+			if argument.Type == argumentTypeNamed {
+				values = append(values, argument.Name)
+			}
 			values = append(values, argument.Value)
 		} else if strings.TrimSpace(argument.Name) != "" {
 			values = append(values, argument.Name)
@@ -301,7 +314,6 @@ func argumentValues(arguments []Argument) []string {
 func applyRegistryInputs(
 	configuration *mcpconfig.MCPServerConfiguration,
 	environmentVariables, headers []KeyValueInput,
-	variables map[string]KeyValueInput,
 ) {
 	if configuration.Env == nil {
 		configuration.Env = map[string]string{}
@@ -320,12 +332,6 @@ func applyRegistryInputs(
 			continue
 		}
 		configuration.Headers[input.Name] = input.Value
-	}
-	if len(variables) > 0 {
-		if configuration.Options == nil {
-			configuration.Options = map[string]any{}
-		}
-		configuration.Options["registry_variables"] = cloneVariables(variables)
 	}
 }
 

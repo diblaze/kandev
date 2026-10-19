@@ -89,8 +89,10 @@ async function saveMCPSelection({
     if (isCurrent()) setSaveError(cause);
     throw cause;
   } finally {
-    requestRef.current += 1;
-    if (isCurrent()) setSaving(false);
+    if (isCurrent()) {
+      requestRef.current += 1;
+      setSaving(false);
+    }
   }
 }
 

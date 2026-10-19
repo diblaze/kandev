@@ -16,13 +16,17 @@ import {
 import { Input } from "@kandev/ui/input";
 import { Badge } from "@kandev/ui/badge";
 import { IconRefresh, IconSearch } from "@tabler/icons-react";
+import { marketplaceInputsComplete } from "@/components/mcp/mcp-config-inputs";
+import { MCPMarketplaceInputs } from "./mcp-marketplace-inputs";
 import type {
   MCPMarketplaceEntry,
   MCPMarketplaceChoice,
   MCPMarketplaceInstallInput,
+  MCPSecretBinding,
 } from "@/lib/types/http-mcp";
 
 type MCPMarketplaceProps = {
+  workspaceId: string;
   entries: MCPMarketplaceEntry[];
   stale: boolean;
   degraded: boolean;
@@ -36,6 +40,15 @@ function choiceLabel(choice: MCPMarketplaceChoice, t: (key: string) => string): 
   if (choice.kind === "package")
     return `${choice.identifier ?? t("settings:unknownPackage")}@${choice.version ?? ""}`;
   return choice.url ?? t("settings:remoteEndpointUnavailable");
+}
+
+function choiceAvailability(choice: MCPMarketplaceChoice, t: (key: string) => string) {
+  if (choice.selectable) return t("settings:mcpChoiceSupported");
+  if (choice.unsupported_reason === "input_arguments_unsupported")
+    return t("settings:mcpUnsupportedArguments");
+  if (choice.unsupported_reason === "input_variables_unsupported")
+    return t("settings:mcpUnsupportedVariables");
+  return choice.unsupported_reason;
 }
 
 function statusLabel(status: string, t: (key: string) => string): string {
@@ -128,17 +141,46 @@ function MarketplaceEntryCard({
   );
 }
 
-function MarketplaceReviewDialog({
-  selected,
+function MarketplaceChoiceList({
+  choices,
   choice,
-  runtimeName,
-  installing,
-  installError,
-  onClose,
   onChoiceChange,
-  onRuntimeNameChange,
-  onInstall,
 }: {
+  choices: MCPMarketplaceChoice[];
+  choice: MCPMarketplaceChoice | null;
+  onChoiceChange: (choice: MCPMarketplaceChoice) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">{t("settings:mcpSetupChoice")}</p>
+      {choices.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          className={`flex min-h-[44px] w-full flex-col items-start justify-between gap-2 sm:flex-row sm:gap-3 rounded-md border p-3 text-left cursor-pointer ${choice?.id === item.id ? "border-primary bg-primary/5" : "border-border"}`}
+          onClick={() => item.selectable && onChoiceChange(item)}
+          disabled={!item.selectable}
+        >
+          <span className="min-w-0 w-full sm:w-auto sm:flex-1">
+            <span className="block truncate text-sm font-medium">{choiceLabel(item, t)}</span>
+            <span className="text-xs text-muted-foreground">{item.transport || item.kind}</span>
+          </span>
+          <span className="min-w-0 break-words text-xs sm:max-w-[50%]">
+            {choiceAvailability(item, t)}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+type MarketplaceReviewDialogProps = {
+  workspaceId: string;
+  inputValues: Record<string, string>;
+  bindings: MCPSecretBinding[];
+  onInputValuesChange: (values: Record<string, string>) => void;
+  onBindingsChange: (bindings: MCPSecretBinding[]) => void;
   selected: MCPMarketplaceEntry | null;
   choice: MCPMarketplaceChoice | null;
   runtimeName: string;
@@ -148,11 +190,28 @@ function MarketplaceReviewDialog({
   onChoiceChange: (choice: MCPMarketplaceChoice) => void;
   onRuntimeNameChange: (name: string) => void;
   onInstall: () => void;
-}) {
+};
+
+function MarketplaceReviewDialog({
+  workspaceId,
+  inputValues,
+  bindings,
+  onInputValuesChange,
+  onBindingsChange,
+  selected,
+  choice,
+  runtimeName,
+  installing,
+  installError,
+  onClose,
+  onChoiceChange,
+  onRuntimeNameChange,
+  onInstall,
+}: MarketplaceReviewDialogProps) {
   const { t } = useTranslation();
   return (
     <Dialog open={Boolean(selected)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] grid-cols-1 overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{selected?.title || selected?.name}</DialogTitle>
           <DialogDescription>{selected?.trust_notice}</DialogDescription>
@@ -162,30 +221,28 @@ function MarketplaceReviewDialog({
             <p className="text-sm text-muted-foreground">
               {selected.description || t("settings:mcpNoDescription")}
             </p>
-            <div className="space-y-2">
-              <p className="text-sm font-medium">{t("settings:mcpSetupChoice")}</p>
-              {selected.choices.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`flex min-h-[44px] w-full items-start justify-between gap-3 rounded-md border p-3 text-left cursor-pointer ${choice?.id === item.id ? "border-primary bg-primary/5" : "border-border"}`}
-                  onClick={() => item.selectable && onChoiceChange(item)}
-                  disabled={!item.selectable}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">
-                      {choiceLabel(item, t)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {item.transport || item.kind}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-xs">
-                    {item.selectable ? t("settings:mcpChoiceSupported") : item.unsupported_reason}
-                  </span>
-                </button>
-              ))}
-            </div>
+            <MarketplaceChoiceList
+              choices={selected.choices}
+              choice={choice}
+              onChoiceChange={onChoiceChange}
+            />
+            {choice?.selectable && (
+              <>
+                <MCPMarketplaceInputs
+                  workspaceId={workspaceId}
+                  choice={choice}
+                  values={inputValues}
+                  bindings={bindings}
+                  onValuesChange={onInputValuesChange}
+                  onBindingsChange={onBindingsChange}
+                />
+                {!marketplaceInputsComplete(choice, inputValues, bindings) && (
+                  <p className="text-sm text-muted-foreground" role="status">
+                    {t("settings:mcpRequiredInputsMissing")}
+                  </p>
+                )}
+              </>
+            )}
             <div className="space-y-2">
               <label htmlFor="mcp-marketplace-runtime" className="text-sm font-medium">
                 {t("settings:mcpRuntimeName")}
@@ -208,7 +265,11 @@ function MarketplaceReviewDialog({
             type="button"
             className={controlSizingClassName("standard", "cursor-pointer")}
             onClick={onInstall}
-            disabled={!choice?.selectable || installing}
+            disabled={
+              !choice?.selectable ||
+              installing ||
+              !marketplaceInputsComplete(choice, inputValues, bindings)
+            }
           >
             {installing ? t("settings:mcpInstalling") : t("settings:addMcpServer")}
           </Button>
@@ -218,7 +279,40 @@ function MarketplaceReviewDialog({
   );
 }
 
+function MarketplaceResults({
+  entries,
+  loading,
+  onReview,
+}: {
+  entries: MCPMarketplaceEntry[];
+  loading: boolean;
+  onReview: (entry: MCPMarketplaceEntry) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {entries.length === 0 && !loading && (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            {t("settings:mcpMarketplaceEmpty")}
+          </CardContent>
+        </Card>
+      )}
+      <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-2">
+        {entries.map((entry) => (
+          <MarketplaceEntryCard
+            key={`${entry.source}:${entry.name}:${entry.version}`}
+            entry={entry}
+            onReview={() => onReview(entry)}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
 export function MCPMarketplace({
+  workspaceId,
   entries,
   stale,
   degraded,
@@ -234,8 +328,12 @@ export function MCPMarketplace({
   const [runtimeName, setRuntimeName] = useState("");
   const [installing, setInstalling] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [bindings, setBindings] = useState<MCPSecretBinding[]>([]);
 
   const openEntry = (entry: MCPMarketplaceEntry) => {
+    setInputValues({});
+    setBindings([]);
     setSelected(entry);
     setChoice(entry.choices.find((item) => item.selectable) ?? entry.choices[0] ?? null);
     setRuntimeName(entry.name.split("/").pop()?.replace(/@.*$/, "") ?? entry.name);
@@ -243,7 +341,12 @@ export function MCPMarketplace({
   };
 
   const install = async () => {
-    if (!selected || !choice?.selectable) return;
+    if (
+      !selected ||
+      !choice?.selectable ||
+      !marketplaceInputsComplete(choice, inputValues, bindings)
+    )
+      return;
     setInstalling(true);
     setInstallError(null);
     try {
@@ -253,6 +356,8 @@ export function MCPMarketplace({
         choice_id: choice.id,
         runtime_name: runtimeName.trim(),
         display_name: selected.title || selected.name,
+        input_values: inputValues,
+        secret_bindings: bindings,
       });
       setSelected(null);
     } catch (cause) {
@@ -276,30 +381,24 @@ export function MCPMarketplace({
           {degraded ? t("settings:mcpMarketplaceDegraded") : t("settings:mcpMarketplaceStale")}
         </p>
       )}
-      {entries.length === 0 && !loading && (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            {t("settings:mcpMarketplaceEmpty")}
-          </CardContent>
-        </Card>
-      )}
-      <div className="grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-2">
-        {entries.map((entry) => (
-          <MarketplaceEntryCard
-            key={`${entry.source}:${entry.name}:${entry.version}`}
-            entry={entry}
-            onReview={() => openEntry(entry)}
-          />
-        ))}
-      </div>
+      <MarketplaceResults entries={entries} loading={loading} onReview={openEntry} />
       <MarketplaceReviewDialog
+        workspaceId={workspaceId}
+        inputValues={inputValues}
+        bindings={bindings}
+        onInputValuesChange={setInputValues}
+        onBindingsChange={setBindings}
         selected={selected}
         choice={choice}
         runtimeName={runtimeName}
         installing={installing}
         installError={installError}
         onClose={() => setSelected(null)}
-        onChoiceChange={setChoice}
+        onChoiceChange={(next) => {
+          setChoice(next);
+          setInputValues({});
+          setBindings([]);
+        }}
         onRuntimeNameChange={setRuntimeName}
         onInstall={() => void install()}
       />

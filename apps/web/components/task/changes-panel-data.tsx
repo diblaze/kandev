@@ -40,10 +40,7 @@ import {
   type ReviewProgressPRSource,
   type PRCommitForMerge,
 } from "./changes-panel-helpers";
-import {
-  groupChangedFileTargetsByRepository,
-  type ChangedFileTarget,
-} from "./changes-timeline-selection";
+import type { ChangedFileTarget } from "./changes-timeline-selection";
 import type {
   CommitDetailTarget,
   CommitFileNavigationRequest,
@@ -74,6 +71,11 @@ function useChangesPanelStoreData() {
   const { t } = useTranslation();
   const activeTaskId = useAppStore((state) => state.tasks.activeTaskId);
   const activeSessionId = useEnvironmentSessionId();
+  const hasCommitData = useAppStore((state) => {
+    if (!activeSessionId) return false;
+    const envKey = state.environmentIdBySessionId[activeSessionId] ?? activeSessionId;
+    return state.sessionCommits.byEnvironmentId[envKey] !== undefined;
+  });
   const baseBranch = useAppStore((state) =>
     activeSessionId ? state.taskSessions.items[activeSessionId]?.base_branch : undefined,
   );
@@ -90,6 +92,7 @@ function useChangesPanelStoreData() {
   return {
     activeTaskId,
     activeSessionId,
+    hasCommitData,
     baseBranch,
     gitCredentialDisplay,
   };
@@ -102,6 +105,7 @@ export type ChangesPanelBodyProps = {
   hasUnstaged: boolean;
   hasStaged: boolean;
   hasCommits: boolean;
+  commitsInitialLoading: boolean;
   hasPRFiles: boolean;
   hasPRCommits: boolean;
   relation: RemoteContributionRelation;
@@ -378,8 +382,63 @@ function useReviewRepositoryNames(
   );
 }
 
+function useChangesPanelGitPresentation({
+  git,
+  reviews,
+  prDiffFiles,
+  useRepositoryKeys,
+  hasPRFiles,
+  baseBranch,
+}: {
+  git: ReturnType<typeof useSessionGit>;
+  reviews: ReturnType<typeof useSessionFileReviews>["reviews"];
+  prDiffFiles: PRDiffFile[];
+  useRepositoryKeys: boolean;
+  hasPRFiles: boolean;
+  baseBranch: Parameters<typeof getBaseBranchDisplay>[0];
+}) {
+  const baseBranchDisplay = useMemo(() => getBaseBranchDisplay(baseBranch), [baseBranch]);
+  const unstagedFiles = useMemo(
+    () => mapToChangedFiles(git.displayUnstagedFiles),
+    [git.displayUnstagedFiles],
+  );
+  const stagedFiles = useMemo(
+    () => mapToChangedFiles(git.displayStagedFiles),
+    [git.displayStagedFiles],
+  );
+  const { reviewedCount, totalFileCount } = useMemo(
+    () =>
+      computeReviewProgress(
+        git.displayAllFiles,
+        git.cumulativeDiff,
+        reviews,
+        prDiffFiles,
+        useRepositoryKeys,
+      ),
+    [git.displayAllFiles, git.cumulativeDiff, reviews, prDiffFiles, useRepositoryKeys],
+  );
+  const staged = useMemo(
+    () => computeStagedStats(git.displayStagedFiles),
+    [git.displayStagedFiles],
+  );
+  const walkthroughRequestReady =
+    unstagedFiles.length > 0 ||
+    stagedFiles.length > 0 ||
+    (git.statusLoaded && hasCumulativeFiles(git.cumulativeDiff?.files)) ||
+    hasPRFiles;
+  return {
+    baseBranchDisplay,
+    unstagedFiles,
+    stagedFiles,
+    reviewedCount,
+    totalFileCount,
+    staged,
+    walkthroughRequestReady,
+  };
+}
+
 export function useChangesPanelData() {
-  const { activeTaskId, activeSessionId, baseBranch, gitCredentialDisplay } =
+  const { activeTaskId, activeSessionId, hasCommitData, baseBranch, gitCredentialDisplay } =
     useChangesPanelStoreData();
   const changesContext = useChangesPanelContextIdentity();
   const inlineCommitDetails = useChangesInlineCommitDetails(changesContext);
@@ -399,6 +458,14 @@ export function useChangesPanelData() {
   const { reviews } = useSessionFileReviews(activeSessionId);
   const reviewRepositoryNames = useReviewRepositoryNames(git.repoNames, git.cumulativeDiff?.files);
   const prData = useChangesPanelPRData(reviewRepositoryNames, activeSessionId);
+  const gitPresentation = useChangesPanelGitPresentation({
+    git,
+    reviews,
+    prDiffFiles: prData.prDiffFiles,
+    useRepositoryKeys: prData.useRepositoryKeys,
+    hasPRFiles: prData.prFiles.length > 0,
+    baseBranch,
+  });
   const resolution = useRemoteContributionResolution(
     activeSessionId,
     prData.refreshProviderEvidence,
@@ -409,21 +476,6 @@ export function useChangesPanelData() {
     prData.selectedPR,
   );
   const vcsDialogs = useVcsDialogs();
-  const baseBranchDisplay = useMemo(() => getBaseBranchDisplay(baseBranch), [baseBranch]);
-  const unstagedFiles = useMemo(() => mapToChangedFiles(git.unstagedFiles), [git.unstagedFiles]);
-  const stagedFiles = useMemo(() => mapToChangedFiles(git.stagedFiles), [git.stagedFiles]);
-  const { reviewedCount, totalFileCount } = useMemo(
-    () =>
-      computeReviewProgress(
-        git.allFiles,
-        git.cumulativeDiff,
-        reviews,
-        prData.prDiffFiles,
-        prData.useRepositoryKeys,
-      ),
-    [git.allFiles, git.cumulativeDiff, reviews, prData.prDiffFiles, prData.useRepositoryKeys],
-  );
-  const staged = useMemo(() => computeStagedStats(git.stagedFiles), [git.stagedFiles]);
   const gitHandlers = useChangesGitHandlers(git, toast, baseBranch);
   const localDialogs = useChangesDialogHandlers(git, toast, gitHandlers.handleGitOperation);
   const dialogs = { ...localDialogs, ...vcsDialogs };
@@ -439,11 +491,6 @@ export function useChangesPanelData() {
     () => buildPrByRepoMap(prData.prs, repoNameById, pendingByRepo),
     [prData.prs, repoNameById, pendingByRepo],
   );
-  const walkthroughRequestReady =
-    unstagedFiles.length > 0 ||
-    stagedFiles.length > 0 ||
-    (git.statusLoaded && hasCumulativeFiles(git.cumulativeDiff?.files)) ||
-    prData.prFiles.length > 0;
   return {
     activeTaskId,
     activeSessionId,
@@ -452,13 +499,9 @@ export function useChangesPanelData() {
     refreshStatus,
     git,
     gitStatusPresentation,
-    baseBranchDisplay,
+    commitsInitialLoading: !hasCommitData && git.commitsLoading,
+    ...gitPresentation,
     baseBranchByRepo,
-    unstagedFiles,
-    stagedFiles,
-    reviewedCount,
-    totalFileCount,
-    staged,
     gitHandlers,
     localDialogs,
     dialogs,
@@ -467,7 +510,6 @@ export function useChangesPanelData() {
     prByRepo,
     existingPrUrl,
     gitCredentialDisplay,
-    walkthroughRequestReady,
     resolution,
     resolutionTarget: contributionState.resolutionTarget,
     workspaceRestoration,
@@ -478,142 +520,4 @@ export function useChangesPanelData() {
   };
 }
 
-type ChangesPanelCallbacks = {
-  onOpenDiffFile: (path: string, options?: OpenDiffOptions) => void;
-  onEditFile: (path: string, repo?: string) => void;
-  onOpenCommitDetail?: (
-    target: CommitDetailTarget,
-    fileNavigation?: CommitFileNavigationRequest,
-  ) => void;
-  onOpenReview?: () => void;
-};
-
-type ChangesPanelWorkspaceActions = Pick<
-  ChangesPanelBodyProps,
-  | "onRevertCommit"
-  | "onStageAll"
-  | "onUnstageAll"
-  | "onStage"
-  | "onUnstage"
-  | "onBulkStage"
-  | "onBulkUnstage"
-  | "onBulkDiscard"
-  | "onPush"
-  | "onForcePush"
-  | "onRepoStageAll"
-  | "onRepoUnstageAll"
-  | "onRepoCommit"
-  | "onRepoPush"
-  | "onRepoCreatePR"
->;
-
-function buildChangesPanelWorkspaceActions(
-  data: ReturnType<typeof useChangesPanelData>,
-  workspaceBlocked: boolean,
-): ChangesPanelWorkspaceActions {
-  const { git, gitHandlers, localDialogs, repoCallbacks } = data;
-  if (workspaceBlocked) {
-    return {
-      onRevertCommit: undefined,
-      onStageAll: () => undefined,
-      onUnstageAll: () => undefined,
-      onStage: async () => undefined,
-      onUnstage: async () => undefined,
-      onBulkStage: () => undefined,
-      onBulkUnstage: () => undefined,
-      onBulkDiscard: () => undefined,
-      onPush: () => undefined,
-      onForcePush: () => undefined,
-      onRepoStageAll: undefined,
-      onRepoUnstageAll: undefined,
-      onRepoCommit: undefined,
-      onRepoPush: undefined,
-      onRepoCreatePR: undefined,
-    };
-  }
-  return {
-    onRevertCommit: gitHandlers.handleRevertCommit,
-    onStageAll: git.stageAll,
-    onUnstageAll: git.unstageAll,
-    onStage: (path, repo) => git.stageFile([path], repo).then(() => undefined),
-    onUnstage: (path, repo) => git.unstageFile([path], repo).then(() => undefined),
-    onBulkStage: (files) => {
-      for (const group of groupChangedFileTargetsByRepository(files)) {
-        git.stageFile(group.paths, group.repositoryName).catch(() => undefined);
-      }
-    },
-    onBulkUnstage: (files) => {
-      for (const group of groupChangedFileTargetsByRepository(files)) {
-        git.unstageFile(group.paths, group.repositoryName).catch(() => undefined);
-      }
-    },
-    onBulkDiscard: localDialogs.handleBulkDiscardClick,
-    onPush: () => gitHandlers.handlePush(),
-    onForcePush: () => gitHandlers.handleForcePush(),
-    onRepoStageAll: repoCallbacks.onRepoStageAll,
-    onRepoUnstageAll: repoCallbacks.onRepoUnstageAll,
-    onRepoCommit: repoCallbacks.onRepoCommit,
-    onRepoPush: repoCallbacks.onRepoPush,
-    onRepoCreatePR: repoCallbacks.onRepoCreatePR,
-  };
-}
-
-export function buildChangesPanelBodyProps(
-  data: ReturnType<typeof useChangesPanelData>,
-  callbacks: ChangesPanelCallbacks,
-): ChangesPanelBodyProps {
-  const { git, staged } = data;
-  const workspaceBlocked =
-    data.workspaceRestoration.status !== null && data.workspaceRestoration.status !== "ready";
-  const workspaceActions = buildChangesPanelWorkspaceActions(data, workspaceBlocked);
-  return {
-    hasAnything: git.hasAnything || data.hasPRFiles || data.hasPRCommits,
-    hasUnstaged: git.hasUnstaged,
-    hasStaged: git.hasStaged,
-    hasCommits: git.hasCommits,
-    hasPRFiles: data.hasPRFiles,
-    hasPRCommits: data.hasPRCommits,
-    relation: data.relation,
-    resolution: data.resolution,
-    resolutionTarget: data.resolutionTarget,
-    providerPRNumber: data.selectedPR?.pr_number,
-    pushDisabled: data.pushDisabled || workspaceBlocked,
-    pullDisabled: data.pullDisabled || workspaceBlocked,
-    canPush: git.canPush && !workspaceBlocked,
-    canCreatePR: git.canCreatePR && !workspaceBlocked,
-    existingPrUrl: data.existingPrUrl,
-    unstagedFiles: data.unstagedFiles,
-    stagedFiles: data.stagedFiles,
-    prFiles: data.prFiles,
-    prCommits: data.prCommits,
-    commits: git.commits,
-    pendingStageFiles: git.pendingStageFiles,
-    reviewedCount: data.reviewedCount,
-    totalFileCount: data.totalFileCount,
-    aheadCount: git.ahead,
-    comparisonTargets: git.comparisonTargets,
-    comparisonUnavailable: git.comparisonUnavailable,
-    comparisonErrorCode: git.comparisonErrorCode,
-    gitStatus: data.gitStatusPresentation,
-    inlineCommitDetails: data.inlineCommitDetails.state,
-    inlineCommitDetailVersion: data.inlineCommitDetails.version,
-    contextKey: data.contextKey,
-    isLoading: git.isLoading,
-    loadingOperation: git.loadingOperation,
-    dialogs: data.dialogs,
-    onOpenDiffFile: callbacks.onOpenDiffFile,
-    onEditFile: callbacks.onEditFile,
-    onOpenCommitDetail: callbacks.onOpenCommitDetail,
-    onOpenReview: callbacks.onOpenReview,
-    ...workspaceActions,
-    stagedFileCount: staged.stagedFileCount,
-    stagedAdditions: staged.stagedAdditions,
-    stagedDeletions: staged.stagedDeletions,
-    repoDisplayName: data.repoDisplayName,
-    perRepoStatus: git.perRepoStatus,
-    prByRepo: data.prByRepo,
-    workspaceRestoration: data.workspaceRestoration.attempt,
-    onRestoreWorkspace: () => void data.workspaceRestoration.restore(),
-    restoreWorkspaceDisabled: data.workspaceRestoration.status === "pending",
-  };
-}
+export { buildChangesPanelBodyProps } from "./changes-panel-body-props";

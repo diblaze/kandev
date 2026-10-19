@@ -1,8 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { useLayoutEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RichOutputChartBlock } from "./types";
+import type { ChartProps } from "@/lib/rich-output/catalog";
 
 type ObserverRecord = {
   callback: IntersectionObserverCallback;
@@ -65,10 +64,9 @@ vi.mock("recharts", () => ({
   },
 }));
 
-import { ChartBlock } from "./chart-block";
+import { Chart } from "./chart-block";
 
-const BLOCK: RichOutputChartBlock = {
-  type: "chart",
+const BLOCK: ChartProps = {
   chart_type: "line",
   title: "Latency",
   summary: "Latency over time",
@@ -115,36 +113,6 @@ function setDocumentVisibility(value: DocumentVisibilityState) {
   document.dispatchEvent(new Event("visibilitychange"));
 }
 
-function RevealDocumentBeforePassiveEffects({ children }: { children: ReactNode }) {
-  useLayoutEffect(() => setDocumentVisibility("visible"), []);
-  return children;
-}
-
-function PositionChartPlotBeforePassiveEffects({
-  top,
-  children,
-}: {
-  top: number;
-  children: ReactNode;
-}) {
-  useLayoutEffect(() => {
-    const plot = document.querySelector<HTMLElement>('[data-testid="rich-output-chart-plot"]');
-    if (!plot) return;
-    vi.spyOn(plot, "getBoundingClientRect").mockReturnValue({
-      x: 0,
-      y: top,
-      top,
-      right: 320,
-      bottom: top + 208,
-      left: 0,
-      width: 320,
-      height: 208,
-      toJSON: () => ({}),
-    });
-  }, [top]);
-  return children;
-}
-
 beforeEach(() => {
   observerRecords.length = 0;
   for (const values of Object.values(captured)) values.length = 0;
@@ -162,13 +130,9 @@ afterEach(() => {
   }
 });
 
-describe("ChartBlock plot scheduling", () => {
+describe("Chart plot scheduling", () => {
   it("defers the Recharts plot until the chart approaches the viewport", () => {
-    render(
-      <PositionChartPlotBeforePassiveEffects top={1000}>
-        <ChartBlock block={BLOCK} />
-      </PositionChartPlotBeforePassiveEffects>,
-    );
+    render(<Chart {...BLOCK} />);
 
     expect(screen.queryByTestId(MOCK_LINE_CHART)).toBeNull();
     expect(screen.getByText(BLOCK.title)).not.toBeNull();
@@ -178,126 +142,26 @@ describe("ChartBlock plot scheduling", () => {
     expect(screen.getByTestId(MOCK_LINE_CHART)).not.toBeNull();
   });
 
-  it("mounts the plot when it is already in the scroll range before observing it", () => {
-    render(
-      <PositionChartPlotBeforePassiveEffects top={100}>
-        <ChartBlock block={BLOCK} />
-      </PositionChartPlotBeforePassiveEffects>,
-    );
+  it("mounts when a later observation in the same batch intersects", () => {
+    render(<Chart {...BLOCK} />);
+    const record = observerRecords[0];
 
-    expect(screen.getByTestId(MOCK_LINE_CHART)).not.toBeNull();
-  });
-
-  it("mounts a deferred plot when scrolling its owner brings it into range", () => {
-    const { container } = render(
-      <div
-        data-testid="scroll-owner"
-        ref={(element) => {
-          if (!element) return;
-          Object.defineProperties(element, {
-            clientHeight: { configurable: true, value: 300 },
-            scrollHeight: { configurable: true, value: 900 },
-          });
-        }}
-        style={{ overflowY: "auto" }}
-      >
-        <ChartBlock block={BLOCK} />
-      </div>,
-    );
-    const scrollOwner = container.querySelector<HTMLElement>('[data-testid="scroll-owner"]')!;
-    const plot = container.querySelector<HTMLElement>('[data-testid="rich-output-chart-plot"]')!;
-    let plotTop = 1000;
-    vi.spyOn(scrollOwner, "getBoundingClientRect").mockReturnValue({
-      x: 0,
-      y: 0,
-      top: 0,
-      right: 400,
-      bottom: 300,
-      left: 0,
-      width: 400,
-      height: 300,
-      toJSON: () => ({}),
+    act(() => {
+      record.callback(
+        [
+          { isIntersecting: false, target: record.target },
+          { isIntersecting: true, target: record.target },
+        ] as IntersectionObserverEntry[],
+        record.instance,
+      );
     });
-    vi.spyOn(plot, "getBoundingClientRect").mockImplementation(() => ({
-      x: 0,
-      y: plotTop,
-      top: plotTop,
-      right: 320,
-      bottom: plotTop + 208,
-      left: 0,
-      width: 320,
-      height: 208,
-      toJSON: () => ({}),
-    }));
-
-    expect(screen.queryByTestId(MOCK_LINE_CHART)).toBeNull();
-    plotTop = 100;
-    act(() => scrollOwner.dispatchEvent(new Event("scroll")));
 
     expect(screen.getByTestId(MOCK_LINE_CHART)).not.toBeNull();
   });
-});
 
-describe("ChartBlock scroll root selection", () => {
-  it("observes the nearest scrollable transcript container", () => {
-    const { container } = render(
-      <div
-        ref={(element) => {
-          if (!element) return;
-          Object.defineProperties(element, {
-            clientHeight: { configurable: true, value: 100 },
-            scrollHeight: { configurable: true, value: 300 },
-          });
-        }}
-        style={{ overflowY: "auto" }}
-      >
-        <ChartBlock block={BLOCK} />
-      </div>,
-    );
-
-    const scrollRoot = container.firstElementChild as HTMLElement;
-    expect(observerRecords[0].options?.root).toBe(scrollRoot);
-  });
-
-  it("uses the vertical scroll owner instead of a horizontal-only overflow ancestor", () => {
-    const { container } = render(
-      <div
-        data-testid="vertical-scroll-root"
-        ref={(element) => {
-          if (!element) return;
-          Object.defineProperties(element, {
-            clientHeight: { configurable: true, value: 100 },
-            scrollHeight: { configurable: true, value: 300 },
-          });
-        }}
-        style={{ overflowY: "auto" }}
-      >
-        <div
-          data-testid="horizontal-overflow"
-          ref={(element) => {
-            if (!element) return;
-            Object.defineProperties(element, {
-              clientHeight: { configurable: true, value: 100 },
-              scrollHeight: { configurable: true, value: 100 },
-              clientWidth: { configurable: true, value: 100 },
-              scrollWidth: { configurable: true, value: 500 },
-            });
-          }}
-          style={{ overflowX: "auto" }}
-        >
-          <ChartBlock block={BLOCK} />
-        </div>
-      </div>,
-    );
-    const verticalRoot = container.querySelector('[data-testid="vertical-scroll-root"]')!;
-    expect(observerRecords[0].options?.root).toBe(verticalRoot);
-  });
-});
-
-describe("ChartBlock plot visibility and rendering", () => {
   it("waits for a background tab to become visible after intersection", () => {
     setDocumentVisibility("hidden");
-    render(<ChartBlock block={BLOCK} />);
+    render(<Chart {...BLOCK} />);
 
     intersect();
     expect(screen.queryByTestId(MOCK_LINE_CHART)).toBeNull();
@@ -306,21 +170,8 @@ describe("ChartBlock plot visibility and rendering", () => {
     expect(screen.getByTestId(MOCK_LINE_CHART)).not.toBeNull();
   });
 
-  it("syncs current visibility when the change precedes listener registration", () => {
-    setDocumentVisibility("hidden");
-    render(
-      <RevealDocumentBeforePassiveEffects>
-        <ChartBlock block={BLOCK} />
-      </RevealDocumentBeforePassiveEffects>,
-    );
-
-    intersect();
-
-    expect(screen.getByTestId(MOCK_LINE_CHART)).not.toBeNull();
-  });
-
   it("keeps an eligible plot mounted after it leaves the visible tab", () => {
-    render(<ChartBlock block={BLOCK} />);
+    render(<Chart {...BLOCK} />);
     intersect();
     const mountedPlot = screen.getByTestId(MOCK_LINE_CHART);
 
@@ -332,17 +183,17 @@ describe("ChartBlock plot visibility and rendering", () => {
   it("renders immediately when intersection observation is unavailable", () => {
     vi.stubGlobal("IntersectionObserver", undefined);
 
-    render(<ChartBlock block={BLOCK} />);
+    render(<Chart {...BLOCK} />);
 
     expect(screen.getByTestId(MOCK_LINE_CHART)).not.toBeNull();
   });
 
   it("reuses derived chart inputs when a legend toggle changes local visibility", () => {
-    const block: RichOutputChartBlock = {
+    const block: ChartProps = {
       ...BLOCK,
       series: [BLOCK.series[0], { label: "p50", values: [80, 75] }],
     };
-    render(<ChartBlock block={block} />);
+    render(<Chart {...block} />);
     intersect();
 
     const initialData = captured.lineCharts.at(-1)?.data;
@@ -360,11 +211,11 @@ describe("ChartBlock plot visibility and rendering", () => {
   });
 
   it("skips an unchanged parent rerender and retains default chart animation", () => {
-    const view = render(<ChartBlock block={BLOCK} />);
+    const view = render(<Chart {...BLOCK} />);
     intersect();
     const renderCount = captured.lineCharts.length;
 
-    view.rerender(<ChartBlock block={BLOCK} />);
+    view.rerender(<Chart {...BLOCK} />);
 
     expect(captured.lineCharts).toHaveLength(renderCount);
     expect(captured.lines.at(-1)?.isAnimationActive).not.toBe(false);
@@ -372,15 +223,15 @@ describe("ChartBlock plot visibility and rendering", () => {
 
   it("disables every line and bar animation when effective chart motion is off", () => {
     chartMotion.enabled = false;
-    const line = render(<ChartBlock block={BLOCK} />);
+    const line = render(<Chart {...BLOCK} />);
     intersect();
 
     expect(captured.lines.at(-1)?.isAnimationActive).toBe(false);
 
     line.unmount();
     observerRecords.length = 0;
-    const barBlock: RichOutputChartBlock = { ...BLOCK, chart_type: "bar" };
-    render(<ChartBlock block={barBlock} />);
+    const barBlock: ChartProps = { ...BLOCK, chart_type: "bar" };
+    render(<Chart {...barBlock} />);
     intersect();
 
     expect(captured.bars.at(-1)?.isAnimationActive).toBe(false);

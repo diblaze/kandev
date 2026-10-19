@@ -94,7 +94,7 @@ Connect Kandev to GitHub, GitLab, Jira, Linear, Sentry, and Azure DevOps to pull
 | **Gemini CLI** | `@google/gemini-cli` |
 | **Amp** | `amp-acp` |
 | **Auggie** | `@augmentcode/auggie` |
-| **OpenCode** | `opencode-ai` |
+| **OpenCode** | v2: `@opencode/cli`; existing v1: `opencode-ai` |
 | **Cursor** | `cursor-agent` *(requires Cursor Pro)* |
 | **Devin** | `devin` *(install Devin CLI from Devin Desktop or standalone installer)* |
 | **Qwen** | `@qwen-code/qwen-code` |
@@ -120,6 +120,10 @@ sessions. Background notices cover enabled, available registered runtimes, with 
 updates for supported managed installations and manual guidance for external CLIs.
 See [Agents and Profiles](docs/public/agents-and-profiles.md#update-a-managed-agent-runtime).
 
+Fresh OpenCode installs use managed v2 (`@opencode/cli`). Existing v1
+selections remain on `opencode-ai` until you choose the explicit migration
+action. Kandev leaves a separately installed `opencode` CLI unchanged.
+
 ### Bring your own TUI agents
 
 Kandev can run any agent CLI as a TUI inside a terminal, even when it does not speak ACP. Add the command in agent profile settings and the task starts that agent inside a PTY terminal. CLI passthrough keeps the agent's native terminal UX available while still giving Kandev task tracking, worktrees, review, and session management.
@@ -134,7 +138,7 @@ Kandev can run any agent CLI as a TUI inside a terminal, even when it does not s
 | **SSH** | Runs the agent on a remote server over SSH |
 | **Sprites** | Runs the agent in a remote cloud environment via [sprites.dev](https://sprites.dev) |
 
-Executors support profiles for reusable runtime configuration: prepare scripts, environment variables, credentials, and settings. Worktree-based tasks can also attach multiple repositories or multiple branches from the same repository, which lets one task produce several PRs when the work needs it.
+Executors support profiles for reusable runtime configuration: prepare scripts, environment variables, credentials, and settings. On shared instances, [private executor ownership](docs/public/executors.md#private-executors-and-profiles) limits compute and profile access to the owner and configuration administrators. Worktree-based tasks can also attach multiple repositories or multiple branches from the same repository, which lets one task produce several PRs when the work needs it.
 
 ## Quick Start
 

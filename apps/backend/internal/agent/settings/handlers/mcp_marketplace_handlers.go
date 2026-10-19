@@ -19,6 +19,7 @@ type marketplaceInstallRequest struct {
 	RuntimeName      string                       `json:"runtime_name"`
 	DisplayName      string                       `json:"display_name"`
 	SecretBindings   []mcpconfig.MCPSecretBinding `json:"secret_bindings"`
+	InputValues      map[string]string            `json:"input_values"`
 }
 
 func (h *Handlers) httpSearchMCPMarketplace(c *gin.Context) {
@@ -79,7 +80,7 @@ func (h *Handlers) httpInstallMCPMarketplace(c *gin.Context) {
 		WorkspaceID: c.Param("id"), Identity: body.Identity,
 		ExpectedRevision: body.ExpectedRevision, ChoiceID: body.ChoiceID,
 		RuntimeName: body.RuntimeName, DisplayName: body.DisplayName,
-		SecretBindings: bindings,
+		SecretBindings: bindings, InputValues: body.InputValues,
 	})
 	if err != nil {
 		h.writeMarketplaceError(c, err)

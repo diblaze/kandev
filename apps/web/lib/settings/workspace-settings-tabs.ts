@@ -10,6 +10,8 @@ import {
   IconServer,
 } from "@tabler/icons-react";
 
+import { CoordinatorIcon } from "@/lib/coordinator/icon";
+
 import { WORKSPACES_SETTINGS_HREF } from "@/lib/settings-discovery/catalog/workspaces";
 
 /**
@@ -30,7 +32,8 @@ export type WorkspaceSettingsTab =
   | "integrations"
   | "automations"
   | "secrets"
-  | "mcp-servers";
+  | "mcp-servers"
+  | "coordinators";
 
 export function workspaceSettingsHref(workspaceId: string, tab: WorkspaceSettingsTab): string {
   const base = `${WORKSPACES_SETTINGS_HREF}/${encodeURIComponent(workspaceId)}`;
@@ -58,19 +61,24 @@ export const WORKSPACE_SETTINGS_TABS: ReadonlyArray<WorkspaceTabSpec> = [
   { tab: "automations", labelKey: "common:automations", icon: IconBolt },
   { tab: "secrets", labelKey: "settings:secrets", icon: IconKey },
   { tab: "mcp-servers", labelKey: "settings:mcpServers", icon: IconServer },
+  { tab: "coordinators", labelKey: "coordinator:coordinators", icon: CoordinatorIcon },
 ];
 
 /**
- * The workspace settings catalog with optional canvas entries. Keeping the
- * filter here means every settings surface shares the same route, label, and
- * icon definitions while the disabled feature stays absent.
+ * The workspace settings catalog with optional canvas and coordinator
+ * entries. Keeping the filter here means every settings surface shares the
+ * same route, label, and icon definitions while a disabled feature stays
+ * absent.
  */
 export function getWorkspaceSettingsTabs(
   canvasesEnabled: boolean,
+  coordinatorEnabled: boolean,
 ): ReadonlyArray<WorkspaceTabSpec> {
-  return canvasesEnabled
-    ? WORKSPACE_SETTINGS_TABS
-    : WORKSPACE_SETTINGS_TABS.filter(({ tab }) => tab !== "canvases");
+  return WORKSPACE_SETTINGS_TABS.filter(({ tab }) => {
+    if (tab === "canvases") return canvasesEnabled;
+    if (tab === "coordinators") return coordinatorEnabled;
+    return true;
+  });
 }
 
 /** The name and mark for a tab, for the surfaces that render one tab at a time. */
