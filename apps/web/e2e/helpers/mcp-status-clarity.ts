@@ -1,3 +1,4 @@
+import { expectMCPConnectionGeometry } from "./mcp-connection-geometry";
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { ApiClient } from "./api-client";
 import type { SeedData } from "../fixtures/test-base";
@@ -106,6 +107,7 @@ export async function checkMCPStatusClarity({
     await expect(explorer.getByTestId("mcp-server-row-clarity-1")).toContainText(
       "This agent does not support HTTP MCP servers.",
     );
+    await expectMCPConnectionGeometry(explorer, mobile);
     await explorer.getByTestId("mcp-server-row-clarity-1").click();
     await expect(explorer.getByTestId("mcp-server-detail")).toContainText(
       "This agent does not support HTTP MCP servers.",

@@ -65,7 +65,7 @@ export function McpServerList({
                 aria-current={selected ? "true" : undefined}
                 onClick={() => onSelect(server.name)}
                 className={cn(
-                  "h-auto min-h-7 w-full items-start justify-start gap-2 whitespace-normal px-2 py-2 text-left text-[13px] max-md:min-h-11 [@media(pointer:coarse)]:min-h-11",
+                  "h-auto min-h-7 w-full items-start justify-start gap-2 whitespace-normal px-2 py-2 text-left text-[13px] max-md:h-auto max-md:min-h-11 [@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11",
                   selected && "bg-muted/60",
                 )}
               >

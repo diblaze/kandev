@@ -1,3 +1,4 @@
+import { expectMCPChoiceDetails } from "../../helpers/mcp-picker-consistency";
 import { checkMCPOriginSections } from "../../helpers/mcp-origin-sections";
 import { openMCPComposerCustomization } from "../../helpers/mcp-composer";
 import { checkMCPSessionClarity } from "../../helpers/mcp-session-clarity";
@@ -164,6 +165,11 @@ test.describe("Task MCP selection on mobile", () => {
     await assertNoDocumentHorizontalOverflow(testPage, "mobile task MCP drawer");
     await expect(drawer).toContainText("Inherited MCP servers");
     await expect(drawer).toContainText("Mobile inherited MCP");
+    await expectMCPChoiceDetails(
+      drawer.getByTestId(`mcp-choice-${taskMCP.id}`),
+      "Mobile task MCP for mobile selection coverage.",
+      "Streamable HTTP",
+    );
     const taskRow = drawer.getByText("Mobile task MCP", { exact: true });
     await expect(taskRow).toBeVisible();
     await taskRow.tap();

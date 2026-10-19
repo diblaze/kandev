@@ -143,15 +143,10 @@ servers. Neither value disables inherited servers.
 
 ### Frontend surfaces
 
-The workspace settings tab manifest (`lib/settings/workspace-settings-tabs.ts`,
-read by the tab strip, each tab page heading, the workspace list links, and the
-settings menu's Workspaces branch) gains an `MCP servers` destination. Because
-Kandev already has an External MCP settings page for the opposite direction,
-this destination's label and description name the direction explicitly rather
-than reusing a bare `MCP` title. Its desktop layout provides configured and
-marketplace views. Configured cards show
-state, transport, source, and selection impact. Marketplace results support
-search, source/status labels, review, and setup.
+Workspace navigation and headings share `lib/settings/workspace-settings-tabs.ts`.
+Its `MCP servers` catalog is distinct from External MCP (Kandev's outside-client
+endpoint). Configured cards show state, transport, source and selection impact;
+marketplace offers discovery, review and setup.
 
 A shared `MCPSelectionPicker` serves:
 
@@ -161,8 +156,9 @@ A shared `MCPSelectionPicker` serves:
 - new task agent session creation.
 - existing task-session customization inside the composer MCP explorer.
 
-Repository settings renders the picker inside a collapsed section. The closed
-section shows its selected count. It does not reserve the height of the picker.
+Repository settings owns one collapsed section with a selected count. It
+mounts `MCPSelectionContent` directly, owning its query and showing the existing
+repository description. Preserve shared Save changes, discard and error handling.
 
 Advanced settings contains a compact MCP label/count/help row matching priority.
 Opening it shows inherited origins and task additions in a bounded desktop
@@ -248,14 +244,15 @@ the workspace-safe origin formatter, never IDs or broader inventory reads.
 Semantic headings replace origin badges. Rows name repositories/profiles in
 plain labelled text; Also selected by lists secondary contributors. Use shared
 nonblank descriptions and passive metadata from `mcpDefinitionBadgeKeys` on
-inherited and session-choice rows. Legacy import is not Custom. Retain aliases,
+inherited rows and every shared picker choice, including repository/task forms.
+Legacy import is not Custom. Retain aliases,
 disabled state, pending annotations, checkbox accessibility and existing search.
 No transport configuration is exposed. Inherited rows remain read-only.
 
 Keep dialog/drawer ownership, wrapped details, one scroller and touch targets.
 Status and pending changes precede groups, independent of search. No API,
-storage, polling, save or non-session-picker change. Implementation details and
-phone composition: [origin sections plan](../../../plans/mcp-customize-origins/plan.md).
+storage, polling or save change. Origin grouping remains session-specific.
+Original phone composition: [origin sections plan](../../../plans/mcp-customize-origins/plan.md).
 
 Only the raw JSON editor is retired. The profile transport policy card remains,
 because it configures the executor and provider filtering that runs after scope
@@ -264,8 +261,7 @@ also remain and are not merged into the picker.
 
 Frontend state uses typed API clients and query or store ownership consistent
 with the surrounding settings surface. Raw transport configuration stays in
-the catalog editor. Selection surfaces exchange only definition IDs and
-sanitized summaries.
+the catalog editor. Selection surfaces exchange definition IDs and sanitized summaries.
 
 ## Marketplace installation
 
@@ -560,10 +556,10 @@ On a phone, results use a single-column list. Marketplace setup opens a direct
 full-height route or full-height surface with safe-area padding because it is a
 deep form.
 
-The shared selection picker uses the established mobile bottom-sheet pattern
-for short multi-select flows. Rows have 44-pixel touch targets, visible selected
-state, and accessible names. The task-create mobile dialog retains its current
-full-height composition and contains no nested horizontal scroll.
+Shared picker choices reuse `McpDefinitionDetails` in every presentation;
+checkboxes align with names, details wrap, and metadata stays passive. Existing
+phone drawers/popovers keep one scroller, visible selection and accessible names.
+Repository choices expand inline without a nested drawer.
 
 The repository MCP section is collapsed by default on desktop and mobile. Its
 header remains a 44-pixel disclosure target. Task creation keeps the whole MCP
@@ -576,8 +572,11 @@ remains a read-only summary. Phones use the existing full-height explorer
 drawer, with fixed header/view controls, safe-area padding, and one active
 scroll owner. Customize is a focused single-column list rather than a nested
 drawer. Coarse-pointer tablets use the existing bounded explorer drawer.
-Pending, deferred, and failed states remain visible on the plug when closed
-and as readable application notices inside customization.
+Connections rows keep content height: override Button height in both phone and
+coarse-pointer conditions, retaining 44px minimums. Do not alter shared Button
+sizing. Center touch header copy with equal side gutters and a contained close
+action. Preserve desktop alignment, navigation and controller ownership.
+Saved-change notices remain on the plug and inside Customize.
 
 ## Observability
 
@@ -636,3 +635,4 @@ that every third-party MCP server connected.
 - [User-test feedback repair](../../../plans/workspace-mcp-feedback/plan.md)
 - [Composer MCP customization](../../../plans/composer-mcp-customization/plan.md)
 - [Customize origin sections](../../../plans/mcp-customize-origins/plan.md)
+- [Picker and mobile review repairs](../../../plans/mcp-picker-mobile-repair/plan.md)

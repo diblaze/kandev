@@ -9,6 +9,11 @@ This guide covers the workspace MCP feature and the local follow-up fixes on
 preview, not proof that the same code is already on GitHub's PR head. The
 commit request does not publish or merge the branch.
 
+**Review repair coverage (2026-10-19):** sections 3, 4 and 8 cover the single
+repository disclosure, shared choice metadata and mobile Connections geometry.
+See the [repair package](../mcp-picker-mobile-repair/plan.md) for implementation
+and regression evidence.
+
 ## Before testing
 
 1. Forward pod-local port **48595** and refresh the page. Replace `localhost:48595`
@@ -115,9 +120,10 @@ Open **Settings > Workspaces > PR 3293 MCP sandbox > Repositories**, then edit
 a repository. Prefer a scratch repository; otherwise record and restore its
 initial selections because they affect every task using that repository.
 
-1. Confirm **MCP servers** starts collapsed with a selected count. Open it and
-   its picker. The current repository flow still has two disclosures with the
-   same title; this is a recorded interaction issue, not session Customize.
+1. Confirm **MCP servers** starts collapsed with a selected count. Open it
+   once: search and choices should appear directly, without a second MCP
+   disclosure. Each choice should show its runtime alias, supplied description
+   and readable setup-mode, transport and known catalog-source badges.
 2. Select an enabled scratch definition. Use **Save changes**, reload and
    confirm it remains selected. Make another change and discard it: the saved
    selection should remain intact.
@@ -140,7 +146,9 @@ still be inspected in tasks, but that does not prove the missing editor works.
 
 1. Open **New Task**. Keep Advanced settings closed initially: the form should
    not show a large persistent MCP panel. Expand it and inspect the compact
-   MCP label/count/help control beside the established advanced controls.
+   MCP label/count/help control beside the established advanced controls. Open
+   its picker: choices should include descriptions and the same metadata badges
+   as repository settings and session Customize.
 2. Select `manual-final-sse` as a task addition and create a scratch task with
    the desired repository/profile. Open its plug > Customize. The server
    should appear under **Selected for this task**, not as a session checkbox.
@@ -247,7 +255,11 @@ Do not restart the main instance to manufacture these errors.
    addition and reloading on a phone. It should be one drawer with fixed
    title/view controls, one internal scroller and reachable final rows.
 2. Inspect long names/descriptions at **320px**, normal phone width and
-   **767px with a mouse**. No sideways page scroll or clipped badge/source text.
+   **767px with a mouse**, plus a **900px touch tablet**. In Connections, each
+   server row must contain its name, status and complete explanation without
+   overlapping the next row. The touch title and description should be centered
+   on the drawer, with Close contained and clear of text. No sideways page
+   scroll or clipped badge/source text.
    Touch controls must remain large enough to activate; desktop controls retain
    the surrounding compact sizing.
 3. Use Tab and Space/Enter to open and change a checkbox. Escape/Close should

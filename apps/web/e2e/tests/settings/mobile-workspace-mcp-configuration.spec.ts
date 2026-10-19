@@ -1,3 +1,4 @@
+import { checkRepositoryMCPPicker } from "../../helpers/mcp-picker-consistency";
 import { expect, test } from "../../fixtures/test-base";
 import type { ApiClient } from "../../helpers/api-client";
 import {
@@ -19,6 +20,14 @@ async function cleanupMCPServers(apiClient: ApiClient, workspaceId: string) {
 test.describe("Workspace MCP configuration on mobile", () => {
   test.afterEach(async ({ apiClient, seedData }) => {
     await cleanupMCPServers(apiClient, seedData.workspaceId);
+  });
+
+  test("opens repository MCP choices through one disclosure", async ({
+    testPage,
+    apiClient,
+    seedData,
+  }) => {
+    await checkRepositoryMCPPicker(testPage, apiClient, seedData, true);
   });
 
   test("opens the full-height setup surface with labeled touch controls", async ({

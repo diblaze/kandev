@@ -286,6 +286,10 @@ Marketplace entries come from Kandev-curated templates or cached public Registry
 
 Select configured definitions at the profile, repository, task, or task-session scope. Repository selection is collapsed by default. Task creation keeps its selector inside collapsed **Advanced** settings. The effective set is additive across every task repository, the workspace-contextual profile, task, and session. Duplicate definitions are delivered once with all contributing origins; inherited definitions cannot be removed at a narrower scope.
 
+Selection lists show each server's runtime name, supplied description, setup
+mode, transport and known catalog source. Repository settings reveals these
+choices directly when you expand **MCP servers**.
+
 In a session's **Customize** view, populated sections show servers selected for
 the task, inherited from repositories, or inherited from the agent profile.
 Each server appears once: task selections group first, then repositories, then

@@ -1,3 +1,4 @@
+import { expectMCPChoiceDetails } from "../../helpers/mcp-picker-consistency";
 import { checkMCPOriginSections } from "../../helpers/mcp-origin-sections";
 import { openMCPComposerCustomization } from "../../helpers/mcp-composer";
 import { checkMCPSessionClarity } from "../../helpers/mcp-session-clarity";
@@ -277,6 +278,7 @@ test.describe("Advanced MCP control", () => {
           await apiClient.createMCPServer(seedData.workspaceId, {
             runtime_name: `e2e-advanced-mcp-${index}`,
             display_name,
+            description: "Find and update project issues.",
             source: "custom",
             execution_mode: "remote",
             transport: "sse",
@@ -320,6 +322,10 @@ test.describe("Advanced MCP control", () => {
       await expect(picker).toContainText("Inherited documentation");
       const search = picker.getByRole("textbox", { name: "Search MCP servers" });
       await search.fill("Task issue");
+      await expectMCPChoiceDetails(
+        picker.getByTestId(`mcp-choice-${definitions[1].id}`),
+        "Find and update project issues.",
+      );
       await picker.getByRole("checkbox").press("Space");
       await expect(trigger).toHaveText("1 selected");
       await testPage.keyboard.press("Escape");

@@ -125,8 +125,7 @@ function ServerRow({
     <label
       data-testid={`mcp-choice-${server.id}`}
       className={cn(
-        "flex gap-3 cursor-pointer hover:bg-muted/40",
-        sessionPresentation ? "items-start" : "items-center",
+        "flex items-start gap-3 cursor-pointer hover:bg-muted/40",
         sessionPresentation
           ? "min-h-7 px-3 py-2.5 max-md:min-h-11 [@media(pointer:coarse)]:min-h-11"
           : "min-h-11 rounded-md border p-3",
@@ -134,9 +133,9 @@ function ServerRow({
       )}
     >
       <Checkbox
-        className={sessionPresentation ? "mt-0.5 shrink-0" : undefined}
+        className="mt-0.5 shrink-0"
         aria-labelledby={nameId}
-        aria-describedby={sessionPresentation ? detailsId : undefined}
+        aria-describedby={detailsId}
         checked={checked}
         disabled={disabled || !server.enabled}
         onCheckedChange={(value) => onChange(value === true)}
@@ -146,17 +145,17 @@ function ServerRow({
           id={nameId}
           className={cn(
             "block font-medium",
-            sessionPresentation ? "break-words text-[13px]" : "truncate text-sm",
+            sessionPresentation ? "wrap-anywhere text-[13px]" : "wrap-anywhere text-sm",
           )}
         >
           {server.display_name}
         </span>
-        <span className="block truncate text-xs text-muted-foreground">{server.runtime_name}</span>
-        {sessionPresentation && (
-          <span id={detailsId} className="block">
-            <McpDefinitionDetails definition={server} />
-          </span>
-        )}
+        <span className="block wrap-anywhere text-xs text-muted-foreground">
+          {server.runtime_name}
+        </span>
+        <span id={detailsId} className="block">
+          <McpDefinitionDetails definition={server} />
+        </span>
         {annotation}
       </span>
       {!server.enabled && <Badge variant="outline">{t("settings:mcpDisabled")}</Badge>}

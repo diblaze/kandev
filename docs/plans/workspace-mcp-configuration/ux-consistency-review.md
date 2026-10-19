@@ -52,15 +52,14 @@ routing, verify org/workspace permissions and add global-profile workspace A/B,
 reload, save rejection and legacy-upgrade/fallback coverage. This functional
 remediation is separate from the cosmetic corrections made in this pass.
 
-## Remaining interaction recommendation
+## Repository and picker follow-up
 
-**Suggestion:** [Repository MCP settings](../../../apps/web/components/settings/repository-mcp-selection.tsx:97)
-requires opening the repository MCP disclosure and then a second MCP picker
-with the same title. This adds an unnecessary step and duplicates section
-chrome. Render the shared selection content directly inside the existing
-repository disclosure, retaining shared Save changes coordination, phone scroll
-containment, focus and selection persistence. This is an interaction redesign,
-so it is recorded separately from the wording/sizing corrections.
+The [2026-10-19 repair package](../mcp-picker-mobile-repair/plan.md) removes the
+nested repository disclosure: its existing section directly renders shared
+selection content. Repository, task-create, profile and new-session choices
+reuse the description and mode/transport/source metadata used in Customize.
+Mobile Connections rows use content height and a centered header with a
+separate close target. The package records targeted verification and deployment.
 
 The different save models are intentional: profile/repository/catalog settings
 use shared Save changes; task-session changes save automatically and apply at
@@ -91,5 +90,5 @@ selection tables and backend/proxy/main process identities. No commit or push
 was performed. Evidence is in `/tmp/kandev-pr3293-test-runtime/ux-consistency-*`.
 
 Verdict for this scoped review: wording/control suggestions corrected; global
-profile selection coverage and the nested repository picker remain follow-ups.
+profile selection coverage remains a follow-up.
 This is not a merge-readiness verdict for the complete PR.

@@ -2,7 +2,7 @@
 status: active
 system: agents
 created: 2026-09-01
-updated: 2026-10-14
+updated: 2026-10-19
 owners:
   - kandev
 ---
@@ -11,10 +11,8 @@ owners:
 
 ## Overview
 
-Workspace MCP configuration lets users install reusable MCP server definitions
-once, then enable them for repositories, agent profiles, tasks, and task agent
-sessions. The agent system owns this contract because it owns agent profiles,
-provider capabilities, and the runtime configuration sent to an agent.
+Members configure workspace MCP definitions once and select them for profiles,
+repositories, tasks and sessions. Agents owns composition and runtime delivery.
 
 ## Terminology
 
@@ -225,12 +223,14 @@ and mobile.
   44 CSS pixels.
 - **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.5:** Loading, empty, stale,
   unsupported, pending, success, and failure states remain readable without
-  horizontal page overflow.
+  horizontal page overflow or overlapping rows. Touch explorer title and
+  description are centered on the surface independently of its close action.
 - **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.6:** All user-facing text uses the
   active locale and every shipped Kandev locale contains the new keys.
 - **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.7:** Repository settings places
   its MCP picker in a collapsed section. The section summary shows the selected
-  count without consuming the expanded form space.
+  count. Opening it directly reveals search and choices without a second MCP
+  disclosure.
 - **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.8:** Task creation places its MCP
   selector inside collapsed Advanced settings. The summary appears only after
   the user expands that section.
@@ -274,8 +274,6 @@ and mobile.
 
 #### Pending-change comparison extension
 
-Implemented through the [pending-change plan](../../../plans/mcp-pending-changes/plan.md).
-
 - **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.15:** With an authoritative
   comparison, Customize shall name every server to add, remove, or update in
   Changes waiting to apply, with idle, next-start or failed timing distinct from
@@ -301,20 +299,19 @@ Implemented through the [pending-change plan](../../../plans/mcp-pending-changes
 
 #### Origin sections
 
-Implemented: [origin sections plan](../../../plans/mcp-customize-origins/plan.md).
-
 - **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.20:** Customize shall show only
   populated task, repository and profile sections. Each inherited definition
   appears once, grouped by task first, repository second, profile third without
   runtime precedence. All contributors and available names remain explicit,
   including multiple repositories. Unknown names use scope labels; unattributed
   inherited selections remain visible without an invented source.
-- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.21:** Additional choices shall show
+- **AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.21:** All selection lists,
+  including repository settings and task creation, shall show each choice's
   name, runtime alias, nonblank description, mode, transport and known catalog
-  source. Metadata is readable and passive, distinct from origins, disabled
-  state and pending actions. Details wrap on phones; the final choice remains
-  reachable. Inherited rows remain read-only and excluded from choices;
-  disabled choices cannot be newly selected.
+  source. Metadata stays readable and passive, separate from origins, disabled
+  state and pending actions. Details wrap; the final choice is reachable on
+  phones. Inherited rows stay read-only and outside choices; disabled entries
+  cannot be newly selected.
 
 ### REQ-AGENTS-WORKSPACE-MCP-CONFIGURATION-007: Legacy profile compatibility
 
@@ -359,3 +356,4 @@ to workspace definitions and selections.
 - [Composer MCP customization](../../../plans/composer-mcp-customization/plan.md)
 - [Exact pending changes](../../../plans/mcp-pending-changes/plan.md)
 - [Customize origin sections](../../../plans/mcp-customize-origins/plan.md)
+- [Picker and mobile review repairs](../../../plans/mcp-picker-mobile-repair/plan.md)

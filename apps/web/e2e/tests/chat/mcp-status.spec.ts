@@ -166,11 +166,12 @@ test("explains mixed connections and saved changes with stable customization", a
 });
 
 // @covers AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.14
-test("tablet MCP customization keeps the final choice reachable by touch", async ({
+test("tablet MCP connections contain multiline rows and center the touch header", async ({
   tabletTestPage,
   apiClient,
   seedData,
 }) => {
   test.setTimeout(150_000);
+  await tabletTestPage.setViewportSize({ width: 900, height: 1000 });
   await checkMCPStatusClarity({ page: tabletTestPage, apiClient, seedData, mobile: true });
 });
