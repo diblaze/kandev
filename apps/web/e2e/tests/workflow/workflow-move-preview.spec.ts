@@ -14,22 +14,26 @@ import {
   movePreviewRequestPredicate,
 } from "./workflow-move-preview-stability-helpers";
 
-function waitForPreviewResponse(page: Page, taskId: string) {
-  return page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname === `/api/v1/tasks/${taskId}/move-preview` &&
-      response.ok(),
-  );
+async function waitForPreviewResult(page: Page, taskId: string) {
+  const isPreviewRequest = movePreviewRequestPredicate(taskId);
+  const request = await page.waitForEvent("requestfinished", {
+    predicate: async (request) =>
+      isPreviewRequest(request) && (await request.response())?.ok() === true,
+  });
+  const response = await request.response();
+  if (!response) throw new Error("Completed preview request has no response");
+  return response.json();
 }
 
 async function openStepPreview(page: Page, taskId: string, stepName: string) {
-  const response = waitForPreviewResponse(page, taskId);
-  await page.getByTestId(`workflow-step-${stepName}`).hover();
+  const [preview] = await Promise.all([
+    waitForPreviewResult(page, taskId),
+    page.getByTestId(`workflow-step-${stepName}`).hover(),
+  ]);
   const popover = page.locator('[data-testid="workflow-step-popover"]:visible');
   await expect(popover).toBeVisible();
   await expect(popover.getByTestId("workflow-move-preview")).toBeVisible({ timeout: 15_000 });
-  return { popover, preview: await response.then((value) => value.json()) };
+  return { popover, preview };
 }
 
 test.describe("Workflow move preview", () => {

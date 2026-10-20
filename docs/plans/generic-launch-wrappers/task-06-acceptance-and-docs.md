@@ -116,6 +116,13 @@ The opt-in runner and its 12 credential-free safety tests are implemented. A fre
 
 The runner cleaned its resources. The disposable source login was removed separately. The retained manual instance and deprecated task are unchanged. The requirements are active, the design is current, and the PR remains draft. Exact versions, commands, policy, and limits appear in [acceptance.md](acceptance.md).
 
+
+On 2026-10-20, CI exposed a workflow preview test that read an aborted response body.
+The test now observes completed successful requests before it reads the preview result.
+All three desktop cases and the existing phone drawer case pass without retries.
+No product behavior, requirement, or design contract changed. Commands, trace evidence,
+and host setup limits appear in [acceptance.md](acceptance.md).
+
 ## Real-provider harness contract
 
 The harness accepts private executable paths and credential locations through environment variables.

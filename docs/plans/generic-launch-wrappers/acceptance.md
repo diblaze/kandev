@@ -1,6 +1,6 @@
 # Generic wrapper acceptance
 
-Dates: 2026-10-18 and 2026-10-19. Source branch: `feature/investigate-pi-agent-6ac`.
+Dates: 2026-10-18 through 2026-10-20. Source branch: `feature/investigate-pi-agent-6ac`.
 The implementation is under review. PR #4538 stays draft. This record does not certify real sandbox enforcement.
 
 ## Integration with the current base
@@ -10,7 +10,30 @@ Its required retained-wrapper read could not complete. The actual retracked coun
 The fixture now serves a versioned wrapper snapshot on a dynamically allocated test endpoint.
 The exact failing test reproduced locally. Recovery-summary, duplicate-outcome, and retained-wrapper race checks pass after correction, with the original outcome counts preserved.
 The PostgreSQL 18 job separately failed during a Go dependency download from `proxy.golang.org`, before the task repository tests ran.
-That transport failure requires a fresh CI result and does not justify a product or workflow change.
+Fresh CI at `d3f266a13214` passed both the PostgreSQL 18 job and backend shard 2.
+The download failure did not require a product or workflow change.
+
+
+The same CI head exposed a browser-test synchronization error in the workflow move preview.
+All four attempts selected a response whose headers reported success but whose body download was cancelled.
+The trace also records a successful replacement request and a rendered preview.
+The test now waits for a successful `requestfinished` event and reads the body before checking the preview.
+All outcome, model, session, and visible-preview assertions remain in place.
+This change preserves product behavior and does not change the requirements or system design.
+The managed desktop spec passed all three cases. The matching phone drawer case also passed.
+Both runs used one worker and disabled retries. Commands from the repository root:
+
+```bash
+pnpm --dir apps/web e2e:run --host --no-build --project chromium tests/workflow/workflow-move-preview.spec.ts -- --retries=0
+pnpm --dir apps/web e2e:run --host --no-build --project mobile-chrome tests/workflow/mobile-workflow-move-preview.spec.ts -- --retries=0
+```
+
+The temporary host launcher supplied Chromium libraries, removed inherited launcher configuration,
+and selected an unused E2E port block. The production assets were freshly built at `d3f266a13214`.
+Only browser test source changed afterward, so these commands reused those assets.
+The old helper passed an isolated local attempt, so that attempt did not reproduce the CI timing.
+CI traces provide the failure evidence. Local fixture configuration and a port collision were resolved only in the temporary launcher.
+The retained manual instance, evaluation instance, and main instance were not changed.
 
 The 2026-10-20 integration preserves the base branch's terminal lifecycle fields and sanitized probe diagnostics.
 The existing wrapper privacy test first failed because the new diagnostic logger retained arbitrary wrapper stderr.
