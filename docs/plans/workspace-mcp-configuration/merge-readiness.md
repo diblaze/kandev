@@ -33,10 +33,13 @@ included an incorrect streams package path and fixture assumptions about
 `/bin/sleep`, `/usr/bin`, and a usable shell PATH with an empty environment.
 A private Bubblewrap namespace supplies those paths without changing the host.
 Six packages passed in the corrected run. Lifecycle exceeded the ten-minute
-package runner limit without an assertion failure. Its remaining 487 declared
-tests then passed as a separate bounded partition. The union accounts for all
-2,725 declared lifecycle tests, with no missing names or failures. This is
-partitioned coverage, not a claim that the timed-out command passed.
+package runner limit without an assertion failure. A separate bounded partition
+processed its remaining 487 declared tests. The union accounts for all 2,725
+declared lifecycle tests: 2,704 passed and 21 skipped, with no missing names or
+test assertion failures. Skips include opt-in container/provider checks,
+macOS-only checks, release/browser/subprocess helpers, a case-insensitive
+filesystem check and unavailable zsh fixtures. They are not passing coverage.
+This is partitioned evidence, not a claim that the timed-out command passed.
 
 The pruned-delivery startup fixture separately failed on both the integrated
 source and exact main `e3ef99a98f8d340f2447650cb4318b00977eb44e`. Its context
