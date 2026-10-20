@@ -2,12 +2,51 @@
 
 Work resumed on another machine on 2026-10-20. The published checkpoint was
 verified and conflicts were resolved with current main. Integrated local checks
-and bounded source review are recorded below. Final capture publication,
-current-head CI and final review of the test/documentation delta remain pending.
-The user requires confirmation before merging.
+and bounded source review are recorded below. Phone captures and the bounded
+review through `52af0b2` are complete. The latest conflict/CI round below
+supersedes that checkpoint. Current-head CI and review of the new delta remain
+pending. The user requires confirmation before merging.
 
 The earlier receipts below are historical. Their local files and review session
 are unavailable on this machine. They do not establish current readiness.
+
+## Conflict and CI round on 2026-10-20
+
+The user requested conflict resolution and passing CI after main advanced to
+`34eba773398ceafa6497b7dfdbbec8e6c5b433da`. The eight conflicts were independent
+additions to task locale catalogs. The resolution preserves both MCP strings
+and main's task-deletion strings. A three-way key comparison rejected conflicting
+values and duplicate keys. Localization validation passed.
+
+E2E run `39433180844` at head `52af0b2` exposed two failed first attempts that
+passed on retry. The mobile workspace-source test measured a 43.99998474121094px
+button before waiting for drawer entry to finish. It now waits for finite drawer
+animations before measuring, preserving the strict 44px assertion. The mobile workflow-override
+test sampled progression while the resumed initial agent still displayed
+“Starting Mock”. It now waits for that session to become idle before reloading
+the page. Task-move completion alone does not establish session readiness.
+No product geometry, animation, timeout assertion, or visibility assertion changed.
+
+Both unchanged cases passed three local repetitions, so the intermittent CI
+failures were not reproduced locally. Both corrected cases then passed three
+repetitions with one worker, retries disabled, and a two-CPU/4 GiB limit.
+The MCP Connections geometry checks also passed at 320, 393 and 767px
+against the merged runtime, with retries disabled.
+The fresh merged web build, native runtime/fixture build, 6 GiB typecheck,
+80 focused frontend tests, 160 focused lifecycle tests, specification lint and
+public-document validation passed. The lifecycle selection covers MCP,
+silent-restore startup/stream retry and workspace retention.
+
+A separate task service/handler Go command exceeded its 4 GiB compilation limit
+before producing results. This is failed command evidence. The retry compiled
+one package at a time under a 6 GiB limit and a 2 GiB Go memory target, then
+passed all 26 selected task-service and handler tests.
+Exact command outcomes and the final published head belong in the current
+Kandev task plan. These local results do not establish passing GitHub CI.
+
+Public docs need no additional change for the two test-only synchronization
+repairs. The merge retains main's public-document updates and the PR's MCP
+documentation. Existing screenshots identify their capture commit explicitly.
 
 ## Resumed delivery
 

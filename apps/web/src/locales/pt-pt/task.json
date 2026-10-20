@@ -2872,5 +2872,15 @@
   "mcpReasonDefinitionDisabled": "Este servidor MCP está desativado no espaço de trabalho.",
   "mcpReasonDefinitionMissing": "Esta definição de servidor MCP já não está disponível.",
   "mcpReasonSecretResolution": "Não foi possível resolver as credenciais necessárias.",
-  "mcpTaskSelectionInfo": "Escolha servidores MCP adicionais para esta tarefa. Os servidores selecionados no perfil do agente ou nos repositórios são incluídos automaticamente."
+  "mcpTaskSelectionInfo": "Escolha servidores MCP adicionais para esta tarefa. Os servidores selecionados no perfil do agente ou nos repositórios são incluídos automaticamente.",
+  "deleteKeepFilesOption": "Manter os ficheiros do espaço de trabalho",
+  "deleteKeepFilesAction": "Eliminar tarefa e manter ficheiros",
+  "deleteKeepFilesDescription": "Esta ação elimina as tarefas selecionadas e as respetivas conversas. Os ficheiros e ramos do espaço de trabalho serão mantidos. O Kandev não os irá remover automaticamente. Os recursos mantidos podem continuar a ocupar espaço em disco ou gerar custos do fornecedor.",
+  "deleteKeptFilesTitle": "Tarefa eliminada. Ficheiros mantidos.",
+  "deleteKeptFilesPending": "Os ficheiros do espaço de trabalho foram mantidos. O encerramento do ambiente de execução ainda está pendente.",
+  "deleteKeptFilesComplete": "Os ficheiros e ramos do espaço de trabalho foram mantidos.",
+  "deleteUnverifiedWorkspaceOption": "Eliminar mesmo que não seja possível verificar as alterações na área de trabalho",
+  "deleteUnverifiedWorkspaceDescription": "As alterações locais podem perder-se. Os ficheiros que não possam ser removidos em segurança ficam a aguardar limpeza.",
+  "deleteCleanupPendingTitle": "Tarefa eliminada. Limpeza pendente.",
+  "deleteCleanupPendingDescription": "Os ficheiros que não possam ser removidos em segurança continuam protegidos. O Kandev tentará a limpeza novamente."
 }
