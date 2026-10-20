@@ -40,7 +40,8 @@ initial session/Git hydration before Files interactions. Folder upload waits
 for the intentional Changes update before selecting Files. Scroll preservation
 is measured after the reader disables transcript auto-scroll. Profile dragging
 retries only row scrolling before pointer-down when a refreshed row detaches.
-Assertions, minimum touch sizes and timeouts remain unchanged.
+The workflow handoff assertion now checks original-session persistence. Other
+assertions, minimum touch sizes and existing timeout values are retained.
 
 The three affected Go packages passed the focused race run. Frontend typecheck,
 scoped lint and formatting passed. The rename flow passed nine browser cases
