@@ -3,12 +3,67 @@
 Work resumed on another machine on 2026-10-20. The published checkpoint was
 verified and conflicts were resolved with current main. Integrated local checks
 and bounded source review are recorded below. Phone captures and the bounded
-review through `7964b698` are complete. The latest conflict/CI round below
-supersedes that checkpoint. Current-head CI and review of the new delta remain
-pending. The user requires confirmation before merging.
+review through `7fdc73103` are complete. The latest conflict/CI round below
+supersedes that checkpoint. CI for the next commit and review of its new delta remain pending. The user requires confirmation before merging.
 
 The earlier receipts below are historical. Their local files and review session
 are unavailable on this machine. They do not establish current readiness.
+
+## CI remediation after `7fdc73103`
+
+The next exact-head waiter completed with 85 passing checks, ten skipped checks
+and six failed checks. All six failures came from five flaky E2E cases and their
+aggregate. The complete blob audit found 4,073 passing attempts, 40 skipped
+cases and seven failed attempts. The retry summary identifies five flaky cases.
+Backend and frontend CI passed. Walkthrough generation, publication and linking
+also passed on this head, superseding the earlier walkthrough failures below.
+
+Three test timing races have deterministic local reproductions and repairs:
+
+- Workflow auto-advance now holds the mock turn until the In Progress card is
+  observed. The prior three-second delay could expire during navigation. A
+  delayed-navigation reproduction failed before the change and passed after it.
+- Saved-view reload now waits for the selected view and cleared draft to reach
+  persisted settings. The optimistic chip alone did not prove that the queued
+  write had completed. A delayed-write reproduction failed before the change
+  and passed after it.
+- Monitor checks now wait for the backend's agent Monitor message before the
+  existing card assertions. A delayed-start reproduction failed before that
+  boundary and passed after it. Event counts, card content and hidden-envelope
+  assertions remain unchanged.
+
+The dynamic fallback and Kubernetes sibling-restart CI timeouts remain
+unexplained. Each target passed unchanged in isolated runs and broader local
+replays. Those replays were not fully green: the Kubernetes sequence recorded
+16 passes, four skips and an in-cluster startup failure; the fallback prefix
+recorded 36 passes and a restoration test failure where terminal wrapping split
+the expected output. A failed predecessor restarted the worker, limiting the
+ordering evidence. These results do not prove that the PR cannot contribute to
+the intermittent CI failures. Both target specs now retain backend logs on
+failure, and fallback retains its first failing browser trace for the next CI
+run. No assertion or timeout was relaxed.
+
+The local in-cluster bundle included a native agentctl that depends on Nix
+libraries absent from its container. With the same-source static Linux helper,
+both in-cluster startup and sibling restart passed. Twelve ordinary Monitor
+and saved-view repetitions passed with retries disabled, alongside six workflow
+repetitions and the three delayed-operation regressions. All browser runs used
+one worker and two CPUs with a 4 GiB limit.
+
+Main advanced to `7914b4110baaa68a5633eec3204233a0c9875a65`; its merge with the
+published head is clean. Eleven focused attachment-storage and SQLite ACP
+metadata tests passed in that synthetic merge. The PostgreSQL variant was not
+selected. Main then advanced to `74427cb50c24e281e5b3fa826c7136ffed5be5db`.
+That merge is also clean, and all 15 incoming workspace-cookie tests passed in
+its synthetic merge. Prior focused integration checks for the earlier main
+deltas remain separate evidence.
+
+The trusted documentation coverage workflow failed before creating a job because
+GitHub's shared concurrency queue was full. Its read-only local evaluator
+passed against the exact PR file set. The remote queue has begun draining;
+a fresh remote result is still required. This round changes test setup and
+failure evidence only, so public behavior documentation and MCP screenshots do
+not change. New-head CI and bounded review remain pending. No merge is authorized.
 
 ## CI remediation after `7964b698`
 
