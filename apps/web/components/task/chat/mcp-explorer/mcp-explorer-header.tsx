@@ -13,7 +13,7 @@ function ExplorerCloseButton({ onClose }: { onClose: () => void }) {
       type="button"
       variant="ghost"
       size="icon"
-      className="h-7 w-7 shrink-0 cursor-pointer [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 max-md:h-11 max-md:w-11"
+      className="h-7 w-7 shrink-0 cursor-pointer [@media(pointer:coarse)]:h-12 [@media(pointer:coarse)]:w-12 max-md:h-12 max-md:w-12"
       aria-label={t("task:mcpClose")}
       data-testid="mcp-explorer-close"
       onClick={onClose}
@@ -42,7 +42,7 @@ export function McpExplorerHeader({ onClose, mobile }: { onClose: () => void; mo
   if (mobile) {
     return (
       <DrawerHeader className="shrink-0 border-b">
-        <div className="grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-x-2">
+        <div className="grid min-w-0 grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-x-2">
           <DrawerTitle className="col-start-2 text-center text-base font-semibold leading-6">
             {t("task:mcpExplorerTitle")}
           </DrawerTitle>
