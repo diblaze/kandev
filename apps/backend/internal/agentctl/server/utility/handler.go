@@ -9,6 +9,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const inferenceErrorKey = "error"
+
 // Handler provides HTTP handlers for inference operations.
 type Handler struct {
 	acpExecutor          *ACPInferenceExecutor
@@ -59,7 +61,7 @@ func (h *Handler) handleProbe(c *gin.Context) {
 	}
 
 	if !resp.Success {
-		h.logger.Warn("ACP probe unsuccessful", zap.String("error", resp.Error))
+		h.logger.Warn("ACP probe unsuccessful", zap.String(inferenceErrorKey, resp.Error))
 	} else {
 		h.logger.Info("ACP probe completed",
 			zap.Int("duration_ms", resp.DurationMs),
@@ -101,7 +103,7 @@ func (h *Handler) handlePrompt(c *gin.Context) {
 	}
 
 	if !resp.Success {
-		h.logger.Warn("inference prompt unsuccessful", zap.String("error", resp.Error))
+		h.logger.Warn("inference prompt unsuccessful", zap.String(inferenceErrorKey, resp.Error))
 	} else {
 		h.logger.Info("inference prompt completed", zap.Int("duration_ms", resp.DurationMs))
 	}
@@ -138,11 +140,11 @@ func (h *Handler) admitWrapper(c *gin.Context, cfg *InferenceConfigDTO) bool {
 		return true
 	}
 	if h.authenticatedControl == nil || !h.authenticatedControl(c) {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "error": "authenticated control is required for launch wrappers"})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, inferenceErrorKey: "authenticated control is required for launch wrappers"})
 		return false
 	}
 	if cfg.LaunchWrapper.Validate() != nil || len(cfg.CommandPrefix) != 0 {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, "error": "invalid launch wrapper configuration"})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"success": false, inferenceErrorKey: "invalid launch wrapper configuration"})
 		return false
 	}
 	return true

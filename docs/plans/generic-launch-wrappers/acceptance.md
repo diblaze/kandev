@@ -3,6 +3,28 @@
 Dates: 2026-10-18 and 2026-10-19. Source branch: `feature/investigate-pi-agent-6ac`.
 The implementation is under review. PR #4538 stays draft. This record does not certify real sandbox enforcement.
 
+## Integration with the current base
+
+The 2026-10-20 integration preserves the base branch's terminal lifecycle fields and sanitized probe diagnostics.
+The existing wrapper privacy test first failed because the new diagnostic logger retained arbitrary wrapper stderr.
+Wrapped probes now log only a bounded failure classification. The regression also checks the relay message.
+
+The base branch added SSH native terminal transport without a wrapper field.
+A real-controller regression first demonstrated that a wrapped request started an unwrapped process.
+That transport now refuses wrapped startup before sending a start request or recording an operation.
+Its unwrapped positive control still starts the process. Local terminal and remote ACP support are unchanged.
+
+Focused wrapper, probe, terminal, and lifecycle race checks passed after integration.
+The additional `GenericWrapper|SSHPassthrough|RemotePassthrough` lifecycle race run also passed.
+All 12 acceptance-runner safety tests, specification/catalog validation, six-work-order coverage, and public-doc validation passed.
+Remote CI and review evidence must be checked on the pushed integration commit.
+
+The user evaluation instance separately exposed an initial startup failure, unavailable recovery with no executor record,
+and a Kandev MCP connection blocked by its explicit Greywall policy.
+A replacement session completed the sales case, but that does not prove recovery or complete sandbox integration.
+The queued Nono follow-up owns investigation of those gaps, supervisor integration, policy selection,
+approvals, learning, and confinement tests. This PR does not complete issue #3812.
+
 ## Backend checks
 
 The following focused checks passed from `apps/backend`:

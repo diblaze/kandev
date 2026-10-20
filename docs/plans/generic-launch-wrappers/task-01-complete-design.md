@@ -31,11 +31,12 @@ system_design:
 Turn the [investigation](plan.md) into a reviewable requirements, system-design,
 plan, and implementation-work-order package. This is a design work order, not
 authorization to implement the rejected exact-`greywall` exception.
-The linked acceptance criteria are existing discovery constraints to preserve.
-the new wrapper requirements now define the additional behavior.
+The linked acceptance criteria are design inputs that constrain the package.
+Task 01 completion does not establish runtime satisfaction of those criteria.
+Implementation and regression evidence belong to Tasks 02 through 06.
+The new wrapper requirements define the additional behavior.
 The optional plugin evaluation is complete and defers a new capability.
 
-Work stays in the current task. Do not change the deprecated #3812 Kandev task.
 No production code, permanent tests, plugin implementation, or public behavior
 claims belong to this work order.
 
@@ -88,8 +89,5 @@ Completed the design artifacts on 2026-10-16. The catalog, 36 linter tests, full
 - Created Tasks 02 through 06 with dependencies, acceptance criteria, owned files, and targeted checks.
 - Preserved the historical reproduction and the manual instance. The local handoff file was unavailable.
 - Production changes, permanent tests, and provider acceptance remain pending.
-
-The current task and session are recorded in [plan.md](plan.md).
-The deprecated #3812 task remains unchanged.
 
 Detailed commands and results appear in [the plan](plan.md#verification-results).

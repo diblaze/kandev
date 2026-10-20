@@ -538,6 +538,14 @@ provider signals become known; an ambiguous new signal fails closed. A future
 classifier may improve catalogue coverage, but no model is called to classify
 errors today.
 
+Native code review uses the same saved candidate policy for classified provider
+failures and keeps its selected candidate across prompt batches in one review
+run. Each prompt batch permits at most eight candidate dispatch attempts. Partial
+output, cancellation,
+and inference admission refusals stop automatic fallback. A request deadline
+without confirmed child termination also stops the review, even while its parent
+budget remains active; automatic recovery from that deadline is not available.
+
 Dynamic profiles also have an API-only option for repeated, safe unclassified
 failures. It is off by default and is not exposed in the profile editor. In a
 candidate's `policies` object, set `unclassified` to:
@@ -697,6 +705,12 @@ compatible, with strictness off until a user enables it. Optional portable
 configuration can copy selected allowlisted files to a remote executor, but it
 cannot guarantee equal host and executor model catalogs.
 
+When a started ACP probe fails during discovery, inspect the backend logs for
+the child-side cause. Failed profile probes record the managed-runtime failure
+classification and a bounded, sanitized stderr tail while their response stays
+generic. A line cut off at the beginning of the retained tail is omitted to
+avoid exposing part of a credential.
+
 ### Monitor capability and subscription status
 
 Use the profile refresh control after installing, authenticating, or upgrading an agent. A manual refresh updates both the advertised models, modes, and commands and the visible capability status, so an old failure banner does not remain authoritative after the local CLI recovers.
@@ -765,6 +779,8 @@ For example, `"/opt/launchers/safe wrapper" --work-dir "{{kandev.work_dir}}" --`
 Kandev applies the wrapper once per process launch, including restart and resume. A missing wrapper or incompatible execution runtime fails the operation. Kandev does not retry without the wrapper. A failed model refresh preserves the selected model. Correct the prefix and select **Refresh models** to retry.
 
 Wrapped ACP probes require an authenticated agentctl control connection. Agentctl with authentication disabled refuses wrapped control requests. Native non-ACP utility transports do not support wrappers and return **unsupported**. This restriction does not prevent a supported agent's native terminal passthrough from using a wrapper.
+
+SSH native terminal passthrough does not yet carry wrapper settings. Kandev refuses a wrapped SSH terminal launch before starting the remote agent. Local native terminal wrapping and compatible remote ACP execution remain supported.
 
 Wrapping alone does not establish a sandbox policy. The wrapper owns its access rules and platform support. Rich sandbox configuration through plugins is not implemented.
 
@@ -930,7 +946,7 @@ Only custom TUI agents can be deleted from the agent list. Built-in definitions 
 - **Agent unavailable after install:** confirm the executable as Kandev's service user, select **Rescan**, and compare the service `PATH` with your shell.
 - **Login required:** use the agent card's login terminal or sign in under Kandev's operating-system user; signing in as another user does not help the service.
 - **Model, mode, or command probe fails:** authenticate first, refresh discovery, and choose a value advertised by the installed version.
-- **Launch fails after editing flags:** inspect the command preview, remove stale arguments, and correct unmatched quotes or trailing escapes.
+- **Launch fails after editing flags:** inspect the command preview, remove stale arguments, and correct unmatched quotes or trailing escapes. If a queued automatic launch has an invalid built agent or continue command, Kandev drops that launch instead of retrying it. Correct the profile before starting the task again. Temporary provider or environment failures are not command-validation failures.
 - **Managed npm runtime cannot start:** Retry is limited to strict exact-package `ETARGET`, recognized temporary npm errors, and an ordinary pre-ACP exit with complete generation-matched evidence of empty stderr. Other permanent or unclassified errors and incomplete evidence do not retry. Kandev confirms cleanup and keeps the selected package and npm trees. If startup still fails, review the card's technical details and verify the service user's npm configuration and registry. Use **Settings > Agents** to prepare another trusted stable version when needed. Do not start with `npm cache clean --force`.
 - **Environment value is absent:** confirm the secret still exists, the key is not reserved, and an executor/runtime variable is not already taking precedence.
 - **MCP server is absent:** confirm agent MCP support, valid JSON, transport mode, executor policy, and the session warning logs.

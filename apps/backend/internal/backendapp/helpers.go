@@ -1742,6 +1742,7 @@ func registerTaskRoutes(p routeParams, planService *taskservice.PlanService, han
 	workflowH.SetForegroundActivityProvider(p.orchestratorSvc)
 	workflowH.SetTaskParkedProvider(p.orchestratorSvc)
 	taskH := taskhandlers.RegisterTaskRoutes(p.router, p.gateway.Dispatcher, p.taskSvc, p.orchestratorSvc, p.taskRepo, planService, p.log)
+	configureWorkspaceAdoptionCaller(taskH)
 	taskH.SetBackgroundWorkEnabled(p.features.AgentBackgroundWork)
 	if p.services != nil && p.services.User != nil {
 		taskH.SetTaskCreateLastUsedRecorder(p.services.User)
@@ -2593,7 +2594,11 @@ func registerMCPAndDebugRoutes(
 	mcpHandlers.SetReviewService(reviewParts.service)
 	mcpHandlers.SetReviewRunner(reviewParts.runner)
 	p.orchestratorSvc.SetReviewRunner(reviewParts.runner)
-	reviewParts.runner.Start(context.Background())
+	reviewCtx := p.ctx
+	if reviewCtx == nil {
+		reviewCtx = context.Background()
+	}
+	startup.AfterReady(reviewCtx, func() { reviewParts.runner.Start(reviewCtx) })
 	if p.addCleanup != nil {
 		p.addCleanup(func() error {
 			reviewParts.runner.Stop()

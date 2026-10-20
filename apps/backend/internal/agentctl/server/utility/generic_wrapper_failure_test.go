@@ -66,6 +66,7 @@ func TestGenericWrapperFailureDoesNotLeak(t *testing.T) {
 			require.NotContains(t, failure, secret)
 			require.NotContains(t, failure, cfg.WorkDir)
 			for _, entry := range logs.All() {
+				require.NotContains(t, entry.Message, secret)
 				require.NotContains(t, entry.ContextMap(), secret)
 				for _, value := range entry.ContextMap() {
 					require.NotContains(t, fmt.Sprint(value), secret)

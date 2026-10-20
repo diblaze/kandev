@@ -27,15 +27,10 @@ Basic wrapping remains in core. Sandbox-specific plugins remain optional and def
 The user authorized implementation on 2026-10-18. Tasks 02 through 06 are complete. Task 06 records the passing browser and live-provider acceptance evidence.
 [Task 01](task-01-complete-design.md) records the design work.
 The implementation order is shared preparation, utility execution, session lifecycle, passthrough, then acceptance and public documentation.
-All tasks execute sequentially in the primary conversation unless the user explicitly authorizes delegation.
 
-Current task: `9dadaf68-e904-4c07-8649-1daf71f6569f`.
-Current session: `15c94e91-6a8b-426d-997c-c9b8f020a79c`.
-Continue branch `feature/investigate-pi-agent-6ac` and draft PR #4538. Do not merge.
-The earlier investigation task was `06d00e9a-1f0d-4392-90ed-aa665334a592`.
-Do not change deprecated task `6e852cad-2b53-47a8-a51a-89c8a31bb176`, associated with issue #3812.
-Preserve the existing manual test instance and its private state.
-The optional local handoff `/tmp/handoff-Fhcnxu.md` was unavailable during this design pass.
+PR #4538 delivers this package. It supersedes the earlier wrapper investigation.
+The broader sandbox-provider proposal in issue #3812 remains separate.
+Session continuity instructions and test-instance ownership records remain in the Kandev task.
 
 ## Scope
 
@@ -68,6 +63,12 @@ The design retains profile strings, adds two typed path references, and introduc
 There is no executor override hierarchy or profile migration.
 The plugin evaluation concludes that core wrapping needs no plugin capability in this increment.
 Future sandbox services require a separately reviewed capability and runtime evidence.
+
+This package does not complete the Nono initiative in issue #3812.
+The queued follow-up covers Nono acceptance, supervisor ownership, approval transport,
+policy selection, denial reporting, and operator-approved policy learning.
+It also covers sandboxed Kandev MCP access and enforcement checks.
+Basic wrapping remains independent of that optional capability.
 
 Current authentication differs from the historical launcher ADR.
 Profile mutations and draft probes use `org.config.manage`. Disabled auth still uses a synthetic administrator.
@@ -108,7 +109,8 @@ The intermediate work orders use explicit test capability fixtures. Do not adver
 | Native Codex and Claude utility transports | Wrapper context rejected in first increment | No-spawn refusal tests | Typed unsupported status |
 | Pi and existing passthrough providers | Native argv and PTY with one outer profile wrapper | Initial/fresh/resume PTY receipts and cancellation | Refuse unsupported transport/platform |
 | Local/worktree execution | Resolve wrapper and runtime paths locally | Process and browser integration | No silent fallback |
-| Remote execution | Require installed wrapper and `launch-wrapper.v1` | Target-host context and old-peer tests | Host probe does not establish remote support |
+| Remote ACP execution | Require installed wrapper and `launch-wrapper.v1` | Target-host context and old-peer tests | Host probe does not establish remote support |
+| SSH native terminal | Reject wrapper contexts before remote startup | Real controller refusal and unwrapped control | Remote terminal transport does not carry wrapper settings |
 | Legacy retained process | Preserve authoritative already-composed literal argv | Adoption and replacement tests | Ambiguous template state blocks replacement |
 | No prefix, agent-wide probe | Existing default launch contract | Compatibility regressions | No profile context imported |
 

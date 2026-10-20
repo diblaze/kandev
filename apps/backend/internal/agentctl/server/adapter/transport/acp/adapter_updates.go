@@ -250,6 +250,8 @@ func (a *Adapter) handleACPUpdate(
 			}
 		}
 	}
+	a.stampUpdateTurnIdentity(leadingEvent, promptGeneration)
+	a.stampUpdateTurnIdentity(event, promptGeneration)
 	a.stampSessionSettingsReports(sessionID, leadingEvent, event)
 	if leadingEvent != nil {
 		shared.LogNormalizedEvent(shared.ProtocolACP, a.agentID, sessionID, leadingEvent)
@@ -269,6 +271,7 @@ func (a *Adapter) handleACPUpdate(
 		shared.LogNormalizedEvent(shared.ProtocolACP, a.agentID, sessionID, event)
 		shared.TraceProtocolEvent(a.getPromptTraceCtx(), shared.ProtocolACP, a.agentID,
 			event.Type, rawData, event)
+		event.ShellOutputEligible = shellOutputCompactEligible(n, event)
 		if shellSnapshotEligible(n, event) {
 			a.sendShellSnapshot(*event, promptGeneration)
 		} else {

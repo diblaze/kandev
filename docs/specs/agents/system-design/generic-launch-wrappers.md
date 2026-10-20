@@ -173,9 +173,10 @@ Expose that same build capability list at authenticated instance `/identity`.
 The backend checks the instance endpoint through its bound client before dispatch.
 This keeps the capability check on the same runtime binding as the launch request.
 Check capability before configure and utility dispatch.
-Current passthrough uses the local compiled `InteractiveRunner` directly.
-It has no remote interactive-start API and therefore needs no peer capability request.
-Any future remote interactive transport must negotiate the same capability.
+Local passthrough uses the compiled `InteractiveRunner` directly and needs no peer capability request.
+SSH passthrough has a separate remote start transport without wrapper support.
+Reject a wrapped request before that transport sends a start command or records a start operation.
+Future support must carry the template and negotiate the capability on that transport.
 Missing capability causes an explicit unsupported result for any new wrapped launch, including literal-only prefixes.
 A new backend never sends an unwrapped command to an old receiver that could ignore the wrapper field.
 Unwrapped profiles retain their existing compatibility path.
@@ -210,7 +211,8 @@ Explicit restarts that currently resolve current profile settings keep that beha
 | Pi and other existing CLI passthrough providers | Supported when their native command accepts PTY wrapping | Initial, fresh, and resume builders carry the template to `InteractiveStartRequest` |
 | Native non-ACP utility executors | Explicit refusal for wrapper contexts | Codex app-server and Claude execution must reject before process start. No ignored prefix |
 | Custom registered ACP agents | Conditional support | Preserve existing operator-defined inner command admission. Wrapper uses the same generic contract |
-| Docker, SSH, Kubernetes, other remote executors | Conditional support | Requires `launch-wrapper.v1`, installed wrapper, and valid policy on that executor. Host success is insufficient |
+| Docker, SSH, Kubernetes, other remote ACP executors | Conditional support | Requires `launch-wrapper.v1`, installed wrapper, and valid policy on that executor. Host success is insufficient |
+| SSH native terminal passthrough | Explicit refusal for wrapper contexts | Its separate start transport cannot carry the wrapper. Reject before remote startup |
 | Agent-wide discovery and runtime candidate validation | Existing default context | Do not import another profile's wrapper |
 | Install/login, user shell, repository setup, MCP server launch | Excluded | No claim that these processes inherit agent wrapping |
 

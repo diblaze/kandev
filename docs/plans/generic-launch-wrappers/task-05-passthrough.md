@@ -104,3 +104,9 @@ Implemented unresolved wrapper propagation in initial, fresh, and resumed native
 Pi and Claude native command builders have initial, fresh, and resume tests. Real local PTY tests cover immediate and deferred startup, input, resize, and wrapper receipts. Instance and control identity advertise the same launch-wrapper.v1 capability.
 
 Focused tests and race checks passed. Desktop and phone workflow acceptance belongs to Task 06.
+
+The current-base integration adds explicit refusal for wrapped SSH native terminal startup because that separate transport does not carry wrapper settings.
+`TestGenericWrapperRemotePassthroughRefusesBeforeStarting` first reproduced an unwrapped launch, then passed with the refusal.
+Its unwrapped control still starts a real remote-controller process.
+`go test -trimpath -p=2 -race ./internal/agent/runtime/lifecycle -run 'GenericWrapper|SSHPassthrough|RemotePassthrough' -count=1 -timeout=120s` passed with `GOMAXPROCS=2`.
+The operator reference and design distinguish this refusal from compatible remote ACP execution.
