@@ -6,7 +6,7 @@ The implementation is under review. PR #4538 stays draft. This record does not c
 ## Integration with the current base
 
 The subsequent CI run exposed a stale mixed-backend recovery fixture that listed an instance on an unused fixed port.
-Its required retained-wrapper read could not complete, so the expected retracked count was zero instead of one.
+Its required retained-wrapper read could not complete. The actual retracked count was zero; the test expected one.
 The fixture now serves a versioned wrapper snapshot on a dynamically allocated test endpoint.
 The exact failing test reproduced locally. Recovery-summary, duplicate-outcome, and retained-wrapper race checks pass after correction, with the original outcome counts preserved.
 The PostgreSQL 18 job separately failed during a Go dependency download from `proxy.golang.org`, before the task repository tests ran.
