@@ -197,6 +197,8 @@ test.describe("Task MCP selection on mobile", () => {
     await dialog.getByTestId("task-title-input").fill(taskTitle);
     await dialog.getByTestId("task-description-input").fill("Persist the mobile MCP selection.");
     if (prCapture.capturing) {
+      await layout.scrollIntoViewIfNeeded();
+      await expect(mcpSelection).toBeInViewport();
       await waitForFiniteAnimations(dialog);
       await prCapture.screenshot("mobile-mcp-and-parent-workspace", {
         caption: "Task MCP additions and parent workspace layout in mobile Advanced settings",

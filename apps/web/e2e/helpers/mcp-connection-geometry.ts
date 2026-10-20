@@ -1,7 +1,9 @@
 import { expect, type Locator } from "@playwright/test";
+import { waitForFiniteAnimations } from "./pr-capture";
 
 // @covers AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.4, AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.5, AC-AGENTS-WORKSPACE-MCP-CONFIGURATION-006.19
 export async function expectMCPConnectionGeometry(explorer: Locator, touch: boolean) {
+  await waitForFiniteAnimations(explorer);
   const list = explorer.getByTestId("mcp-server-list");
   const rows = list.locator('[data-testid^="mcp-server-row-"]');
   expect(await rows.count()).toBeGreaterThanOrEqual(3);

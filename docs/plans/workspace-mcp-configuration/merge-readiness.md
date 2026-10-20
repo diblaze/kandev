@@ -1,9 +1,10 @@
 # PR 3293 merge readiness
 
 Work resumed on another machine on 2026-10-20. The published checkpoint was
-verified, but GitHub reports conflicts with current main. Final integrated
-verification, immutable-commit review, screenshots, publication and current-head
-CI remain pending. The user requires confirmation before merging.
+verified and conflicts were resolved with current main. Integrated local checks
+and bounded source review are recorded below. Final capture publication,
+current-head CI and final review of the test/documentation delta remain pending.
+The user requires confirmation before merging.
 
 The earlier receipts below are historical. Their local files and review session
 are unavailable on this machine. They do not establish current readiness.
@@ -35,8 +36,7 @@ Six packages passed in the corrected run. Lifecycle exceeded the ten-minute
 package runner limit without an assertion failure. Its remaining 487 declared
 tests then passed as a separate bounded partition. The union accounts for all
 2,725 declared lifecycle tests, with no missing names or failures. This is
-partitioned coverage, not a claim that the timed-out command passed. Browser
-verification remains pending.
+partitioned coverage, not a claim that the timed-out command passed.
 
 The pruned-delivery startup fixture separately failed on both the integrated
 source and exact main `e3ef99a98f8d340f2447650cb4318b00977eb44e`. Its context
@@ -52,8 +52,32 @@ and delivery evidence, and reuses the existing non-durable storage reason.
 The affected passthrough, Claude strategy and native compatibility tests passed
 after these behavior-preserving changes.
 
-The new isolated review session is `213febdc-c9bc-4579-a513-5dd0415997fc`.
-Its initial source review does not replace final integrated-commit review.
+The latest main update changes delivery-retention scheduling. Worker tests and
+its two new repository regressions passed on SQLite and PostgreSQL. A broader
+SQLite retention run reached its five-minute runner limit during schema setup.
+It remains failed evidence; the focused checks do not imply that the broad run
+completed or that every retention behavior was verified locally.
+
+The current web, native runtime, delivery fixture and plugin package built
+successfully. Eighteen affected browser cases passed across desktop, phone,
+narrow fine-pointer and coarse-pointer tablet layouts, with one worker and
+retries disabled. They include 320/393/767px Connections geometry, incremental
+shell reload/cancellation, and combined MCP/layout selection and persistence.
+
+The initial desktop run passed eight cases and failed the new 28px assertion
+because it sampled the dialog during its opening animation at 27.407px. The
+geometry helper now awaits existing finite animations before measurement.
+No size assertion or product animation changed. The desktop and tablet geometry
+cases each passed three subsequent runs. All three phone sizes passed again,
+as did the combined Advanced case and a separate phone capture flow.
+The Advanced capture now scrolls both settings into view before taking the image.
+
+The isolated review session is `213febdc-c9bc-4579-a513-5dd0415997fc`.
+Its bounded review of the immutable integration commit found no new blocking
+issues and marked the task-edit MCP coverage finding addressed. It reviewed the
+seven conflict resolutions, added coverage, deadline placement and literal reuse.
+It did not audit every file in the original PR or establish runtime/CI approval.
+The final test synchronization and documentation delta requires bounded closure.
 No merge, auto-merge, queue admission or follow-up execution is authorized.
 
 ## Historical local evidence from the previous machine
