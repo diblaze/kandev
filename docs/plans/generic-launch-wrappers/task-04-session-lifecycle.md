@@ -103,3 +103,11 @@ Implemented separate wrapper state in configure, process configuration, restart 
 Initial and repeated process preparation, one-shot initial and continuation commands, missing recovery state, and old-peer refusal have regression coverage. A one-shot startup test failed before the startup path received wrapper preparation. It now passes with two invocation receipts and control-credential stripping.
 
 Focused tests and race checks passed. Broad package failures and their unchanged-HEAD comparison are recorded in [acceptance.md](acceptance.md). The manual instance was not restarted.
+
+CI remediation corrected the mixed-backend recovery-summary fixture to expose a live, dynamically allocated retained-instance endpoint.
+The old fixture listed an unused fixed port, so the wrapper-state read prevented its expected recovery.
+The fixture now advertises the wrapper capability and an unwrapped version-1 snapshot.
+The test also checks that the recovered session exists before checking unchanged per-record outcome counts.
+No production behavior changed.
+The exact mixed-backend test failed before correction.
+`GOMAXPROCS=2 go test -trimpath -p=2 -race ./internal/agent/runtime/lifecycle -run 'TestRecoverySummary|TestDuplicateRecoveryResult|TestGenericWrapperRecovery' -count=1 -timeout=90s` passed afterward.

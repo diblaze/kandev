@@ -5,6 +5,13 @@ The implementation is under review. PR #4538 stays draft. This record does not c
 
 ## Integration with the current base
 
+The subsequent CI run exposed a stale mixed-backend recovery fixture that listed an instance on an unused fixed port.
+Its required retained-wrapper read could not complete, so the expected retracked count was zero instead of one.
+The fixture now serves a versioned wrapper snapshot on a dynamically allocated test endpoint.
+The exact failing test reproduced locally. Recovery-summary, duplicate-outcome, and retained-wrapper race checks pass after correction, with the original outcome counts preserved.
+The PostgreSQL 18 job separately failed during a Go dependency download from `proxy.golang.org`, before the task repository tests ran.
+That transport failure requires a fresh CI result and does not justify a product or workflow change.
+
 The 2026-10-20 integration preserves the base branch's terminal lifecycle fields and sanitized probe diagnostics.
 The existing wrapper privacy test first failed because the new diagnostic logger retained arbitrary wrapper stderr.
 Wrapped probes now log only a bounded failure classification. The regression also checks the relay message.
