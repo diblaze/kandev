@@ -355,6 +355,27 @@ func (r *resumeAttemptRegistry) hasRecoveryHistoryLocked(sessionID string) bool 
 	return ok
 }
 
+func (r *resumeAttemptRegistry) canPromptWithoutResume(sessionID, executionID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.attempts[sessionID] != nil {
+		return false
+	}
+	if !r.hasRecoveryHistoryLocked(sessionID) {
+		return true
+	}
+	var latest resumeAttemptTombstone
+	for _, entry := range r.tombstones[sessionID] {
+		if entry.id > latest.id {
+			latest = entry
+		}
+	}
+	// A failed resume can overlap startup reconciliation. Its restored
+	// execution needs a new binding before callbacks can pass the history guard.
+	return latest.accepted && !latest.cancelled && executionID != "" &&
+		latest.executionID == executionID
+}
+
 func (r *resumeAttemptRegistry) setRecoveryErrorStamp(attempt *resumeAttempt, stamp string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -695,20 +695,19 @@ func emitSlowResponse(e *emitter, prompt, model string) {
 	steps := 5
 	stepDelay := totalDuration / time.Duration(steps)
 
-	emitThinking(e, model)
-	time.Sleep(stepDelay)
-
-	e.text(fmt.Sprintf("Running slow response (%s total)...", totalDuration))
-	time.Sleep(stepDelay)
-
-	emitReadFile(e, model)
-	time.Sleep(stepDelay)
-
-	emitCodeSearch(e, model)
-	time.Sleep(stepDelay)
-
-	e.text(fmt.Sprintf("Slow response complete after %s.", totalDuration))
-	time.Sleep(stepDelay)
+	for _, emit := range []func(){
+		func() { emitThinking(e, model) },
+		func() { e.text(fmt.Sprintf("Running slow response (%s total)...", totalDuration)) },
+		func() { emitReadFile(e, model) },
+		func() { emitCodeSearch(e, model) },
+		func() { e.text(fmt.Sprintf("Slow response complete after %s.", totalDuration)) },
+	} {
+		if e.ctx != nil && e.ctx.Err() != nil {
+			return
+		}
+		emit()
+		waitForDelay(e.ctx, int(stepDelay.Milliseconds()))
+	}
 }
 
 // emitRandomResponse generates a random mix of 2-5 events.

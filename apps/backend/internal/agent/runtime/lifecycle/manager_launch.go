@@ -2008,9 +2008,9 @@ func (m *Manager) promoteWorkspaceExecution(ctx context.Context, execution *Agen
 		if req.ACPSessionID != "" && execution.ACPSessionID == "" {
 			execution.ACPSessionID = req.ACPSessionID
 		}
-		if req.PreviousExecutionID != "" || req.IsPassthrough && req.ResumePassthrough {
-			execution.isResumedSession = true
-		}
+		// The admitted launch owns resume intent. A workspace restored from a
+		// predecessor must not suppress a fresh successor's initial prompt.
+		execution.isResumedSession = req.PreviousExecutionID != "" || req.IsPassthrough && req.ResumePassthrough
 		execution.IsPassthrough = req.IsPassthrough
 		applyLaunchRepositoryContextToExecution(execution, req)
 		progressRecorder := m.newPreparationAttemptRecorder(execution.TaskID, execution.SessionID)

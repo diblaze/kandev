@@ -4365,6 +4365,7 @@ func (s *Service) sessionAlreadyPromptReady(ctx context.Context, sessionID strin
 	probeCtx := context.WithoutCancel(ctx)
 	existing, ok := s.executor.GetExecutionBySession(sessionID)
 	return ok && existing != nil &&
+		s.resumeAttemptStore().canPromptWithoutResume(sessionID, existing.AgentExecutionID) &&
 		(s.agentManager == nil || s.agentManager.IsAgentReadyForPrompt(probeCtx, sessionID))
 }
 

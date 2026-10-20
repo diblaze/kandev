@@ -9,6 +9,55 @@ supersedes that checkpoint. CI for the next commit and review of its new delta r
 The earlier receipts below are historical. Their local files and review session
 are unavailable on this machine. They do not establish current readiness.
 
+## CI remediation after `cbc9ad6c3`
+
+The exact-head waiter completed with 76 passing checks, 13 skipped checks and
+14 failed checks. The failures were 13 E2E shards and their aggregate. The retry
+summary records 4,055 first-attempt passes, 18 flaky cases and 40 skips. Every
+flaky case eventually passed, but fail-on-flaky correctly leaves CI red.
+Backend, frontend, documentation coverage and walkthrough checks passed.
+
+Retained failure evidence identified four causes with focused red/green tests:
+
+- A restored workspace could retain resume intent when promoted for a fresh
+  fallback successor. Promotion now uses the admitted launch request's intent,
+  so the successor receives its initial prompt.
+- A failed resume during startup reconciliation left recovery history behind.
+  A restored execution then bypassed binding, so its completion callbacks were
+  rejected and the session stayed RUNNING. Prompt admission now requires an
+  accepted binding for that execution or creates a new binding. Existing stale
+  callback and cancellation guards remain enforced.
+- The task context menu could restore focus to the row after Rename opened.
+  The dialog focus trap then selected the whole draft. Rename now opens after
+  the menu releases focus. The earlier external-focus-hook experiment did not
+  solve this race and was removed.
+- The mock agent's slow response used delays that ignored cancellation. Its
+  delays now honor the prompt context, allowing acknowledged cancellation.
+
+Affected E2E setup now waits for persisted Azure preferences, settled drawer
+geometry, original-session message persistence across workflow handoff, and
+initial session/Git hydration before Files interactions. Folder upload waits
+for the intentional Changes update before selecting Files. Scroll preservation
+is measured after the reader disables transcript auto-scroll. Profile dragging
+retries only row scrolling before pointer-down when a refreshed row detaches.
+Assertions, minimum touch sizes and timeouts remain unchanged.
+
+The three affected Go packages passed the focused race run. Frontend typecheck,
+scoped lint and formatting passed. The rename flow passed nine browser cases
+across all three surfaces, plus four phone rename/caret checks. Desktop fallback,
+phone fallback and cancellation,
+MCP 320px status, turn-file visibility, workflow routing and history recovery
+passed with retries disabled. The real Kubernetes sibling stop/restart case also
+passed with the rebuilt static runtime. Prompt-permission and clone failures did not
+reproduce in three local repetitions each. Their cause remains unknown, as do
+the isolated CI failures in MCP report state, phone workflow selection and
+turn-file visibility. Those specs now retain first-attempt failure traces.
+All local browser runs used one worker, zero retries and a 4 GiB/two-CPU limit.
+
+The latest base remains `74427cb50c24e281e5b3fa826c7136ffed5be5db`.
+Its incoming files do not intersect this remediation. Current-head CI, the
+final bounded review and user merge confirmation remain delivery gates.
+
 ## CI remediation after `7fdc73103`
 
 The next exact-head waiter completed with 85 passing checks, ten skipped checks

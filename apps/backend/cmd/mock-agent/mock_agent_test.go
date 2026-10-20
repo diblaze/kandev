@@ -100,50 +100,57 @@ func TestMockAgentCancelHoldDefersPromptCompletion(t *testing.T) {
 }
 
 func TestMockAgentCancelStopsPrompt(t *testing.T) {
-	const sessionID = acp.SessionId("cancel-session")
-	updater := &promptCancelUpdater{started: make(chan struct{})}
-	agent := &mockAgent{
-		model:           "mock-fast",
-		conn:            updater,
-		sessions:        map[acp.SessionId]bool{sessionID: true},
-		promptCancels:   make(map[acp.SessionId]context.CancelFunc),
-		commandsEmitted: make(map[acp.SessionId]bool),
-	}
+	for name, prompt := range map[string]string{
+		"script":        "e2e:message(\"started\")\ne2e:delay(5000)",
+		"slow response": "/slow 60s",
+	} {
+		t.Run(name, func(t *testing.T) {
+			const sessionID = acp.SessionId("cancel-session")
+			updater := &promptCancelUpdater{started: make(chan struct{})}
+			agent := &mockAgent{
+				model:           "mock-fast",
+				conn:            updater,
+				sessions:        map[acp.SessionId]bool{sessionID: true},
+				promptCancels:   make(map[acp.SessionId]context.CancelFunc),
+				commandsEmitted: make(map[acp.SessionId]bool),
+			}
 
-	result := make(chan struct {
-		response acp.PromptResponse
-		err      error
-	}, 1)
-	go func() {
-		response, err := agent.Prompt(context.Background(), acp.PromptRequest{
-			SessionId: sessionID,
-			Prompt:    []acp.ContentBlock{acp.TextBlock("e2e:message(\"started\")\ne2e:delay(5000)")},
+			result := make(chan struct {
+				response acp.PromptResponse
+				err      error
+			}, 1)
+			go func() {
+				response, err := agent.Prompt(context.Background(), acp.PromptRequest{
+					SessionId: sessionID,
+					Prompt:    []acp.ContentBlock{acp.TextBlock(prompt)},
+				})
+				result <- struct {
+					response acp.PromptResponse
+					err      error
+				}{response: response, err: err}
+			}()
+
+			select {
+			case <-updater.started:
+			case <-time.After(time.Second):
+				t.Fatal("timed out waiting for the prompt to start")
+			}
+			if err := agent.Cancel(context.Background(), acp.CancelNotification{SessionId: sessionID}); err != nil {
+				t.Fatalf("cancel prompt: %v", err)
+			}
+
+			select {
+			case outcome := <-result:
+				if outcome.err != nil {
+					t.Fatalf("prompt returned error: %v", outcome.err)
+				}
+				if outcome.response.StopReason != acp.StopReasonCancelled {
+					t.Fatalf("stop reason = %q, want cancelled", outcome.response.StopReason)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("prompt did not stop after cancellation")
+			}
 		})
-		result <- struct {
-			response acp.PromptResponse
-			err      error
-		}{response: response, err: err}
-	}()
-
-	select {
-	case <-updater.started:
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for the prompt to start")
-	}
-	if err := agent.Cancel(context.Background(), acp.CancelNotification{SessionId: sessionID}); err != nil {
-		t.Fatalf("cancel prompt: %v", err)
-	}
-
-	select {
-	case outcome := <-result:
-		if outcome.err != nil {
-			t.Fatalf("prompt returned error: %v", outcome.err)
-		}
-		if outcome.response.StopReason != acp.StopReasonCancelled {
-			t.Fatalf("stop reason = %q, want cancelled", outcome.response.StopReason)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("prompt did not stop after cancellation")
 	}
 }
 

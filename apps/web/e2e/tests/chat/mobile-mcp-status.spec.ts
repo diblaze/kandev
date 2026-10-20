@@ -3,6 +3,8 @@ import { type Locator } from "@playwright/test";
 import { test, expect } from "../../fixtures/test-base";
 import { SessionPage } from "../../pages/session-page";
 
+test.use({ trace: "retain-on-failure" });
+
 async function expectMinTouchHeight(control: Locator) {
   const box = await control.boundingBox();
   expect(box?.height).toBeGreaterThanOrEqual(44);
