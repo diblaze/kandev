@@ -3,12 +3,63 @@
 Work resumed on another machine on 2026-10-20. The published checkpoint was
 verified and conflicts were resolved with current main. Integrated local checks
 and bounded source review are recorded below. Phone captures and the bounded
-review through `52af0b2` are complete. The latest conflict/CI round below
+review through `7964b698` are complete. The latest conflict/CI round below
 supersedes that checkpoint. Current-head CI and review of the new delta remain
 pending. The user requires confirmation before merging.
 
 The earlier receipts below are historical. Their local files and review session
 are unavailable on this machine. They do not establish current readiness.
+
+## CI remediation after `7964b698`
+
+The exact-head waiter completed with 78 passing checks, 12 skipped checks and
+11 failed checks. The E2E report records 4,065 first-attempt passes, six passes
+after retry and 40 skipped tests. The six flaky cases fail the repository gate;
+retry success is not passing CI evidence.
+
+The Rename dialog exposed a selection-restoration race. Radix can select the
+returning input before the deferred caret restoration runs. A first keydown
+could then cancel restoration and replace the entire title. Two deterministic
+regressions failed before the fix. Pending restoration now runs before keydown
+or text insertion, then clears so it cannot overwrite the user's new caret.
+Pointer selection, changed values and unmount cleanup keep their existing guards.
+
+Five browser setup sequences now wait at their relevant boundaries:
+
+- The Bitbucket contract waits for the initial agent turn and Review placement
+  before opening a task-card menu that a workflow move can unmount.
+- The phone persisted-history case performs its required reload before checking
+  the seeded trailing message. The visibility, unloaded-prompt and alignment
+  assertions remain; the shared helper's default live-update path is unchanged.
+- The Kanban drag waits for the target's existing drop highlight before mouseup.
+- Change workflow waits for a successful move response before asserting that
+  its dialog has closed.
+- MCP application-report routes drain before the next reload or fixture cleanup.
+  Route errors are not ignored.
+
+The unchanged cases passed focused local repetitions; those runs did not
+reproduce the intermittent CI failures. The caret unit tests independently
+reproduced the input-ordering defect. Corrected verification passed 23 focused
+unit tests and 38 browser cases, with one worker, retries disabled and a
+two-CPU/4 GiB limit. Browser coverage includes desktop and phone rename,
+Bitbucket, Kanban, workflow change, phone history, MCP geometry at
+320/393/767px, desktop MCP and coarse-pointer tablet MCP. The rebuilt web,
+6 GiB typecheck, scoped lint, formatting, specification lint and catalog
+validation passed. The initial full-Chromium attempt failed at browser launch
+because the isolated environment lacked libraries; it is not test evidence.
+
+The two PostgreSQL CI leaf failures occurred during Go module downloads from
+`proxy.golang.org`, before the affected tests ran. Their backend aggregate also
+failed. A fresh push must recheck them. Both walkthrough attempts reached the
+600-second generation deadline with an empty draft and no verification stage.
+That workflow comes from trusted main, so a PR-only workflow edit cannot repair
+the current run. The walkthrough remains failed evidence.
+
+Main later advanced to `5f4af538b132297a96c383ec731acd800b06f76d`; its merge with
+the published head is clean. The branch still contains the explicitly tested
+`34eba773` integration. Current-head CI and bounded review of the new fix delta
+remain delivery gates. Exact commits, command receipts and subsequent review
+results belong in the current Kandev plan. No merge is authorized.
 
 ## Conflict and CI round on 2026-10-20
 

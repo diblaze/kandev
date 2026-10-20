@@ -80,6 +80,7 @@ export async function seedScrolledPastLastPrompt(
     lastPromptText?: string;
     onSessionId?: (sessionId: string) => void;
     showScrollControls?: boolean;
+    reloadAfterSeeding?: boolean;
   } = {},
 ): Promise<SessionPage> {
   if (opts.showScrollControls ?? true) {
@@ -127,6 +128,11 @@ export async function seedScrolledPastLastPrompt(
   await send(opts.lastPromptText ?? LAST_PROMPT_MARKER);
   const trailingFillerCount = opts.trailingFillerCount ?? TRAILING_FILLER_COUNT;
   await apiClient.seedAgentMessages(sessionId, trailingFillerCount);
+  if (opts.reloadAfterSeeding) {
+    await page.reload();
+    await session.waitForLoad();
+    await session.waitForChatIdle({ timeout: 30_000 });
+  }
   const lastFiller = session
     .activeChat()
     .getByText(`filler message ${trailingFillerCount}`, { exact: false });

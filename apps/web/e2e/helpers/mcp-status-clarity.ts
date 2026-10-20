@@ -276,7 +276,7 @@ async function checkSavedReports(
       await explorer.getByTestId("mcp-explorer-close").click();
       if (!mobile) await expect(trigger).toBeFocused();
     } finally {
-      await page.unroute(url);
+      await page.unrouteAll({ behavior: "wait" });
     }
   }
 }
