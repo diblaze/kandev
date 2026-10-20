@@ -154,6 +154,26 @@ otherwise, review the current assignment and form choices before deciding whethe
 to retry. A multi-task selection keeps the separate bulk workflow action and does
 not support per-task profile mappings.
 
+## Find a task from its conversation
+
+Open `Cmd/Ctrl+K` and enter a phrase from a user message or an assistant reply.
+The Commands and Tasks scopes search titles, descriptions, repository details,
+and saved conversation text across the selected workspace. On a phone, open the
+navigation menu and select **Search tasks**.
+
+Conversation search uses literal text, ignores case, and keeps accents significant.
+Enter 3 to 200 characters with at least three consecutive letters or digits.
+Quotes and punctuation have no special search meaning. Tool output, thinking,
+plans, and attachments are not included.
+
+A conversation result shows a highlighted excerpt. Select it to open the matching
+session. Archived tasks can appear after active tasks; opening one does not restore
+it or start an agent. Files and Contents continue to search repository files.
+
+Existing history is indexed in the background. During indexing, some matches can
+be missing. Refine the phrase if the palette reports limited results. Title and
+description search remain available if conversation search is unavailable.
+
 ## Task actions from the command palette
 
 While a task is open, `Cmd/Ctrl+K` offers the task actions available from its sidebar
@@ -164,8 +184,8 @@ also shows other tasks. Duplicate remains disabled.
 
 Use arrow keys and Enter to choose an action or nested option. Back or Escape
 returns to the previous choices. Archive and Delete retain their confirmations.
-On phones, task overflow retains touch access; an attached keyboard can open the
-palette, whose choices also support touch.
+On phones, open **Search tasks** from the navigation menu to use the palette,
+or use task overflow for actions on the current task.
 
 ## Prepare a workspace
 
@@ -562,13 +582,13 @@ When you send the first message from Chat on a prepared task, Kandev keeps the t
 
 After a completed turn, Kandev can show a changed-files card below the agent reply. The card summarizes repository changes captured between that turn's start and end.
 
-By default, this preference is on. To change it, open **Settings > General**. Under **Chat preferences**, set **Show changed files after each turn**, then select **Save**.
+For new accounts, this preference is off. Existing saved preferences are unchanged. To change it, open **Settings > General**. Under **Chat preferences**, set **Show changed files after each turn**, then select **Save**.
 
 Each card uses retained data for that turn. Later edits, commits, or branch changes do not rewrite it. Select **Open diff** to review the full turn. Select a file row to open its historical diff. On a phone, the diff opens in a full-height drawer.
 
 The diff shows the selected file’s full path and its previous path after a rename. If a file list fails to load, select **Retry**.
 
-Some captures are partial or unavailable. The card labels that state and gives the reason when available. Retained content can expire. Kandev then shows an expiry message and does not replace the historical diff with current workspace content. The **Changes** panel continues to show the current workspace and Git history.
+Some captures are partial or unavailable. Cards with captured files label that state and give the reason when available. A completed turn with no recorded file entries has no card; this does not prove that a failed capture had no changes. Retained content can expire. Kandev then shows an expiry message and does not replace the historical diff with current workspace content. The **Changes** panel continues to show the current workspace and Git history.
 
 By default, a running session keeps the coarse **Generating** state and queues
 another message even if Kandev detects background work. Operators can opt into
@@ -732,6 +752,11 @@ that was waiting only on it becomes unblocked. That dependent is not started:
 deletion is not success.
 
 ## Find and organize tasks
+
+To include tasks without a repository, open the sidebar filters and select
+**None** in a **Repository** filter. With the **in** operator, select **None**
+together with named repositories to include both. Save the view to retain the
+selection.
 
 In **List** view, compact and detailed task rows show critical, high, and low
 priority indicators after the task title on desktop and phones. Medium priority
@@ -1077,6 +1102,38 @@ session files for agents that ran on the Kandev host. Archiving keeps those file
 leaves other conversations and the agent's shared indexes and history databases in place.
 It uses the host's home and config-directory settings; overrides set only in an agent or
 executor profile are outside this cleanup.
+
+### Delete a task when its workspace cannot be checked
+
+1. Open the task's **Delete** dialog.
+2. Select **Delete even if workspace changes cannot be checked**. Local changes may be lost.
+3. Select **Delete** after the confirmation finishes loading.
+
+Kandev deletes the task and records the resources that still need cleanup.
+It removes resources only after their ownership and identity checks pass.
+A damaged resource does not block cleanup of an independent healthy workspace.
+Files that cannot be safely removed remain protected from automatic maintenance.
+Kandev retries cleanup. Missing original ownership evidence can require manual repair.
+Access checks and database operations must still succeed.
+
+### Delete a task and keep its workspace files
+
+1. Open the task's **Delete** dialog.
+2. Select **Keep workspace files**. This option is also available after a failed workspace check.
+3. Select **Delete task and keep files**.
+
+Kandev deletes the task and conversation, but keeps workspace files, Git branches,
+and file-bearing provider resources. It does not need to read the workspace to
+confirm this choice. Access checks and database operations must still succeed.
+The same choice is available for bulk deletion and selected subtasks.
+
+Retained resources are excluded from automatic cleanup. They can continue to use
+disk space or incur provider charges. If Kandev cannot stop a runtime without
+risking those files, the task is still deleted and runtime shutdown stays pending.
+The deletion result reports this state.
+
+Do not downgrade to a Kandev version without workspace retention support while
+retained resources exist. Older cleanup code cannot enforce that protection.
 
 ## Troubleshooting
 

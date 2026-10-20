@@ -1,6 +1,6 @@
 # Generic wrapper acceptance
 
-Dates: 2026-10-18 through 2026-10-20. Source branch: `feature/investigate-pi-agent-6ac`.
+Dates: 2026-10-18 through 2026-10-21. Source branch: `feature/investigate-pi-agent-6ac`.
 The implementation is under review. PR #4538 stays draft. This record does not certify real sandbox enforcement.
 
 ## Integration with the current base
@@ -54,6 +54,40 @@ and a Kandev MCP connection blocked by its explicit Greywall policy.
 A replacement session completed the sales case, but that does not prove recovery or complete sandbox integration.
 The queued Nono follow-up owns investigation of those gaps, supervisor integration, policy selection,
 approvals, learning, and confinement tests. This PR does not complete issue #3812.
+
+
+## CI and base refresh on 2026-10-21
+
+CI completed on `e4fcd18e9ee88402c2da183f8a2ce1641cafe9ef`: 84 checks passed and 16 were skipped.
+No check failed or remained pending. No review thread remained unresolved.
+All three desktop preview cases and the phone preview case passed on their first attempt.
+The full browser report contains 4,025 first-attempt passes, 14 passes after retry, and 40 skipped tests.
+The blob audit found 17 retry attempts and no malformed report records. This is not a zero-retry result.
+
+The latest base, `d5387f083850ffd1755854f637feaa428fca90a4`, then conflicted with the preview helper.
+The resolution preserves completed-request observation and adds the base's destination-step matching and session readiness check.
+It preserves all existing assertions. It does not change a product requirement or design contract.
+Automatically merged runtime paths retain wrapper validation, restart state, retained snapshots, and execution-host preparation.
+
+Focused wrapper, recovery-summary, SSH, and resume-projection race checks passed after integration.
+Process, utility, API, and wrapper-package race checks also passed.
+An expanded selection exceeded its 120-second package budget during the 49-case SQLite state matrix.
+That run does not establish a full matrix pass. The focused lifecycle run passed in 7.240 seconds.
+Changed-Go lint passed for all 66 PR paths relative to the merged base, with no findings.
+All 12 runner safety tests, 63 public-doc tests, public-doc validation, catalog validation, and specification lint passed.
+
+The fresh managed build passed all eight selected desktop cases with retries disabled.
+All seven selected phone cases also passed. Both runs used one worker and disabled retries.
+Commands from the repository root:
+
+```bash
+pnpm --dir apps/web e2e:run --host --project chromium tests/cli-mode/generic-launch-wrappers.spec.ts tests/settings/profile-capability-discovery.spec.ts tests/workflow/workflow-move-preview.spec.ts -- --retries=0
+pnpm --dir apps/web e2e:run --host --no-build --project mobile-chrome tests/cli-mode/mobile-generic-launch-wrappers.spec.ts tests/settings/mobile-profile-capability-discovery.spec.ts tests/workflow/mobile-workflow-move-preview.spec.ts -- --retries=0
+```
+
+The temporary host launcher supplied Chromium libraries and selected free E2E ports, as described above.
+The retained manual instance, evaluation instance, main instance, and deprecated task remain unchanged.
+Fresh remote CI must be checked on the pushed merge commit.
 
 ## Backend checks
 

@@ -123,6 +123,16 @@ All three desktop cases and the existing phone drawer case pass without retries.
 No product behavior, requirement, or design contract changed. Commands, trace evidence,
 and host setup limits appear in [acceptance.md](acceptance.md).
 
+
+On 2026-10-21, all remote CI checks passed at `e4fcd18e9ee`; the four preview cases passed without retries.
+The complete browser run contained 14 flaky verdicts, with no unexpected final result.
+A later base update conflicted with the preview helper. The merge preserves completed-request observation,
+destination-step matching, session readiness, and all existing assertions.
+After integration, all eight selected desktop cases and seven phone cases pass without retries.
+Focused runtime race checks, all 66 changed Go paths, runner safety checks, and document checks pass.
+The expanded native-resume selection exceeded its package time budget during the SQLite state matrix.
+The narrower lifecycle check passed. Exact commands and limits appear in [acceptance.md](acceptance.md).
+
 ## Real-provider harness contract
 
 The harness accepts private executable paths and credential locations through environment variables.
