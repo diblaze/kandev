@@ -1,5 +1,11 @@
 # PR #3293 final testing guide
 
+**Resumed-machine status (2026-10-20):** the sandbox links and stop command in
+this guide belong to the previous machine. That sandbox is not available here.
+Use freshly built, isolated fixtures for current verification. The resumed
+delivery ledger is in [merge readiness](merge-readiness.md); earlier counts
+below remain historical.
+
 Start with the [inheritance task](http://localhost:48595/t/f2a32026-ffcc-458a-8642-ab2fe4f4d9c7)
 and open **MCP plug > Customize**. Allow **25 to 35 minutes** for the main sweep,
 plus **10 to 15 minutes** for the optional real-provider checks.
@@ -35,7 +41,7 @@ disabling is a different operation and already exists.
 
 **Deferred profile UI:** global agent profiles still use the legacy JSON editor.
 The user explicitly moved global-profile catalog navigation and management/status
-clarity to unstarted follow-up task `ee292a1d-3d53-4b86-965c-6fe4a8ae217e`, based on
+clarity to unstarted follow-up task `2adba1ca-619e-4bfc-b705-3bbc628df4dd`, based on
 this PR. Workspace-owned profiles have the shared picker. The original sandbox
 agents are global, so do not count their legacy editor as a successful catalog
 picker test. Existing API/resolution support for workspace-scoped global-profile

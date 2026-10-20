@@ -11,6 +11,7 @@ import {
   assertNoDocumentHorizontalOverflow,
 } from "../../helpers/layout-assertions";
 import { useRegularMode } from "../../helpers/regular-mode";
+import { waitForFiniteAnimations } from "../../helpers/pr-capture";
 import { waitForSessionDone } from "../../helpers/session";
 import { MobileKanbanPage } from "../../pages/mobile-kanban-page";
 import { SessionPage } from "../../pages/session-page";
@@ -103,6 +104,7 @@ test.describe("Task MCP selection on mobile", () => {
     testPage,
     apiClient,
     seedData,
+    prCapture,
   }) => {
     const [inheritedMCP, taskMCP] = await Promise.all(
       ["Mobile inherited MCP", "Mobile task MCP"].map((displayName, index) =>
@@ -181,9 +183,25 @@ test.describe("Task MCP selection on mobile", () => {
     await pickerTrigger.tap();
     await expect(drawer.getByRole("checkbox", { name: /Mobile task MCP/ })).toBeChecked();
     await drawer.getByRole("button", { name: "Close", exact: true }).tap();
+    const layout = dialog.getByTestId("task-create-initial-workspace-layout-setting");
+    await layout.getByTestId("task-create-initial-workspace-layout-info").tap();
+    const layoutHelp = testPage.getByTestId("task-create-initial-workspace-layout-help-drawer");
+    await expect(layoutHelp).toBeVisible();
+    await assertLocatorWithinViewportX(layoutHelp, "parent workspace help after MCP selection");
+    await testPage.keyboard.press("Escape");
+    await expect(layoutHelp).not.toBeVisible();
+    const layoutCheckbox = layout.getByTestId("task-create-initial-workspace-layout-checkbox");
+    await layoutCheckbox.tap();
+    await expect(layoutCheckbox).toHaveAttribute("data-state", "checked");
     const taskTitle = "Mobile MCP task";
     await dialog.getByTestId("task-title-input").fill(taskTitle);
     await dialog.getByTestId("task-description-input").fill("Persist the mobile MCP selection.");
+    if (prCapture.capturing) {
+      await waitForFiniteAnimations(dialog);
+      await prCapture.screenshot("mobile-mcp-and-parent-workspace", {
+        caption: "Task MCP additions and parent workspace layout in mobile Advanced settings",
+      });
+    }
     await expect(dialog.getByTestId("submit-start-agent")).toBeEnabled({ timeout: 30_000 });
     await dialog.getByTestId("mobile-create-without-agent").tap();
 
@@ -195,6 +213,11 @@ test.describe("Task MCP selection on mobile", () => {
     await expect.poll(findCreatedTask, { timeout: 30_000 }).toBeDefined();
     const taskId = await findCreatedTask();
     if (!taskId) throw new Error("Task was not created from the mobile dialog");
+    await expect
+      .poll(() => apiClient.getTask(taskId))
+      .toMatchObject({
+        initial_workspace_layout: "task_root",
+      });
     await expect
       .poll(
         async () =>

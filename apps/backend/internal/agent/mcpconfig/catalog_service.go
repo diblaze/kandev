@@ -333,7 +333,7 @@ func validateConfiguration(definition *MCPServerDefinition) error {
 			return fmt.Errorf("%w: remote URL must use http or https", ErrMCPInvalidDefinition)
 		}
 	case ExecutionModeManagedPackage:
-		if configuration.PackageType != "npm" || strings.TrimSpace(configuration.PackageName) == "" || !exactPackageVersion(configuration.PackageVersion) {
+		if configuration.PackageType != managedPackageTypeNPM || strings.TrimSpace(configuration.PackageName) == "" || !exactPackageVersion(configuration.PackageVersion) {
 			return fmt.Errorf("%w: managed packages require an npm name and exact version", ErrMCPInvalidDefinition)
 		}
 		if configuration.PackageRegistry != "" && !validHTTPURL(configuration.PackageRegistry) {

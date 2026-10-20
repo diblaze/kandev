@@ -228,7 +228,7 @@ Wave 7 (user-authorized PR review remediation):
 
 Delivery scope exception approved by the user: global-profile catalog navigation,
 management/usage clarity and neutral delivery presentation belong to unstarted
-follow-up `ee292a1d-3d53-4b86-965c-6fe4a8ae217e`. This delivery does not claim the
+follow-up `2adba1ca-619e-4bfc-b705-3bbc628df4dd` on the resumed machine. This delivery does not claim the
 global-profile picker UI complete; existing scoped association/resolution stays.
 
 Execution is sequential in the primary conversation. Wave labels identify

@@ -1,10 +1,12 @@
 "use client";
 
+/* eslint-disable max-lines -- the setup module owns the task dialog's complete hook and submit wiring. */
+
 import { executorProfileAvailable } from "@/lib/auth/executor-ownership";
 import { FormEvent, useCallback } from "react";
 import type { JiraTicket } from "@/lib/types/jira";
 import type { LinearIssue } from "@/lib/types/linear";
-import type { Repository } from "@/lib/types/http";
+import type { InitialWorkspaceLayout, Repository } from "@/lib/types/http";
 import type { RepositoryBranchesState } from "@/lib/state/slices/workspace/types";
 import { branchOptionValue } from "@/components/branch-picker-options";
 import { SHORTCUTS } from "@/lib/keyboard/constants";
@@ -38,6 +40,12 @@ import {
   type WorkflowAgentOverrideValidation,
 } from "@/components/task-create-dialog-workflow-agent-override-validation";
 import { useRepositorySetsForTaskCreateDialog } from "@/components/task-create-dialog-repository-sets-setup";
+import { computeSelectedRepoCount } from "@/components/task-create-dialog-computed";
+import {
+  resolveInitialWorkspaceLayout,
+  resolveInitialWorkspaceLayoutMode,
+  resolveSelectedExecutorType,
+} from "@/components/task-create-dialog-helpers";
 
 // Catalog key: module scope, so it is resolved at the call site.
 const PROMPT_INSERTED_MESSAGE_KEY = "task:enhancedPromptInserted";
@@ -142,6 +150,7 @@ type SubmitWiringArgs = {
   preserveQueuedLastUsedOnClose: () => void;
   workflowAgentOverridesBlockedReason?: string;
   mcpSelectionEditor: ReturnType<typeof useMCPSelectionEditor>;
+  initialWorkspaceLayout: InitialWorkspaceLayout | undefined;
 };
 
 function useSubmitHandlersWiring({
@@ -158,6 +167,7 @@ function useSubmitHandlersWiring({
   preserveQueuedLastUsedOnClose,
   workflowAgentOverridesBlockedReason,
   mcpSelectionEditor,
+  initialWorkspaceLayout,
 }: SubmitWiringArgs) {
   const {
     workspaceId,
@@ -214,6 +224,7 @@ function useSubmitHandlersWiring({
     setMcpServerIdsDirty: fs.setMcpServerIdsDirty,
     setSelectedWorkflowId: fs.setSelectedWorkflowId,
     setFetchedSteps: fs.setFetchedSteps,
+    setInitialWorkspaceLayout: fs.setInitialWorkspaceLayout ?? (() => undefined),
     clearDraft: fs.clearDraft,
     freshBranchEnabled: fs.freshBranchEnabled,
     isLocalExecutor: computed.isLocalExecutor,
@@ -223,6 +234,7 @@ function useSubmitHandlersWiring({
     priority: fs.priority,
     workflowAgentOverrides: fs.workflowAgentOverrides,
     workflowAgentOverridesBlockedReason,
+    initialWorkspaceLayout,
     blockedBy: fs.blockedBy,
     editDependencies,
     mcpServerIds: fs.mcpServerIds,
@@ -452,7 +464,29 @@ function useMCPSetupForDialog(
   });
 }
 
-// eslint-disable-next-line max-lines-per-function -- the setup hook keeps the dialog's hook order and returned wiring together.
+function resolveInitialWorkspaceLayoutForDialog(
+  fs: DialogFormState,
+  data: ReturnType<typeof useTaskCreateDialogData>,
+  isCreateMode: boolean,
+  isTaskStarted: boolean,
+) {
+  const mode = resolveInitialWorkspaceLayoutMode({
+    isCreateMode,
+    isTaskStarted,
+    noRepository: fs.noRepository,
+    repositoryCount: computeSelectedRepoCount(fs),
+    executorType: resolveSelectedExecutorType(data.executors, fs.executorProfileId),
+  });
+  return {
+    mode,
+    layout: resolveInitialWorkspaceLayout({
+      requested: fs.initialWorkspaceLayout ?? "repository",
+      mode,
+    }),
+  };
+}
+
+// eslint-disable-next-line max-lines-per-function -- the setup hook preserves one ordered wiring boundary for the dialog.
 export function useTaskCreateDialogSetup(
   props: TaskCreateDialogProps,
   options: { preserveQueuedLastUsedOnClose?: () => void } = {},
@@ -471,6 +505,7 @@ export function useTaskCreateDialogSetup(
     (state) => state.userSettings.agentGeneratedTaskTitles,
   );
   const autoTitle = mode === "create" && agentGeneratedTaskTitles;
+  const isCreateMode = mode === "create";
   const fs = useDialogFormState(
     open,
     workspaceId,
@@ -503,6 +538,8 @@ export function useTaskCreateDialogSetup(
     isSessionMode,
     computed.effectiveAgentProfileId,
   );
+  const { mode: initialWorkspaceLayoutMode, layout: initialWorkspaceLayout } =
+    resolveInitialWorkspaceLayoutForDialog(fs, data, isCreateMode, isTaskStarted);
   const submitHandlers = useSubmitHandlersWiring({
     props: resolvedProps,
     fs,
@@ -517,6 +554,7 @@ export function useTaskCreateDialogSetup(
     preserveQueuedLastUsedOnClose: options.preserveQueuedLastUsedOnClose ?? (() => undefined),
     workflowAgentOverridesBlockedReason,
     mcpSelectionEditor: mcp.editor,
+    initialWorkspaceLayout,
   });
   const { guardedHandleSubmit, handleKeyDown } = useDialogSubmitShortcut(
     submitHandlers.handleSubmit,
@@ -542,7 +580,7 @@ export function useTaskCreateDialogSetup(
     fs,
     isSessionMode,
     isEditMode,
-    isCreateMode: mode === "create",
+    isCreateMode,
     autoTitle,
     isTaskStarted,
     sessionRepoName,
@@ -561,6 +599,7 @@ export function useTaskCreateDialogSetup(
     mcpDefinitions: mcp.definitions,
     mcpDefinitionsLoading: mcp.definitionsLoading,
     mcpInheritedSelections: mcp.inheritedSelections,
+    initialWorkspaceLayoutMode,
   };
 }
 

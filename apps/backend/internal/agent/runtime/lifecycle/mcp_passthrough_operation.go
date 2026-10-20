@@ -44,7 +44,7 @@ func buildPassthroughMCPAttempt(execution *AgentExecution, processID string, ope
 	for _, server := range operation.servers {
 		delivered[server.Name] = true
 		target := streams.SanitizeMCPStdioTarget(server.Command)
-		if server.Type != "stdio" {
+		if server.Type != string(mcpconfig.ServerTypeStdio) {
 			target = streams.SanitizeMCPNetworkTarget(server.URL)
 		}
 		source := streams.MCPServerSourceProfile
@@ -76,7 +76,7 @@ func filterPassthroughMCPServers(operation *preparedMCPOperation, strategy mcpco
 	}
 	filtered := make([]types.McpServer, 0, len(operation.servers))
 	for _, server := range operation.servers {
-		if server.Name != "workspace" {
+		if server.Name != mcpconfig.ClaudeReservedServerName {
 			filtered = append(filtered, server)
 			continue
 		}

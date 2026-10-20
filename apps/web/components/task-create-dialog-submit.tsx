@@ -343,6 +343,7 @@ export function useTaskSubmitHandlers({
   setMcpServerIdsDirty,
   setSelectedWorkflowId,
   setFetchedSteps,
+  setInitialWorkspaceLayout,
   clearDraft,
   freshBranchEnabled,
   isLocalExecutor,
@@ -352,6 +353,7 @@ export function useTaskSubmitHandlers({
   priority,
   workflowAgentOverrides,
   workflowAgentOverridesBlockedReason,
+  initialWorkspaceLayout,
   blockedBy,
   mcpServerIds = [],
   saveTaskMCPSelections,
@@ -479,6 +481,7 @@ export function useTaskSubmitHandlers({
     setFetchedSteps(null);
     setMcpServerIds([]);
     setMcpServerIdsDirty(false);
+    setInitialWorkspaceLayout("repository");
     // State setters are stable; only workflowId can change
   }, [
     workflowId,
@@ -493,6 +496,7 @@ export function useTaskSubmitHandlers({
     setFetchedSteps,
     setMcpServerIds,
     setMcpServerIdsDirty,
+    setInitialWorkspaceLayout,
   ]);
 
   const getRepositoriesPayload = useCallback(
@@ -785,6 +789,7 @@ export function useTaskSubmitHandlers({
           autopilot,
           priority,
           workflowAgentOverrides,
+          initialWorkspaceLayout,
           blockedBy,
           mcpServerIds,
         });
@@ -845,6 +850,7 @@ export function useTaskSubmitHandlers({
       noRepository,
       workspacePath,
       priority,
+      initialWorkspaceLayout,
       onSuccess,
       onOpenChange,
       preserveTaskCreateLastUsedOnClose,
@@ -1095,6 +1101,7 @@ export function useTaskSubmitHandlers({
           autopilot,
           priority,
           workflowAgentOverrides,
+          initialWorkspaceLayout,
           blockedBy,
           mcpServerIds,
         });
@@ -1149,6 +1156,7 @@ export function useTaskSubmitHandlers({
     workflowAgentOverrides,
     workflowAgentOverridesBlockedReason,
     mcpServerIds,
+    initialWorkspaceLayout,
   ]);
 
   const editSubmitHandler = isStartedEdit ? handleUpdateWithoutAgent : handleEditSubmit;

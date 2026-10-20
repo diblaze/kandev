@@ -1,4 +1,4 @@
-import type { LocalRepository, TaskPriority } from "@/lib/types/http";
+import type { InitialWorkspaceLayout, LocalRepository, TaskPriority } from "@/lib/types/http";
 import type {
   StepType,
   TaskCreateDialogInitialValues,
@@ -28,6 +28,7 @@ export type FormResetters = {
   setWorkspacePath: (value: string) => void;
   setAutopilot: (value: boolean) => void;
   setPriority: (value: TaskPriority) => void;
+  setInitialWorkspaceLayout: (value: InitialWorkspaceLayout) => void;
   setGitHubUrlError: (value: string | null) => void;
   setFreshBranchEnabled: (value: boolean) => void;
   setCurrentLocalBranch: (value: string) => void;
@@ -81,4 +82,5 @@ export function resetTaskForm(
   resetters.setPriority("medium");
   resetters.setMcpServerIds([]);
   resetters.setMcpServerIdsDirty(false);
+  resetters.setInitialWorkspaceLayout("repository");
 }

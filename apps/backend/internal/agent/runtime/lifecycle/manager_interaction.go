@@ -1375,6 +1375,7 @@ func (m *Manager) StopAgentWithReason(ctx context.Context, executionID string, r
 		}
 		return fmt.Errorf("execution %q not found: %w", executionID, ErrExecutionNotFound)
 	}
+	execution.cancelStartupRecovery()
 	execution.remoteInstanceLifecycleMu.Lock()
 	defer execution.remoteInstanceLifecycleMu.Unlock()
 	if current, currentExists := m.executionStore.Get(executionID); !currentExists || current != execution {
@@ -1434,7 +1435,15 @@ func (m *Manager) StopAgentWithReason(ctx context.Context, executionID string, r
 	// Try to gracefully stop via agentctl first, then always close connections.
 	// A retained runtime gets a bounded non-cancelled opportunity to
 	// stop the failed process before its environment is preserved for another retry.
+	if reason != StopReasonBackendShutdown {
+		m.preserveTurnChangesBeforeStop(stopCtx, execution, reason)
+	}
 	agentStopFailed := m.stopExecutionAgentctl(stopCtx, executionID, execution, backendForce)
+	// Backend shutdown retains interrupted delivery outcomes. Its terminal
+	// checkpoint follows confirmed process termination, before runtime cleanup.
+	if reason == StopReasonBackendShutdown && !backendForce && !agentStopFailed {
+		m.preserveTurnChangesBeforeStop(stopCtx, execution, reason)
+	}
 
 	// Stop the agent execution via the runtime that created it. A failed stop
 	// must remain tracked: removing it here would turn a retryable cleanup into

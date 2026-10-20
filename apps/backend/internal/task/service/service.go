@@ -448,6 +448,7 @@ type Repos struct {
 	Messages                      repository.MessageRepository
 	Attachments                   repository.AttachmentRepository
 	Turns                         repository.TurnRepository
+	TurnChanges                   repository.TurnChangesRepository
 	Sessions                      repository.SessionRepository
 	GitSnapshots                  repository.GitSnapshotRepository
 	RepoEntities                  repository.RepositoryEntityRepository
@@ -485,6 +486,7 @@ type Service struct {
 	messages                        repository.MessageRepository
 	attachments                     repository.AttachmentRepository
 	turns                           repository.TurnRepository
+	turnChanges                     repository.TurnChangesRepository
 	sessions                        repository.SessionRepository
 	gitSnapshots                    repository.GitSnapshotRepository
 	repoEntities                    repository.RepositoryEntityRepository
@@ -829,6 +831,7 @@ func NewService(repos Repos, eventBus bus.EventBus, log *logger.Logger, discover
 		messages:                      repos.Messages,
 		attachments:                   repos.Attachments,
 		turns:                         repos.Turns,
+		turnChanges:                   repos.TurnChanges,
 		sessions:                      repos.Sessions,
 		gitSnapshots:                  repos.GitSnapshots,
 		repoEntities:                  repos.RepoEntities,

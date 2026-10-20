@@ -6,6 +6,7 @@ import (
 )
 
 const comparisonStatusUnavailable = "unavailable"
+const comparisonStatusKnown = "known"
 const comparisonReasonDesiredUnavailable = "desired_unavailable"
 
 func CompareMCPSetups(state SessionMCPSelectionState, desired *MCPSetupSnapshot) *MCPSetupComparison {
@@ -17,7 +18,7 @@ func CompareMCPSetups(state SessionMCPSelectionState, desired *MCPSetupSnapshot)
 		result.Reason = comparisonReasonDesiredUnavailable
 		return result
 	}
-	result.Status = "known"
+	result.Status = comparisonStatusKnown
 	result.Reason = ""
 	result.Changes = make([]MCPSetupChange, 0)
 	before := make(map[string]MCPSetupServer, len(state.AcceptedSetup.Servers))

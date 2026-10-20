@@ -411,7 +411,7 @@ func legacyEndpointForCatalog(value string) (string, bool, error) {
 
 func isLegacyReservedServerName(name string) bool {
 	runtimeName := legacyRuntimeName(name)
-	return runtimeName == "kandev" || strings.HasPrefix(runtimeName, "kandev.")
+	return runtimeName == kandevMCPServerName || strings.HasPrefix(runtimeName, kandevMCPServerName+".")
 }
 
 func uniqueLegacyRuntimeName(base string, used map[string]struct{}) string {

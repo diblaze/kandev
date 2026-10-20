@@ -336,6 +336,8 @@ test.describe("Advanced MCP control", () => {
       await expect(search).toHaveValue("Task issue");
       await expect(picker.getByRole("checkbox")).toBeChecked();
       await testPage.keyboard.press("Escape");
+      const layout = dialog.getByTestId("task-create-initial-workspace-layout-setting");
+      await layout.getByTestId("task-create-initial-workspace-layout-checkbox").click();
       await dialog.getByTestId("task-title-input").fill("Advanced MCP task");
       await dialog
         .getByTestId("task-description-input")
@@ -350,6 +352,11 @@ test.describe("Advanced MCP control", () => {
         )?.id;
       await expect.poll(findTask).toBeDefined();
       const taskId = (await findTask())!;
+      await expect
+        .poll(() => apiClient.getTask(taskId))
+        .toMatchObject({
+          initial_workspace_layout: "task_root",
+        });
       await expect
         .poll(
           async () =>

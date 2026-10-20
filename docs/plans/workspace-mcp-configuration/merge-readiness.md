@@ -1,14 +1,62 @@
 # PR 3293 merge readiness
 
-Local implementation and affected verification are complete. At this checkpoint,
-normal commit hooks, final immutable candidate/commit review, publication and
-current-head GitHub CI remain delivery gates. The user requires confirmation
-before merging; auto-merge is off.
+Work resumed on another machine on 2026-10-20. The published checkpoint was
+verified, but GitHub reports conflicts with current main. Final integrated
+verification, immutable-commit review, screenshots, publication and current-head
+CI remain pending. The user requires confirmation before merging.
 
-The dated checkpoints below are a historical work log. This opening evidence
-and the latest CI remediation entry describe the current candidate.
+The earlier receipts below are historical. Their local files and review session
+are unavailable on this machine. They do not establish current readiness.
 
-## Current local evidence
+## Resumed delivery
+
+The current task is `31c5c5a9-c42d-4782-9a72-82a525ffee0b`. Its Kandev plan owns
+the current verification ledger. The canonical delivery branch remains
+`feature/plan-workspace-mcp-c-dcc`. The old integration alias is historical.
+
+A separate clone isolates delivery from a broken ref in the shared repository.
+Current-main conflict resolution preserves MCP selection state and the newer
+initial-workspace-layout controls. It also retains durable workspace path
+reconciliation alongside MCP repository identity collection.
+
+Fresh frontend checks passed: the initial affected suite (255 tests across
+14 files), the extended task-edit/merge regressions (96 tests), typecheck with
+an explicit 6 GiB heap, full ESLint, localization, and the web build. The added
+coverage checks MCP rejection/retry before launch, explicit empty selections,
+clean/started edits, a real editor retry, and combined MCP/layout create/reset
+behavior. The final editor test cleanup also passed its focused rerun.
+
+Real PostgreSQL MCP deletion and snapshot tests passed with race detection.
+The first Go run failed and is retained as diagnostic evidence. Its failures
+included an incorrect streams package path and fixture assumptions about
+`/bin/sleep`, `/usr/bin`, and a usable shell PATH with an empty environment.
+A private Bubblewrap namespace supplies those paths without changing the host.
+Six packages passed in the corrected run. Lifecycle exceeded the ten-minute
+package runner limit without an assertion failure. Its remaining 487 declared
+tests then passed as a separate bounded partition. The union accounts for all
+2,725 declared lifecycle tests, with no missing names or failures. This is
+partitioned coverage, not a claim that the timed-out command passed. Browser
+verification remains pending.
+
+The pruned-delivery startup fixture separately failed on both the integrated
+source and exact main `e3ef99a98f8d340f2447650cb4318b00977eb44e`. Its context
+expired during schema setup, before recovery. The fixture now initializes its
+database before creating the unchanged three-second recovery context. Both
+delivery modes pass. This is a test-budget correction, not a production change
+or a claim that baseline evidence excludes every possible PR contribution.
+The workspace placement/MCP repository-scope integration regression also passes.
+
+Current Go lint identified repeated literals. The integrated source now reuses
+the typed stdio constant, shares Claude's reserved server name between config
+and delivery evidence, and reuses the existing non-durable storage reason.
+The affected passthrough, Claude strategy and native compatibility tests passed
+after these behavior-preserving changes.
+
+The new isolated review session is `213febdc-c9bc-4579-a513-5dd0415997fc`.
+Its initial source review does not replace final integrated-commit review.
+No merge, auto-merge, queue admission or follow-up execution is authorized.
+
+## Historical local evidence from the previous machine
 
 | Check | Result |
 | --- | --- |
@@ -48,13 +96,25 @@ No merge or auto-merge is authorized yet.
 
 ## Deferred work
 
-The separate, unstarted child `ee292a1d-3d53-4b86-965c-6fe4a8ae217e` owns
-management usage/global-profile navigation and neutral delivery presentation
-(points 3/4). Its Kandev plan contains the complete six-file design package and
-Platform-docs patch. These unimplemented artifacts are excluded from this PR.
-The three other queued children retain inherited session exclusions, optional
-usage after registration, and built-in management/pruning (points 1/2/5).
-All children must synchronize to the completed parent PR before implementation.
+Four queued children were created under the resumed task:
+
+- Management usage/global-profile navigation and neutral delivery presentation
+  (points 3/4): `2adba1ca-619e-4bfc-b705-3bbc628df4dd`.
+- Session-only inherited exclusions (point 1):
+  `a3588dfb-7c25-4f91-9a3d-665ce89c6605`.
+- Optional assignment after registration (point 2):
+  `58d6bce2-eab4-4ac6-9ac4-50a31011e1e1`.
+- Built-in management and tool pruning (point 5):
+  `6d1b4323-e821-4599-acea-07273a60dd78`.
+
+All four have automatic starts disabled and no sessions. Each requires explicit
+user authorization before work. Each must start from actual current main
+containing the final parent merge, preserving user edits.
+
+The previous machine's six-file management design package and Platform patch
+were not supplied or recovered. The new child's plan records scope and this
+gap. It does not claim to contain the archived package. These features remain
+excluded from this PR.
 
 ## Integration identity
 
@@ -73,7 +133,7 @@ The main child-first E2E reset supersedes the old retry-based helper; current
 Chart/provider/touch/ETag tests supersede the old boundary-specific variants.
 Catalog JSON key merge had no overlapping changed-value conflicts.
 
-## Independent review
+## Historical independent review
 
 User-requested separate Kandev session: `881edc17-320c-40c3-a8be-6dd4fd28cc86`,
 Isolated PR review. It owns a private detached review worktree and has no

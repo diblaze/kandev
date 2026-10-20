@@ -36,6 +36,9 @@ export async function expectMCPConnectionGeometry(explorer: Locator, touch: bool
       .locator('[data-slot="dialog-title"]')
       .evaluate((element) => getComputedStyle(element).textAlign);
     expect(["left", "start"]).toContain(alignment);
+    const close = (await explorer.getByTestId("mcp-explorer-close").boundingBox())!;
+    expect(close.width).toBeCloseTo(28, 0);
+    expect(close.height).toBeCloseTo(28, 0);
   }
   await rows.last().scrollIntoViewIfNeeded();
   const last = (await rows.last().boundingBox())!;

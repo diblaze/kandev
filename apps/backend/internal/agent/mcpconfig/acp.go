@@ -27,7 +27,7 @@ func ToACPServers(resolved []ResolvedServer) []types.McpServer {
 			base.URL = server.URL
 			base.Headers = cloneStringMap(server.Headers)
 		case ServerTypeStreamableHTTP:
-			base.Type = "streamable_http"
+			base.Type = string(ServerTypeStreamableHTTP)
 			base.URL = server.URL
 			base.Headers = cloneStringMap(server.Headers)
 		default:

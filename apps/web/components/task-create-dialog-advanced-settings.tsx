@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@kandev/ui/
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kandev/ui/tooltip";
 import { useTranslation } from "react-i18next";
 import { TaskCreateDependencies } from "@/components/task-create-dialog-dependencies";
+import { TaskCreateParentWorkspaceSetting } from "@/components/task-create-dialog-parent-workspace-setting";
 import { TaskCreatePrioritySelect } from "@/components/task-create-dialog-priority-select";
 import { AgentSelector } from "@/components/task-create-dialog-selectors";
 import { AgentLogo } from "@/components/agent-logo";
@@ -18,8 +19,9 @@ import { TaskCreateMCPSettingRow } from "@/components/task-create-dialog-mcp-sel
 import type { MCPInheritedSelection, MCPServerDefinition } from "@/lib/types/http-mcp";
 import { cn } from "@/lib/utils";
 import type { TaskPriority } from "@/lib/types/http";
+import type { TaskCreateParentWorkspaceSettingProps } from "@/components/task-create-dialog-parent-workspace-setting";
 
-type TaskCreateAdvancedSettingsProps = {
+type TaskCreateAdvancedSettingsProps = TaskCreateParentWorkspaceSettingProps & {
   isCreateMode: boolean;
   isEditMode?: boolean;
   isTaskStarted: boolean;
@@ -324,7 +326,7 @@ function normalizeAdvancedSettingsProps(
 
 type AdvancedSettingsContentProps = Omit<
   NormalizedAdvancedSettingsProps,
-  "isCreateMode" | "isEditMode" | "isTaskStarted"
+  "isCreateMode" | "isEditMode" | "isTaskStarted" | keyof TaskCreateParentWorkspaceSettingProps
 >;
 
 function TaskCreateAdvancedSettingsContent({
@@ -403,6 +405,9 @@ export function TaskCreateAdvancedSettings(props: TaskCreateAdvancedSettingsProp
     onBlockedByChange,
     priority,
     onPriorityChange,
+    initialWorkspaceLayout,
+    onInitialWorkspaceLayoutChange,
+    initialWorkspaceLayoutMode,
     dependenciesDisabled,
     workflowAgentOverrideRows,
     workflowAgentOverrideOptions,
@@ -467,6 +472,11 @@ export function TaskCreateAdvancedSettings(props: TaskCreateAdvancedSettingsProp
           mcpSelectionIds={mcpSelectionIds}
           onMcpSelectionIdsChange={onMcpSelectionIdsChange}
           mcpInheritedSelections={mcpInheritedSelections}
+        />
+        <TaskCreateParentWorkspaceSetting
+          initialWorkspaceLayout={initialWorkspaceLayout}
+          onInitialWorkspaceLayoutChange={onInitialWorkspaceLayoutChange}
+          initialWorkspaceLayoutMode={initialWorkspaceLayoutMode}
         />
       </CollapsibleContent>
     </Collapsible>
