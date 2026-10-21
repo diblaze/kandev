@@ -9,6 +9,46 @@ supersedes that checkpoint. CI for the next commit and review of its new delta r
 The earlier receipts below are historical. Their local files and review session
 are unavailable on this machine. They do not establish current readiness.
 
+## Main integration after `b21700025`
+
+The 45-minute waiter for `b21700025` ended with eight passing checks, twelve
+skipped checks and six missing required checks. No registered check failed.
+Main had advanced to `21949f6362e6830b9fb9162d2ca6ba41c5900331`, which conflicted
+with the branch. Missing checks were not running checks, and this was not a
+passing CI result.
+
+The merge retains the startup test's existing three-second recovery bound,
+both MCP and conversation-search API exports, and both sides of the workflow
+preview coverage: settled task/session projections, exact destination identity,
+and an injected competing preview request. Incoming session restart, silent-turn
+recovery, composer layout and persistence behavior remain intact.
+The merge hook also found a literal in incoming stall handling that duplicated
+the branch's existing session-ID constant. Reusing that constant preserves the
+value and resolves the integration lint finding.
+
+On the merged candidate, 110 focused frontend tests passed. The two affected
+runtime packages passed a focused race selection with 68 passing test/subtest
+events. Typecheck, resolved-file lint/format, localization checks, specification
+lint and the documentation catalog passed. Sixteen merged locale files parsed
+without duplicate keys. Native, helper and web builds passed before browser
+verification. An initial broad Make target was stopped and replaced with the
+separate native/helper targets; it is not a successful build receipt.
+
+Sixteen desktop browser cases passed with one worker and zero retries, covering
+fallback, resume projection, restart with live siblings, silent-turn recovery
+and all three workflow-preview cases. The first phone run passed twelve cases,
+including MCP geometry at 320/393/767px, and failed one scroll-to-start assertion
+in the dense composer case. That failure did not reproduce in three isolated
+runs or three repetitions of the preceding interaction sequence. Those passes
+do not establish its cause. The original assertion remains, and the spec now
+retains first-attempt failure traces. Temporary pointer/scroll diagnostics were
+removed from the delivery tree. A final run of the original six-case phone
+composer spec passed with one worker and zero retries. The initial failure
+remains recorded; it is not reclassified as fixed or baseline-only.
+
+Exact-head CI and the final bounded integration review remain required. Earlier
+broad command timeouts and coverage limits below remain unchanged.
+
 ## CI remediation after `cbc9ad6c3`
 
 The exact-head waiter completed with 76 passing checks, 13 skipped checks and
