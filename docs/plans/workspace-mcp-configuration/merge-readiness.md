@@ -9,6 +9,39 @@ supersedes that checkpoint. CI for the next commit and review of its new delta r
 The earlier receipts below are historical. Their local files and review session
 are unavailable on this machine. They do not establish current readiness.
 
+## Current-base integration and fixture repair
+
+The prior published repair passed bounded source review. Its first CI attempt
+had 85 passed, 11 skipped and seven failed checks. The backend cancellation case
+passed 50 local race-enabled repeats; four browser cases passed three local
+repeats each. A single failed-job rerun passed those cases, the backend gate and
+the walkthrough, but ended with 90 passed, 11 skipped and two failed checks.
+E2E shard 10 and its aggregate failed on two different flaky cases. Passing
+retries do not satisfy the fail-on-flaky policy.
+
+The chat fixture seeded transcript filler through an endpoint that creates an
+open turn. After the preceding real turn had completed, that synthetic turn
+could leave the composer busy. A direct assertion reproduced one open turn
+where zero were required. The fixture now waits for the real turn to complete,
+seeds filler in its own turn, and completes that turn before the next prompt.
+The quorum rejection fixture also returned to Work with automatic agent launch
+enabled, racing its next manual move with a STARTING session. A scoped fixture
+removes only that Work entry action and restores the original events afterward.
+Review's decision clearing, guard assertions and manual transition remain intact.
+These changes repair test setup; no public behavior or documentation changes
+are needed.
+
+Main then advanced to `c17a4691aa0658070ea2a1cb26d05641bf8c1874`.
+The session-launch conflict retains both MCP selections and main's prepared
+primary-session reuse. The new base's dependency guards and phone coverage are
+preserved. Integration verification passed 120 top-level backend tests (186
+test/subtest results) across the orchestrator and MCP handlers with the race
+detector, with no failures or skips. All 12 affected desktop cases and eight
+phone/status-bar cases passed with one worker and zero retries. Go lint reported
+zero issues. Typecheck, scoped frontend lint, formatting, native/helper/web builds,
+catalog validation and specification lint passed. Bounded source review of this
+delta and exact-commit CI remain pending.
+
 ## Main integration after `b21700025`
 
 CI for the published merge `1f1a19a9050da858f71ea31cb36f7fa730f7af61`
@@ -51,7 +84,8 @@ controls, selected filters and localized geometry. Four affected phone cases
 passed twice each. The filter overflow still failed twice before the inset fix,
 then passed three repeats after rebuilding the web runtime. Browser runs used
 one worker and zero retries. The final filter screenshot was inspected.
-Source review and exact-commit CI for this repair remain pending.
+The source review and CI results for this repair are superseded by the
+current-base record above.
 
 The 45-minute waiter for `b21700025` ended with eight passing checks, twelve
 skipped checks and six missing required checks. No registered check failed.
