@@ -317,3 +317,41 @@ The restricted policy does not permit the sandboxed native Pi process to contact
   ]
 }
 ```
+
+## PR review remediation, 2026-10-21
+
+The shared package moved from `internal/agent/launchwrapper` to
+`internal/common/launchwrapper`. Earlier commands above record the original runs.
+Current checks use the new path and `internal/common/managednpm`.
+The old managedruntime project helpers delegate to the neutral implementation.
+
+Regression evidence before fixes:
+
+- Windows lookup selected extensionless `npx` instead of the adjacent `.CMD` shim.
+- A custom environment resolver returning `(nil, nil)` caused a public utility prompt to panic when adding gateway authentication.
+- Initial, fresh, and resume builders for Pi and Claude used a later execution-record wrapper when constructing an earlier command's request.
+- A detached child created during TERM survived cleanup and produced `owned_process_cleanup_failed`.
+
+Review dispositions:
+
+- Fix the three inline findings: Windows shim selection, refreshed descendant cleanup, and neutral shared package ownership.
+- Fix the aggregate findings about nil environment maps and mutable passthrough wrapper state.
+- Correct the utility assertion message. Rename the profile launch-token test and assert the separately returned wrapper prefix.
+- Bind the acceptance callback's loop variables explicitly.
+- Retain the receipt assertion. The wrapper writes its receipt before exec. The test waits for output from the executed child before reading the receipt.
+- Retain sanitized stderr behavior. An additional suppression-count diagnostic is optional and changes no required behavior.
+- Retain the nonempty argv invariant. Interactive start validates child argv, and successful wrapper preparation always returns a nonempty command.
+- Retain the authenticated instance identity endpoint required by the design. Add a negative unauthenticated request case. The public control identity endpoint has a separate adoption contract.
+- Retain the required registry constructor dependency. Normalize only a successful nil custom resolver result, and preserve resolver errors.
+
+The user marked PR #4538 ready for review on GitHub on 2026-10-21.
+Preserve that user edit and leave the PR unmerged.
+
+Current review-remediation verification:
+
+- Focused `go test -trimpath -p=2 -race` passed across common wrapper preparation, common npm preparation, host utility, runtime agentctl, lifecycle, and agentctl API/process/utility packages.
+- The selected tests cover generic wrappers, gateway authentication with nil custom environment maps, profile launch tokens, MCP passthrough commands, and interactive request construction.
+- All 14 credential-free runner safety tests passed, including TERM-time child creation, PID birth rechecks, and unrelated-process preservation.
+- Both desktop wrapper browser tests passed on a fresh build. The phone wrapper browser test also passed against those binaries.
+- Changed-package Go lint reported zero issues. Architecture lint, the documentation catalog, and specification lint passed.
+- Native Windows CI now runs `internal/common/launchwrapper` and `internal/common/managednpm`, including the actual Windows execution-host npm-shim case.

@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/kandev/kandev/internal/agent/managedruntime"
+	"github.com/kandev/kandev/internal/common/managednpm"
 )
 
 // @covers AC-AGENTS-WRAPPERS-001.1 AC-AGENTS-WRAPPERS-002.3 AC-AGENTS-WRAPPERS-004.3
@@ -81,14 +81,14 @@ func TestGenericWrapperRuntimePaths(t *testing.T) {
 	}
 	executable, err := os.Executable()
 	require.NoError(t, err)
-	inner := []string{executable, "--prefix", managedruntime.NPMProjectPrefix}
-	spec := Spec{1, "profile", []string{executable, ManagedNPMDir, WorkDir, "{{{kandev.work_dir}}}", "--prefix", managedruntime.NPMProjectPrefix}}
+	inner := []string{executable, "--prefix", managednpm.NPMProjectPrefix}
+	spec := Spec{1, "profile", []string{executable, ManagedNPMDir, WorkDir, "{{{kandev.work_dir}}}", "--prefix", managednpm.NPMProjectPrefix}}
 	argv, err := Prepare(spec, inner, Context{WorkDir: t.TempDir()})
 	require.NoError(t, err)
 	require.Equal(t, argv[1], argv[len(argv)-1])
 	require.Equal(t, WorkDir, argv[3])
-	require.Equal(t, managedruntime.NPMProjectPrefix, argv[5], "wrapper arguments are not trusted npm markers")
-	require.Equal(t, managedruntime.NPMProjectPrefix, inner[2], "input template is immutable")
+	require.Equal(t, managednpm.NPMProjectPrefix, argv[5], "wrapper arguments are not trusted npm markers")
+	require.Equal(t, managednpm.NPMProjectPrefix, inner[2], "input template is immutable")
 	info, err := os.Lstat(argv[1])
 	require.NoError(t, err)
 	require.True(t, info.IsDir())

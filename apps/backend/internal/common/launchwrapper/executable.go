@@ -39,27 +39,40 @@ func envValue(env []string, key string) string {
 }
 
 func executableFile(path string, env []string) (string, error) {
-	candidates := []string{path}
 	if runtime.GOOS == windowsOS {
-		extensions := envValue(env, "PATHEXT")
-		if extensions == "" {
-			extensions = ".COM;.EXE;.BAT;.CMD"
+		return windowsExecutableFile(path, env)
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+		return "", ErrUnavailable
+	}
+	return path, nil
+}
+
+// Windows extensionless names require an executable suffix, including npm shims.
+func windowsExecutableFile(path string, env []string) (string, error) {
+	candidates := []string{}
+	if dot := strings.LastIndex(path, "."); dot > strings.LastIndexAny(path, `:\/`) {
+		candidates = append(candidates, path)
+	}
+	extensions := envValue(env, "PATHEXT")
+	if extensions == "" {
+		extensions = ".COM;.EXE;.BAT;.CMD"
+	}
+	for _, ext := range strings.Split(extensions, ";") {
+		if ext == "" || strings.ContainsAny(ext, `:\/`) {
+			continue
 		}
-		for _, ext := range strings.Split(extensions, ";") {
-			if strings.HasPrefix(ext, ".") && !strings.ContainsAny(ext, `/\`) {
-				candidates = append(candidates, path+ext)
-			}
+		if !strings.HasPrefix(ext, ".") {
+			ext = "." + ext
 		}
+		candidates = append(candidates, path+ext)
 	}
 	for _, candidate := range candidates {
 		info, err := os.Stat(candidate)
-		if err != nil || !info.Mode().IsRegular() {
-			continue
+		if err == nil && info.Mode().IsRegular() {
+			return candidate, nil
 		}
-		if runtime.GOOS != windowsOS && info.Mode().Perm()&0o111 == 0 {
-			continue
-		}
-		return candidate, nil
 	}
 	return "", ErrUnavailable
 }

@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 
-	"github.com/kandev/kandev/internal/agent/launchwrapper"
+	"github.com/kandev/kandev/internal/common/launchwrapper"
 )
 
 func TestGenericWrapperSecondaryDiscovery(t *testing.T) {

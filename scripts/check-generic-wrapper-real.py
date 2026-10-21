@@ -92,18 +92,23 @@ class OwnedRun(AbstractContextManager):
         return identities
 
     def _stop_descendants(self):
-        identities = self._owned_descendants()
-        (self.root / "ownership.json").write_text(json.dumps({"nonce": self.nonce, "processes": identities}))
         for sig in (signal.SIGTERM, signal.SIGKILL):
-            current = self._owned_descendants()
-            for pid, birth in identities.items():
-                if current.get(pid) == birth:
-                    try:
-                        os.kill(pid, sig)
-                    except ProcessLookupError:
-                        pass
             deadline = time.monotonic() + 3
-            while self._owned_descendants() and time.monotonic() < deadline:
+            while True:
+                identities = self._owned_descendants()
+                (self.root / "ownership.json").write_text(
+                    json.dumps({"nonce": self.nonce, "processes": identities}))
+                if not identities:
+                    return
+                current = self._owned_descendants()
+                for pid, birth in identities.items():
+                    if current.get(pid) == birth:
+                        try:
+                            os.kill(pid, sig)
+                        except ProcessLookupError:
+                            pass
+                if time.monotonic() >= deadline:
+                    break
                 time.sleep(0.05)
         if self._owned_descendants():
             raise CheckFailed("owned_process_cleanup_failed")
@@ -498,7 +503,7 @@ def session_checks(owned, tools, env, prefix, auth, model):
             "repositories": [{"repository_id": repository["id"]}]})
         try:
             count = verify_case(case, expected)
-            def finished():
+            def finished(task=task, scenario=scenario):
                 sessions = api("tasks/" + task["id"] + "/sessions")["sessions"]
                 current = next((item for item in sessions if item["id"] == task.get("session_id")), None)
                 if current and current["state"] in {"FAILED", "CANCELLED"}:

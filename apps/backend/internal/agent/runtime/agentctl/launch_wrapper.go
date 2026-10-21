@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/kandev/kandev/internal/agent/launchwrapper"
+	"github.com/kandev/kandev/internal/common/launchwrapper"
 )
 
 // ErrLaunchWrapperUnsupported prevents old agentctl builds from ignoring a wrapper.

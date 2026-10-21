@@ -150,3 +150,7 @@ Stop only processes created by the runner or identified by its private ownership
 Add `scripts/check-generic-wrapper-real.test.py` with credential-free tests for prerequisite refusal, ownership isolation, and sanitization.
 Run `python3 scripts/check-generic-wrapper-real.test.py` before either harness command.
 Preserve `reproduction.md` as historical evidence. Record permanent acceptance separately.
+
+### PR review remediation
+
+During each cleanup phase, rescan nonce-owned processes and verify PID birth identities before signaling. Verify children created during TERM are also removed, while unrelated processes remain live.

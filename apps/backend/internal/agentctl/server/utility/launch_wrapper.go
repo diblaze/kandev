@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/kandev/kandev/internal/agent/launchwrapper"
 	"github.com/kandev/kandev/internal/agent/managedruntime"
+	"github.com/kandev/kandev/internal/common/launchwrapper"
 	"github.com/kandev/kandev/pkg/agent"
 )
 

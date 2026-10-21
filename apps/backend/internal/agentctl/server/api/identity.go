@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kandev/kandev/internal/agent/launchwrapper"
+	"github.com/kandev/kandev/internal/common/launchwrapper"
 )
 
 // SurvivalCapabilities lists every named capability this build of agentctl

@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kandev/kandev/internal/agent/managedruntime"
+	"github.com/kandev/kandev/internal/common/managednpm"
 )
 
 // Context contains the final execution-host process context.
@@ -44,7 +44,7 @@ func Prepare(spec Spec, inner []string, ctx Context) ([]string, error) {
 	if err != nil {
 		return nil, ErrContext
 	}
-	if err := managedruntime.PrepareNPMProjectPrefix(child); err != nil {
+	if err := managednpm.PrepareNPMProjectPrefix(child); err != nil {
 		return nil, ErrContext
 	}
 	prefix, err := resolveReferences(spec.Argv, ctx.WorkDir)
@@ -65,7 +65,7 @@ func resolveReferences(tokens []string, workDir string) ([]string, error) {
 		case ManagedNPMDir:
 			if npmDir == "" {
 				var err error
-				npmDir, err = managedruntime.PrepareNPMProjectDirectory()
+				npmDir, err = managednpm.PrepareNPMProjectDirectory()
 				if err != nil {
 					return nil, ErrContext
 				}

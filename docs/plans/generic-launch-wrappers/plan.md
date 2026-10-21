@@ -78,7 +78,7 @@ This work preserves customization and existing authority. It does not claim univ
 
 ### Shared preparation
 
-Add `internal/agent/launchwrapper` with validated versioned templates and execution-host preparation.
+Add `internal/common/launchwrapper` with validated versioned templates and execution-host preparation.
 Use existing tokenization. Preserve whole argv values and escaped literal reference tokens.
 Extract a path-returning managed npm helper while retaining private-directory checks.
 Prepare the child command before composing the wrapper. Never scan user wrapper arguments for trusted npm markers.

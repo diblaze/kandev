@@ -117,7 +117,7 @@ Do not expose credentials, token paths, home-directory contents, environment dic
 
 ## Preparation
 
-Introduce `internal/agent/launchwrapper` as a narrow shared package.
+Introduce `internal/common/launchwrapper` as a narrow shared package.
 Its `Spec` contains version 1, source `profile`, and prefix tokens.
 Its `Context` contains the work directory and final child environment.
 Its `Prepare` returns complete argv or a sanitized failure classification. The package does not load profiles, authorize users, or own processes.
@@ -130,7 +130,12 @@ Preparation runs immediately before each actual spawn:
 4. Prepare trusted managed npm paths, then resolve wrapper references.
 5. Resolve executables and compose any deployment guard, profile wrapper, and child command in that order.
 
-Refactor `managedruntime.PrepareNPMProjectPrefix` to share a path-returning preparation helper.
+Keep managed npm project preparation in `internal/common/managednpm`.
+The agent-owned `managedruntime` entry points delegate to this neutral package.
+Both backend and standalone agentctl use the common wrapper package without an agent-owned dependency.
+Windows executable resolution uses PATHEXT for extensionless names and never selects the adjacent POSIX npm shim.
+Passthrough builders return the command and its wrapper snapshot together.
+Request construction must not read a mutable wrapper from the execution record.
 Retain its private permissions and symlink rejection.
 Apply the trusted npm marker only to the inner command. Never scan arbitrary wrapper arguments for that marker.
 The returned runtime directory and the inner npm `--prefix` must be identical.

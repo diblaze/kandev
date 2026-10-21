@@ -51,7 +51,7 @@ Run from the repository root. Implement new behavior with failing tests first.
 New test and harness paths below are delivery targets, not files already available in this design package.
 
 ```bash
-(cd apps/backend && go test ./internal/agent/launchwrapper ./internal/agent/managedruntime ./internal/agent/settings/cliflags ./internal/agent/settings/controller)
+(cd apps/backend && go test ./internal/common/launchwrapper ./internal/common/managednpm ./internal/agent/managedruntime ./internal/agent/settings/cliflags ./internal/agent/settings/controller)
 git diff --check
 ```
 
@@ -60,7 +60,8 @@ Record the expanded command and result. Do not replace targeted checks with an u
 
 ## Files likely touched
 
-- `apps/backend/internal/agent/launchwrapper/` (new package and `prepare_test.go`).
+- `apps/backend/internal/common/launchwrapper/` (shared preparation and tests).
+- `apps/backend/internal/common/managednpm/` (shared npm project preparation and tests).
 - `apps/backend/internal/agent/managedruntime/npm_project.go` and adjacent tests.
 - `apps/backend/internal/agent/settings/cliflags/tokenise.go` and adjacent tests.
 - `apps/backend/internal/agent/settings/controller/` prefix validation and preview tests.
@@ -96,3 +97,7 @@ Implemented on 2026-10-18.
 - Changed-file lint passed with the repository-pinned golangci-lint v2.9.0 installed under `/tmp/kandev-wrapper-tools`.
 
 The unrelated controller baseline failure remains a validation limitation. No production caller uses wrapper preparation yet.
+
+### PR review remediation
+
+Keep shared preparation under `internal/common`. Verify extensionless npm commands select their Windows executable shim, including in native Windows CI.

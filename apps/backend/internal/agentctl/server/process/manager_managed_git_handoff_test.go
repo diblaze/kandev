@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kandev/kandev/internal/agent/launchwrapper"
 	"github.com/kandev/kandev/internal/agentctl/server/config"
+	"github.com/kandev/kandev/internal/common/launchwrapper"
 	"github.com/kandev/kandev/internal/githubauth"
 	"github.com/stretchr/testify/require"
 )

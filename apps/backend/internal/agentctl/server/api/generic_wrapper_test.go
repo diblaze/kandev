@@ -12,9 +12,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/kandev/kandev/internal/agent/launchwrapper"
 	"github.com/kandev/kandev/internal/agentctl/server/config"
 	"github.com/kandev/kandev/internal/agentctl/server/process"
+	"github.com/kandev/kandev/internal/common/launchwrapper"
 )
 
 func TestGenericWrapperRequiresAuthenticatedControl(t *testing.T) {
@@ -66,15 +66,26 @@ func TestGenericWrapperCapabilityMatchesInstanceAndControl(t *testing.T) {
 	cfg := &config.InstanceConfig{WorkDir: t.TempDir(), AuthToken: "test-control"}
 	log := newTestLogger()
 	server := NewServer(cfg, process.NewManager(cfg, log), nil, nil, log)
-	req := httptest.NewRequest(http.MethodGet, "/identity", nil)
-	req.Header.Set("Authorization", "Bearer test-control")
-	response := httptest.NewRecorder()
-	server.Router().ServeHTTP(response, req)
-	require.Equal(t, http.StatusOK, response.Code)
-	var identity struct {
-		Capabilities []string `json:"capabilities"`
+	for _, auth := range []string{"", "Bearer test-control"} {
+		t.Run(auth, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/identity", nil)
+			if auth != "" {
+				req.Header.Set("Authorization", auth)
+			}
+			response := httptest.NewRecorder()
+			server.Router().ServeHTTP(response, req)
+			if auth == "" {
+				require.Equal(t, http.StatusUnauthorized, response.Code)
+				require.NotContains(t, response.Body.String(), launchwrapper.Capability)
+				return
+			}
+			require.Equal(t, http.StatusOK, response.Code)
+			var identity struct {
+				Capabilities []string `json:"capabilities"`
+			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &identity))
+			require.Contains(t, identity.Capabilities, launchwrapper.Capability)
+			require.Equal(t, SurvivalCapabilities, identity.Capabilities)
+		})
 	}
-	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &identity))
-	require.Contains(t, identity.Capabilities, launchwrapper.Capability)
-	require.Equal(t, SurvivalCapabilities, identity.Capabilities)
 }

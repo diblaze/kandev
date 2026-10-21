@@ -110,3 +110,8 @@ The current-base integration adds explicit refusal for wrapped SSH native termin
 Its unwrapped control still starts a real remote-controller process.
 `go test -trimpath -p=2 -race ./internal/agent/runtime/lifecycle -run 'GenericWrapper|SSHPassthrough|RemotePassthrough' -count=1 -timeout=120s` passed with `GOMAXPROCS=2`.
 The operator reference and design distinguish this refusal from compatible remote ACP execution.
+
+### PR review remediation
+
+Keep each passthrough command paired with its wrapper snapshot across initial launch, resume, and fallback.
+Verify a later execution-state write cannot change a prepared request.

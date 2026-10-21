@@ -18,7 +18,11 @@ func (m *Manager) SetProfileEnvironmentResolver(resolver ProfileEnvironmentResol
 
 func (m *Manager) resolveProfileEnvironment(ctx context.Context, agentName string, values []settingsmodels.ProfileEnvVar) (map[string]string, error) {
 	if m.profileEnvironmentResolver != nil {
-		return m.profileEnvironmentResolver(ctx, agentName, values)
+		env, err := m.profileEnvironmentResolver(ctx, agentName, values)
+		if err == nil && env == nil {
+			env = make(map[string]string)
+		}
+		return env, err
 	}
 	agentConfig, ok := m.registry.Get(agentName)
 	if !ok {

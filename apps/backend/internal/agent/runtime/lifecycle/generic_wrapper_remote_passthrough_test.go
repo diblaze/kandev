@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/kandev/kandev/internal/agent/agents"
-	"github.com/kandev/kandev/internal/agent/launchwrapper"
+	"github.com/kandev/kandev/internal/common/launchwrapper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,10 +21,10 @@ func TestGenericWrapperRemotePassthroughRefusesBeforeStarting(t *testing.T) {
 		t.Run(map[bool]string{false: "unwrapped control", true: "wrapped refusal"}[wrapped], func(t *testing.T) {
 			mgr, _, execution := newPassthroughRunnerManager(t)
 			controller, root := sshPassthroughTestController(t, execution)
+			cmd := passthroughCommand{Command: agents.NewCommand(shell, "-c", "printf started > launch-marker; cat")}
 			if wrapped {
-				execution.LaunchWrapper = launchwrapper.Profile([]string{"required-wrapper"})
+				cmd.wrapper = launchwrapper.Profile([]string{"required-wrapper"})
 			}
-			cmd := agents.NewCommand(shell, "-c", "printf started > launch-marker; cat")
 			info, startErr := mgr.startInteractiveProcess(context.Background(), execution, agents.PassthroughConfig{}, nil, cmd, nil)
 			marker := filepath.Join(root, "launch-marker")
 			if wrapped {

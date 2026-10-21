@@ -11,8 +11,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/kandev/kandev/internal/agent/launchwrapper"
 	agentctlclient "github.com/kandev/kandev/internal/agent/runtime/agentctl"
+	"github.com/kandev/kandev/internal/common/launchwrapper"
 )
 
 func TestGenericWrapperRecoveryUsesRetainedTemplate(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/kandev/kandev/internal/agent/launchwrapper"
 	"github.com/kandev/kandev/internal/agent/managedruntime"
+	"github.com/kandev/kandev/internal/common/launchwrapper"
 )
 
 func configuredLaunchWrapper(wrappers []launchwrapper.Spec, argsPresent bool) (launchwrapper.Spec, error) {

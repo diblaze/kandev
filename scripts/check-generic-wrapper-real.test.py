@@ -75,6 +75,52 @@ class AcceptanceRunnerTests(unittest.TestCase):
                 if live():
                     os.kill(pid, 9)
 
+    def test_cleanup_stops_a_child_forked_during_term(self):
+        with tempfile.TemporaryDirectory() as parent:
+            ready = Path(parent) / "ready"
+            forked = Path(parent) / "forked"
+            owned = runner.OwnedRun(Path(parent))
+            code = """import os,signal,time,pathlib
+ready, forked = __import__('sys').argv[1:]
+def stop(*args):
+    if os.fork() == 0:
+        os.setsid()
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        pathlib.Path(forked).write_text(str(os.getpid()))
+        while True: time.sleep(1)
+    os._exit(0)
+signal.signal(signal.SIGTERM, stop)
+pathlib.Path(ready).touch()
+while True: time.sleep(1)
+"""
+            launcher = ("import subprocess,sys; subprocess.Popen([sys.executable,'-c'," +
+                        repr(code) + ",*sys.argv[1:]],start_new_session=True)")
+            try:
+                with owned:
+                    proc = owned.start("launcher", [sys.executable, "-c", launcher,
+                                       str(ready), str(forked)], {})
+                    proc.wait(timeout=5)
+                    runner.wait_until(ready.exists, timeout=5)
+                self.assertTrue(forked.exists(), "TERM handler must create the regression child")
+                self.assertEqual(owned._owned_descendants(), {})
+            finally:
+                # Clean up the failing implementation without trusting PID receipts.
+                identities = owned._owned_descendants()
+                for pid, birth in identities.items():
+                    if owned._owned_descendants().get(pid) == birth:
+                        try:
+                            os.kill(pid, 9)
+                        except ProcessLookupError:
+                            pass
+
+    def test_cleanup_does_not_signal_a_reused_pid(self):
+        with runner.OwnedRun() as owned:
+            with patch.object(owned, "_owned_descendants", side_effect=[
+                    {123: "old-birth"}, {123: "new-birth"}, {}]), \
+                    patch.object(os, "kill") as kill:
+                owned._stop_descendants()
+                kill.assert_not_called()
+
     def test_a_foreign_listener_cannot_be_used_as_the_test_instance(self):
         import socket
         with socket.socket() as listener:

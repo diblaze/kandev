@@ -354,7 +354,7 @@ func TestManagerExecuteInferenceProfilePrompt(t *testing.T) {
 			t.Fatal("missing inference config")
 		}
 		if !equalStrings(got.InferenceConfig.LaunchWrapper.Argv, []string{"greywall", "--"}) || got.InferenceConfig.LaunchWrapper.Version != 1 || len(got.InferenceConfig.CommandPrefix) != 0 {
-			t.Fatalf("CommandPrefix = %v", got.InferenceConfig.CommandPrefix)
+			t.Fatalf("LaunchWrapper = %+v", got.InferenceConfig.LaunchWrapper)
 		}
 		if !equalStrings(got.InferenceConfig.CLIFlags, []string{"--verbose"}) {
 			t.Fatalf("CLIFlags = %v", got.InferenceConfig.CLIFlags)

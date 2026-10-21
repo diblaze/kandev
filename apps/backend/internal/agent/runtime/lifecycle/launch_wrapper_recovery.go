@@ -3,7 +3,7 @@ package lifecycle
 import (
 	"context"
 
-	"github.com/kandev/kandev/internal/agent/launchwrapper"
+	"github.com/kandev/kandev/internal/common/launchwrapper"
 )
 
 func recoveredLaunchWrapper(ctx context.Context, execution *AgentExecution, current launchwrapper.Spec) (launchwrapper.Spec, error) {
