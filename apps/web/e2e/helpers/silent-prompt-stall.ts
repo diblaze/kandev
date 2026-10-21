@@ -12,7 +12,17 @@ export function registerSilentPromptStallTests() {
     let releaseEnvironment: (() => Promise<void>) | undefined;
     let recoveryProfileId: string | undefined;
     let tracePath: string | undefined;
-    test.afterEach(async ({ apiClient }) => {
+    test.afterEach(async ({ apiClient, backend }, testInfo) => {
+      if (testInfo.status !== testInfo.expectedStatus) {
+        for (const [name, file] of [
+          ["silent-turn-provider-trace", tracePath],
+          ["silent-turn-backend-log", backend.logPath],
+        ] as const) {
+          if (file && fs.existsSync(file)) {
+            await testInfo.attach(name, { path: file, contentType: "text/plain" });
+          }
+        }
+      }
       await releaseEnvironment?.();
       releaseEnvironment = undefined;
       if (recoveryProfileId) await apiClient.deleteAgentProfile(recoveryProfileId, true);

@@ -1952,13 +1952,16 @@ func (m *Manager) markAgentStartPending(execution *AgentExecution) {
 
 // promoteWorkspaceExecution populates the agent command fields on a
 // workspace-only execution so a subsequent StartAgentProcess() can configure
-// and start the agent subprocess. Concurrent promoters serialize through a
-// dedicated singleflight key so they don't race on the shared AgentExecution
-// pointer.
+// and start the agent subprocess. Promotion shares the session slot with
+// workspace creation and cleanup, and runs its own admission checks.
 func (m *Manager) promoteWorkspaceExecution(ctx context.Context, execution *AgentExecution, req *LaunchRequest) error {
-	_, err := m.doCoalescedExecution(ctx, req.SessionID, func(sharedCtx context.Context) (interface{}, error) {
+	_, err := m.doSerializedExecution(ctx, req.SessionID, func(sharedCtx context.Context) (interface{}, error) {
 		if err := m.ensureLaunchSessionStillActive(sharedCtx, req.SessionID, executionAdmissionAgent); err != nil {
 			return nil, err
+		}
+		current, exists := m.executionStore.GetBySessionID(req.SessionID)
+		if !exists || current != execution {
+			return nil, models.ErrExecutionRotated
 		}
 		activityLease, acquireErr := m.acquireActivity(sharedCtx, activity.KindExecutionPreparing)
 		if acquireErr != nil {

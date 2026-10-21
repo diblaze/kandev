@@ -17,7 +17,7 @@ function escapeRe(s: string) {
 useRegularMode();
 
 test.describe("Branch selector behavior with executor types", () => {
-  test.describe.configure({ retries: 1 });
+  test.describe.configure({ retries: process.env.CI ? 1 : 0 });
 
   test("branch selector is editable for local executor (user can switch existing branches)", async ({
     testPage,
@@ -194,7 +194,7 @@ test.describe("Branch selector behavior with executor types", () => {
  * repo via apiClient.createRepository so it shows up in the workspace selector.
  */
 test.describe("Fresh-branch flow", () => {
-  test.describe.configure({ retries: 1 });
+  test.describe.configure({ retries: process.env.CI ? 1 : 0 });
 
   type Setup = {
     repoDir: string;
@@ -619,7 +619,7 @@ test.describe("Fresh-branch flow", () => {
 });
 
 test.describe("Branch refresh + filter", () => {
-  test.describe.configure({ retries: 1 });
+  test.describe.configure({ retries: process.env.CI ? 1 : 0 });
 
   test("refresh button in branch dropdown triggers ?refresh=true request", async ({
     testPage,
@@ -740,6 +740,8 @@ test.describe("Branch refresh + filter", () => {
       .click();
     await testPage.getByTestId("executor-profile-selector").click();
     await testPage.getByRole("option", { name: worktreeProfileName }).click();
+    // Finish the executor popover's focus restoration before opening the next picker.
+    await expect(testPage.getByTestId("executor-profile-selector")).toBeFocused();
 
     const branchSelector = testPage.getByTestId("branch-chip-trigger").first();
     await expect(branchSelector).toBeEnabled({ timeout: 5_000 });

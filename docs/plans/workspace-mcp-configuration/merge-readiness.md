@@ -12,6 +12,45 @@ are unavailable on this machine. They do not establish current readiness.
 
 ## Current-base integration and fixture repair
 
+### Recovery serialization after `740cc655`
+
+Head `740cc655086df36a1c691186b26dfd77c6deb982` includes current main
+`c17a4691aa0658070ea2a1cb26d05641bf8c1874` and has no merge conflicts.
+Its CI ended with 84 passed, 13 skipped and six failed checks. E2E run
+`39536080140` failed four shards and the aggregate. The complete blob audit
+found 4,148 attempts: 4,103 passed, 40 skipped and five failed attempts, with
+five retries. Passing retries do not satisfy the fail-on-flaky policy.
+Walkthrough run `39536076371` exited after its model provider reported
+`Endpoint is unavailable`; verification did not run.
+
+The desktop uncertain-cancellation failure exposed a backend panic. A workspace
+lookup joined the session's cleanup operation and asserted that cleanup's nil
+result was an execution pointer. A deterministic regression reproduced this
+panic through both session lookup entry points. Cleanup and promotion now retain
+their own results while sharing serialization with execution creation. Concurrent
+lookups wait for those operations, then run execution admission. Cleanup also
+runs after a concurrent workspace read succeeds or fails. Promotion rejects an
+execution that cleanup has removed. Focused lifecycle tests pass with the race
+detector, including the reproduced boundary and existing recovery and promotion
+coverage.
+
+The file-tree restoration snapshot showed rows near the bottom after a helper
+searched past the first row before it mounted. The test now requires the top row
+to become visible without a scrolling search, preserving the viewport under test.
+The branch-ranking test waits for the previous executor picker's focus restoration
+before opening the branch picker. Its exact-match ordering assertion is unchanged.
+Phone cancellation now retains first-attempt traces; failed silent-turn cases also
+attach their disposable provider trace and backend log. The phone uncertainty
+timeout and transient task-read trigger did not recur in three local repeats
+each. The latter test remains unchanged; its CI cause is still unproven.
+Twelve desktop cases passed without retries, covering both cancellation outcomes,
+branch ordering and file-tree restoration. After correcting a branch-test override
+that forced local retries on, three final branch repeats passed with retries zero.
+All runs used one worker. Native and helper builds, scoped frontend lint,
+formatting and documentation validation passed. Fresh committed-head CI and
+bounded source review remain required.
+These internal repairs do not change a public configuration or user workflow.
+
 ### E2E repair after `43536158`
 
 Bounded source review accepted `43536158067763bcf47b453384176aee81f865b7`
