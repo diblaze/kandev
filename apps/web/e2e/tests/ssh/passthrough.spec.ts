@@ -8,6 +8,8 @@ import { execInContainer } from "../../helpers/ssh";
 import { watchWs } from "../../helpers/causal-waits";
 import { SessionPage } from "../../pages/session-page";
 
+test.use({ trace: "retain-on-failure" });
+
 test("remote passthrough accepts input and keeps its PID after reconnect", async ({
   testPage,
   apiClient,

@@ -88,6 +88,9 @@ test.describe("Workspace file transfer", () => {
     });
     await uploaded;
 
+    // Default layout surfaces the new Git change before the user returns to Files.
+    await expect(session.changesFileRow("fixture.json")).toBeVisible();
+    await session.clickTab("Files");
     await expect(session.fileTreeNode("fixture.json")).toBeVisible();
   });
 

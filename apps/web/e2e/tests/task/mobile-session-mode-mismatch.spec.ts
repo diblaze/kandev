@@ -1,4 +1,5 @@
 import { expect, test } from "../../fixtures/test-base";
+import { waitForFiniteAnimations } from "../../helpers/animations";
 import { assertNoDocumentHorizontalOverflow } from "../../helpers/layout-assertions";
 import { SessionPage } from "../../pages/session-page";
 
@@ -20,6 +21,7 @@ test.describe("session mode mismatch on mobile", () => {
     testPage,
     apiClient,
     seedData,
+    prCapture,
   }) => {
     test.setTimeout(120_000);
     const task = await apiClient.createTaskWithAgent(
@@ -65,7 +67,13 @@ test.describe("session mode mismatch on mobile", () => {
     await expect(picker).toContainText("Default");
 
     const close = picker.getByRole("button", { name: "Close" });
-    expect((await close.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    await waitForFiniteAnimations(picker);
+    const closeBounds = await close.boundingBox();
+    expect(closeBounds?.height).toBeGreaterThanOrEqual(44);
+    expect(closeBounds?.width).toBeGreaterThanOrEqual(44);
+    await prCapture.screenshot("phone-session-mode-close-target", {
+      caption: "Phone permission-mode picker with a 48px close target.",
+    });
     await close.tap();
     await expect(picker).not.toBeVisible();
     await expect(trigger).toBeFocused();
@@ -82,6 +90,7 @@ test.describe("session mode mismatch on mobile", () => {
     await trigger.tap();
     const scrollArea = picker.getByTestId("session-mode-picker-scroll");
     await expect(scrollArea).toBeVisible();
+    await waitForFiniteAnimations(picker);
     const scrollStyle = await scrollArea.evaluate((element) => ({
       overflowY: getComputedStyle(element).overflowY,
       paddingBottom: Number.parseFloat(getComputedStyle(element).paddingBottom),

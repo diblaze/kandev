@@ -4,12 +4,64 @@ Work resumed on another machine on 2026-10-20. The published checkpoint was
 verified and conflicts were resolved with current main. Integrated local checks
 and bounded source review are recorded below. Phone captures and the bounded
 review through `7fdc73103` are complete. The latest conflict/CI round below
-supersedes that checkpoint. CI for the next commit and review of its new delta remain pending. The user requires confirmation before merging.
+supersedes that checkpoint. Use the live PR and current task receipt for the
+final commit's CI and review status. The user requires confirmation before merging.
 
 The earlier receipts below are historical. Their local files and review session
 are unavailable on this machine. They do not establish current readiness.
 
 ## Current-base integration and fixture repair
+
+### E2E repair after `43536158`
+
+Bounded source review accepted `43536158067763bcf47b453384176aee81f865b7`
+against main `c17a4691aa0658070ea2a1cb26d05641bf8c1874`. Its CI run
+`39530299150` ended with 86 passed, 11 skipped and six failed checks.
+Five E2E shards and their aggregate failed. The complete blob audit found
+4,149 attempts: 4,103 passed, 40 skipped and six failed attempts, with six
+retries. These passing retries do not satisfy the fail-on-flaky policy.
+Backend, frontend and walkthrough checks passed.
+
+The phone mode-picker close control measured `43.999969482421875px` in CI.
+Its nominal size is now 48px; the minimum 44px assertion remains unchanged.
+Coordinator ordering is measured in one browser evaluation after menu motion
+finishes. The phone task-list test waits for picker motion before selecting
+an option and requires dismissal before checking the saved URL and row order.
+The first-attempt trace showed the original sort tap during picker motion.
+
+The upload snapshot showed Changes active, with the uploaded file present.
+The Default layout intentionally activates Changes on new Git updates.
+The test now observes that file there and returns to Files before checking
+the file tree. The cancellation fixture previously allowed acknowledgement
+after eight seconds while runtime interruption was still pending. Only its
+uncertain variant now holds acknowledgement for the full test duration and
+requires one open turn before killing the runtime. Both cancellation variants
+wait for the mock provider's private trace to record receipt without chat output.
+The original uncertain
+phase assertion remains. This removes a fixture race; the complete CI
+recovery failure cause was not proven from a first-attempt trace.
+
+Unchanged local reproduction passed nine phone and six desktop cases.
+After the phone repair, nine repeats passed with one worker and zero retries.
+The web build, typecheck, scoped lint and formatting passed. The phone mode
+picker was captured again and visually inspected. Nine desktop fixture repeats
+passed with one worker and zero retries, covering both cancellation outcomes
+and upload navigation. Three SSH restart repeats passed without retries.
+The CI reconnect timeout did not reproduce; its cause remains unknown.
+Initial local SSH attempts skipped for
+a missing Docker client, then failed during container image setup because
+the disposable daemon could not resolve package hosts. An explicit working
+DNS resolver repaired the image build. Later setup attempts failed because the
+test binary carried an older commit than the generated compact manifest.
+Rebuilding the native runtime aligned those identities. A local rootless-Docker
+adapter also made the host Git fixture reachable and restored fixture mount
+ownership before cleanup. These setup failures are not reproductions of CI's
+reconnect timeout. Final provider-receipt checks passed both cancellation outcomes
+on desktop and phone. The final phone run also checked both dimensions of the
+mode-picker close target and captured the dialog again. All used one worker
+and zero retries.
+First-attempt traces are retained for desktop stall recovery and SSH passthrough.
+Fresh committed-head CI and bounded source review remain required.
 
 The prior published repair passed bounded source review. Its first CI attempt
 had 85 passed, 11 skipped and seven failed checks. The backend cancellation case
