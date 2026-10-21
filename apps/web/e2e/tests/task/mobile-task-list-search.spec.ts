@@ -2,6 +2,8 @@ import { test, expect } from "../../fixtures/test-base";
 import { waitForHttp } from "../../helpers/causal-waits";
 import { expandDisplaySettingsGroup } from "../../helpers/display-settings";
 
+test.use({ trace: "retain-on-failure" });
+
 const listPath = /\/api\/v1\/workspaces\/[^/]+\/tasks$/;
 
 test.describe("Mobile task list search", () => {

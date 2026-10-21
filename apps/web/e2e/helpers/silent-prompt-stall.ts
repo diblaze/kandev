@@ -152,8 +152,14 @@ export function registerSilentPromptStallTests() {
           await testPage.reload();
           await session.waitForLoad();
           await expect(testPage.getByTestId("recovery-retry-connection-button")).toBeVisible();
-          const after = (await apiClient.getTaskSession(sessionId)).session;
-          expect(after.metadata?.agent_delivery_recovery).toMatchObject({ phase: "uncertain" });
+          await expect
+            .poll(
+              async () =>
+                (await apiClient.getTaskSession(sessionId)).session.metadata
+                  ?.agent_delivery_recovery,
+              { timeout: 30_000 },
+            )
+            .toMatchObject({ phase: "uncertain" });
         }
         await expect(notice).toHaveCount(0);
         await assertNoDocumentHorizontalOverflow(testPage);

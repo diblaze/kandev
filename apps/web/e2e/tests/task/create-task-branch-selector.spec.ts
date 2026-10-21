@@ -7,6 +7,8 @@ import { useRegularMode } from "../../helpers/regular-mode";
 import { KanbanPage } from "../../pages/kanban-page";
 import { makeGitEnv } from "../../helpers/git-helper";
 
+test.use({ trace: "retain-on-failure" });
+
 function escapeRe(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

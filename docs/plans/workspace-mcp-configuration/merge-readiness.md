@@ -11,6 +11,48 @@ are unavailable on this machine. They do not establish current readiness.
 
 ## Main integration after `b21700025`
 
+CI for the published merge `1f1a19a9050da858f71ea31cb36f7fa730f7af61`
+finished with 79 passed, 13 skipped and 11 failed checks. One backend shard,
+seven flaky browser shards, their aggregate gates and the optional walkthrough
+failed. All seven browser cases passed on retry, which does not satisfy the
+fail-on-flaky gate. The walkthrough reached its 600-second generation deadline
+without running verification.
+
+The backend failure reproduced after waiting for silent startup to release its
+attempt. The earlier binding guard required prompt acceptance and therefore
+replaced the callback owner of a successful silent restore. Silent startup now
+records prompt readiness separately from provider acceptance. Failed, cancelled
+and superseded attempts still require a new binding. This preserves the existing
+recovery contract and needs no public configuration or workflow change.
+
+Browser remediation retains the original assertions. Geometry checks wait for
+finite animations. The phone filter picker still overflowed after that wait:
+Floating UI rounds its edge-aligned position to device pixels. An 8px collision
+inset and viewport width bound keep the actual surface inside the screen.
+Workflow pickers wait for dismissal and focus restoration
+before the next interaction. The uncertain-cancellation case polls the persisted
+phase because the retry button also appears during reconnection. Three other
+failures did not reproduce locally; their specs now retain failure traces.
+Their causes remain unknown.
+
+On this machine, the first localized-width reproduction lacked Japanese fonts
+and rendered missing-glyph boxes. An isolated Noto CJK font configuration fixed
+that environment limitation. The original 44px minimum remains unchanged.
+The first focused Go compilation exceeded its 4 GiB scope and was killed by the
+kernel. The repeated run uses an explicit 8 GiB scope. Neither initial failed
+command is a passing receipt.
+
+The repaired backend regression and ownership guards passed three race-enabled
+repeats. The broader recovery selection passed 104 top-level tests and 138
+test/subtest results, with no failures or skips. Go lint, frontend lint,
+formatting, typecheck, native/helper/web builds and documentation checks passed.
+The final desktop run passed seven cases, including coarse-pointer workflow
+controls, selected filters and localized geometry. Four affected phone cases
+passed twice each. The filter overflow still failed twice before the inset fix,
+then passed three repeats after rebuilding the web runtime. Browser runs used
+one worker and zero retries. The final filter screenshot was inspected.
+Source review and exact-commit CI for this repair remain pending.
+
 The 45-minute waiter for `b21700025` ended with eight passing checks, twelve
 skipped checks and six missing required checks. No registered check failed.
 Main had advanced to `21949f6362e6830b9fb9162d2ca6ba41c5900331`, which conflicted

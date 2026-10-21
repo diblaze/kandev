@@ -54,3 +54,35 @@ func TestEnsureSessionRunning_BindsRestoredExecutionAfterFailedResume(t *testing
 	require.Nil(t, next, "the accepted restored execution keeps normal prompt cancellation")
 	require.True(t, svc.resumeAttemptAllowsExecution(sessionID, executionID, manager.boundAttempt))
 }
+
+func TestResumeAttemptPromptReadyDoesNotAcceptAPrompt(t *testing.T) {
+	registry := newResumeAttemptRegistry()
+	attempt, owner := registry.begin(context.Background(), "task", "session")
+	require.True(t, owner)
+	require.False(t, registry.markPromptReady(attempt), "readiness needs an execution identity")
+	attempt.setExecutionID("execution")
+	require.True(t, registry.markPromptReady(attempt))
+	require.False(t, attempt.accepted, "silent startup must not claim provider prompt acceptance")
+	require.True(t, registry.invalidate("session"), "startup cancellation must remain available")
+	require.False(t, registry.markPromptReady(attempt), "late readiness must not revive cancellation")
+	attempt.finish(registry)
+	require.False(t, registry.canPromptWithoutResume("session", "execution"))
+}
+
+func TestResumeAttemptPromptReadyPreservesOnlyTheCurrentExecution(t *testing.T) {
+	registry := newResumeAttemptRegistry()
+	attempt, owner := registry.begin(context.Background(), "task", "session")
+	require.True(t, owner)
+	attempt.setExecutionID("execution")
+	require.True(t, registry.markPromptReady(attempt))
+	attempt.finish(registry)
+	require.True(t, registry.canPromptWithoutResume("session", "execution"))
+	require.False(t, registry.canPromptWithoutResume("session", "other-execution"))
+
+	successor, owner := registry.begin(context.Background(), "task", "session")
+	require.True(t, owner)
+	require.False(t, registry.markPromptReady(attempt), "an older attempt cannot take ownership")
+	successor.finish(registry)
+	require.False(t, registry.canPromptWithoutResume("session", "execution"),
+		"a failed successor requires a fresh callback binding")
+}
