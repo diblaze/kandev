@@ -12,6 +12,53 @@ are unavailable on this machine. They do not establish current readiness.
 
 ## Current-base integration and fixture repair
 
+### Cancellation ordering and browser fixtures after `eb8696da`
+
+Head `eb8696da28ff830a0d4ec74092d0b72b76024dc3` remained mergeable against
+main `c17a4691aa0658070ea2a1cb26d05641bf8c1874`. Its CI ended with 84 passed,
+13 skipped and six failed checks. E2E run `39540523893` failed four shards
+and the aggregate. Shard assignments changed, so failure comparisons use test
+identities. The phone uncertain-cancellation and temporary-read failures
+recurred. Initial-turn 529 retry and desktop conflict auto-fix also failed
+before passing on retry. Walkthrough run `39540519774` reached its 600-second
+generation deadline; verification did not run.
+The complete blob audit found 4,148 attempts: 4,103 passed, 40 skipped and
+five failed attempts, with five retries. Passing retries do not satisfy the
+fail-on-flaky policy.
+
+The new phone cancellation log showed local cancellation marking an execution
+failed before runtime-loss classification. Its durable submission remained
+unsettled, but classification skipped failed executions. A regression reproduced
+the missing uncertainty event. Runtime loss now reconciles failed executions with
+a pending submission while preserving their status and submission identity.
+Settled failed executions remain unchanged. The focused runtime replacement
+suite passes with the race detector.
+
+The initial 529 snapshot already showed attempt 3 while its assertion waited for
+attempt 1. The test now proves cached initial-prompt replay through persisted
+retry advancement and checks the visible retry card and cancellation.
+The phone task-read test waits for session hydration and the named foreground
+coalescing window before sending its next online event.
+
+The auto-fix fixture's delay was inside a system block that the mock provider
+discarded. The supposedly active repair could finish and legitimately permit
+another round. The mock now recognizes an explicit script block on an auto-fix
+prompt. A regression proves the scripted repair stays active until cancellation;
+ordinary prompts and non-script blocks do not select this behavior. Both desktop
+and phone tests require the provider's acceptance marker before repeating feedback,
+then disable automation and stop their fixture session. The complete mock-agent
+suite passes with the race detector.
+
+Nine phone checks passed: three repeats each of uncertain cancellation,
+temporary-read recovery and conflict auto-fix. Twelve desktop checks passed:
+three repeats each of acknowledged cancellation, uncertain cancellation,
+initial-turn retry and conflict auto-fix. All runs used one worker and zero
+retries. Native and helper builds, scoped frontend lint, formatting and
+documentation validation passed. The tested runtime contains the repaired
+working tree and embeds parent `eb8696da` as its version identity.
+Bounded source review and fresh committed-head CI remain required.
+These internal repairs do not change public configuration or intended workflows.
+
 ### Recovery serialization after `740cc655`
 
 Head `740cc655086df36a1c691186b26dfd77c6deb982` includes current main

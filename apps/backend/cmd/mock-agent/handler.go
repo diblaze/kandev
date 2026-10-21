@@ -387,6 +387,9 @@ func handlePrompt(e *emitter, prompt, model string) {
 
 	// Extract the user-facing content for command routing.
 	cmd := stripKandevSystem(prompt)
+	if script := ciAutomationScript(prompt, cmd); script != "" {
+		cmd = script
+	}
 	if scenario, ok := parseSavedPromptDeliveryScenario(prompt); ok {
 		cmd = "/e2e:" + scenario
 	}
