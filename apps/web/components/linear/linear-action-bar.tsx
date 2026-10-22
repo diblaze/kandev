@@ -46,7 +46,7 @@ export function LinearActionBar({
         type="button"
         variant="outline"
         onClick={onTest}
-        disabled={testing || loading || disableTest}
+        disabled={testing || loading || disableTest || mutationPending}
         className="cursor-pointer"
         title={disableTest ? t("linear:pasteAnApiKeyToTest") : undefined}
         data-testid="linear-test-button"

@@ -130,6 +130,12 @@ GET `/api/v1/linear/config` maps 204 to null; POST returns canonical configurati
 without exposing the secret. Teams requests consume saved-secret/health state
 and do not participate in config-read ordering.
 
+Only the active initial-load effect may finish loading, including after
+locale-triggered replacement. A write ACK can fence its data while the effect
+still completes loading; config-read sequence does not own loading lifetime. Block new Test probes while a
+configuration mutation is pending; previously admitted probes retain their
+existing behavior.
+
 The domain hooks live in `hooks/domains/linear/use-linear-config-publication.ts`.
 A bounded domain-local `useLinearConfigPublication` follows the existing Jira
 owner/sequence pattern. Each initial or 90-second read captures the current

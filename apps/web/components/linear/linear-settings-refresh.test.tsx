@@ -8,6 +8,7 @@ import {
   useSettingsSaveCoordinator,
 } from "@/components/settings/settings-save-provider";
 import { LinearConnectionSection } from "./linear-settings";
+import { i18n } from "@/lib/i18n";
 import type { LinearConfig } from "@/lib/types/linear";
 
 const OTHER_WORKSPACE = "workspace-b";
@@ -92,6 +93,7 @@ function transport() {
   const reads: ReturnType<typeof deferred>[] = [];
   const writes: { method: string; body: unknown; response: ReturnType<typeof deferred> }[] = [];
   const teams: string[] = [];
+  const probes: { body: unknown; response: ReturnType<typeof deferred> }[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn((value: string, init?: RequestInit) => {
@@ -109,6 +111,11 @@ function transport() {
           }),
         );
       }
+      if (url.pathname === "/api/v1/linear/config/test") {
+        const response = deferred();
+        probes.push({ body: JSON.parse(init!.body as string), response });
+        return response.promise;
+      }
       expect(url.pathname).toBe("/api/v1/linear/config");
       const response = deferred();
       if (!init?.method || init.method === "GET") reads.push(response);
@@ -121,7 +128,7 @@ function transport() {
       return response.promise;
     }),
   );
-  return { reads, writes, teams };
+  return { reads, writes, teams, probes };
 }
 async function mounted() {
   const t = transport();
@@ -131,10 +138,11 @@ async function mounted() {
   expect(coordinator.hasDirty).toBe(false);
   return { ...t, view };
 }
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  await i18n.changeLanguage("en");
 });
 
 // @covers AC-UI-SETTINGS-MANUAL-SAVE-001.4
@@ -470,4 +478,63 @@ it.each(["save", "reset"])("preserves edits during Remove before %s", async (nex
   expect(input().value).toBe("");
   expect(coordinator.hasDirty).toBe(false);
   expect(banner()?.textContent).toContain(accepted.lastError);
+});
+
+it("keeps replacement initial seeding pending across a real locale change", async () => {
+  const t = transport();
+  render(tree());
+  await act(async () => {
+    await i18n.changeLanguage("pt-pt");
+  });
+  expect(t.reads).toHaveLength(2);
+  await settle(t.reads[0], json(initial));
+  expect.soft(input().disabled).toBe(true);
+  await tick();
+  expect.soft(t.reads).toHaveLength(2);
+  await settle(t.reads[1], json(accepted));
+  expect(input().disabled).toBe(false);
+  expect(input().placeholder).toBe(SAVED_MASK);
+  expect(coordinator.hasDirty).toBe(false);
+  expect(banner()?.textContent).toContain(accepted.lastError);
+  await tick();
+  expect(t.reads).toHaveLength(3);
+  await settle(t.reads[2], json(initial));
+});
+
+it.each(["POST", "DELETE"])("blocks new Test probes during pending %s", async (method) => {
+  const t = await mounted();
+  const probe = () => fireEvent.click(screen.getByTestId("linear-test-button"));
+  edit("ordinary probe raw");
+  probe();
+  expect(t.probes).toHaveLength(1);
+  await settle(t.probes[0].response, json({ ok: true }));
+  const pending = method === "POST" ? save() : await remove();
+  probe();
+  expect(t.probes).toHaveLength(1);
+  await settle(t.writes[0].response, method === "POST" ? json(accepted) : json({ deleted: true }));
+  await pending;
+  edit("ordinary probe after mutation");
+  probe();
+  expect(t.probes).toHaveLength(2);
+  await settle(t.probes[1].response, json({ ok: true }));
+});
+
+it("finishes replacement loading after an accepted Save fences its data", async () => {
+  const t = await mounted();
+  edit("save across locale replacement");
+  const saving = save();
+  await act(async () => {
+    await i18n.changeLanguage("pt-pt");
+  });
+  expect(t.reads).toHaveLength(2);
+  expect(input().disabled).toBe(true);
+  await settle(t.writes[0].response, json(accepted));
+  await saving;
+  await settle(t.reads[1], json(initial));
+  expect(input().disabled).toBe(false);
+  expect(banner()?.textContent).toContain(accepted.lastError);
+  expect(coordinator.hasDirty).toBe(false);
+  await tick();
+  expect(t.reads).toHaveLength(3);
+  await settle(t.reads[2], json(initial));
 });

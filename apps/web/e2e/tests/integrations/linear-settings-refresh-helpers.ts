@@ -210,6 +210,7 @@ export async function exerciseLinearRefresh({
     else await settings.saveButton.click();
     await pendingSave.captured.promise;
     await expect(settings.deleteButton).toBeDisabled();
+    await expect(page.getByTestId("linear-test-button")).toBeDisabled();
     pendingSave.release.resolve();
     expect((await next).status()).toBe(200);
     heldMutation = null;
@@ -233,6 +234,7 @@ export async function exerciseLinearRefresh({
     if (touch) await expect(page.getByRole("dialog")).toHaveCount(0);
     await settings.secretInput.fill("blocked while removing");
     await expect(settings.saveButton).toBeDisabled();
+    await expect(page.getByTestId("linear-test-button")).toBeDisabled();
     pendingRemove.release.resolve();
     expect((await removed).status()).toBe(200);
     heldMutation = null;

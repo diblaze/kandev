@@ -176,3 +176,37 @@ changing production. Prior verification is historical after this correction.
   keeps the action hook within the existing function-size limit without a
   new framework. Exact-head combined checks, assets, CI, and semantic-review
   results remain externally tracked and are refreshed after commit.
+
+## Initial-load replacement and Test admission
+
+Validate the current-head review's locale-triggered replacement load with the
+real i18next producer. Only the active initial-load effect may finish loading, so an
+older same-owner completion cannot start polling before seeding. Also prevent
+new Test probes while Save or Remove is pending, preserving ordinary probes.
+This covers admission during a mutation, not probes already pending before it.
+Use real transport RED controls and native desktop/phone disabled-action proof
+before the minimal guards; retain this single package.
+
+The initial loading lifetime is distinct from config-read admission: an accepted
+write can fence a pending initial result without stranding its loading state.
+Validate that interaction before selecting the minimal effect-lifetime guard.
+
+### Initial lifetime and probe verification
+
+- On the prior head, three real-consumer tests failed and 25 controls passed.
+  Real locale replacement admitted two initial reads; the older completion
+  started the actual timer early and the replacement could not seed the mask.
+  New Test requests were observed during held Save and Remove. Desktop and
+  phone both failed the pending-mutation Test disabled assertion, retries zero.
+- A current-request-only loading candidate failed an additional write-ACK
+  control (1 failure, 28 passing): accepted Save fenced the replacement data
+  and stranded loading. The final effect-local active lifetime fixes both
+  initial-load cases while config/error publication retains sequence admission.
+- Final six focused suites passed 92 tests, including 57 Linear consumer/API
+  cases. Ordinary Test probes work before and after mutations. Probes already
+  pending before a mutation retain their existing behavior.
+- Fresh rebuilt desktop and native phone each passed all shared causal flow
+  and mutation-control assertions, retries zero; fixture/source/seed guards
+  and cleanup passed. Full 8GB typecheck, zero-warning lint, formatting, and
+  documentation checks passed. Exact-head/current-main combination, fresh
+  assets, hosted checks and semantic review are refreshed externally.

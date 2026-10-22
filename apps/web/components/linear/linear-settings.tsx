@@ -349,29 +349,32 @@ function useLinearSettings(workspaceId: string) {
   const { beginRead, beginWrite } = useLinearConfigPublication(workspaceId);
   const { teams, loadingTeams } = useTeamsLoader(workspaceId, config?.hasSecret, config?.lastOk);
 
-  const load = useCallback(async () => {
-    const request = beginRead();
-    setLoading(true);
-    try {
-      const cfg = await getLinearConfig({ workspaceId });
-      if (!request.isCurrent()) return;
-      setConfig(cfg);
-      setBaselineConfig(cfg);
-      setForm(configToForm(cfg));
-    } catch (err) {
-      if (!request.isCurrent()) return;
-      toast({
-        description: t("linear:failedToLoadConfig", { error: String(err) }),
-        variant: "error",
-      });
-    } finally {
-      if (request.isActive()) setLoading(false);
-    }
-  }, [workspaceId, beginRead, t, toast]);
-
   useEffect(() => {
+    let active = true;
+    const load = async () => {
+      const request = beginRead();
+      setLoading(true);
+      try {
+        const cfg = await getLinearConfig({ workspaceId });
+        if (!request.isCurrent()) return;
+        setConfig(cfg);
+        setBaselineConfig(cfg);
+        setForm(configToForm(cfg));
+      } catch (err) {
+        if (!request.isCurrent()) return;
+        toast({
+          description: t("linear:failedToLoadConfig", { error: String(err) }),
+          variant: "error",
+        });
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
     void load();
-  }, [load]);
+    return () => {
+      active = false;
+    };
+  }, [workspaceId, beginRead, t, toast]);
 
   useLinearConfigRefresh(workspaceId, setConfig, beginRead, loading);
 

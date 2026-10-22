@@ -18,7 +18,6 @@ export function useLinearConfigPublication(workspaceId: string) {
     const sequence = owner ? ++owner.sequence : 0;
     const isActive = () => owner !== null && owner === currentOwner.current;
     return {
-      isActive,
       isCurrent: () => isActive() && owner?.sequence === sequence,
     };
   }, []);
