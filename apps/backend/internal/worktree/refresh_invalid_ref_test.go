@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -111,12 +112,44 @@ func TestInvalidLocalRefRefreshDiagnostic(t *testing.T) {
 func newInvalidRefFixture(t *testing.T) string {
 	t.Helper()
 	origin := t.TempDir()
-	runGit(t, origin, "init", "-b", "main")
-	runGit(t, origin, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+	runInvalidRefGit(t, origin, "init", "-b", "main")
+	runInvalidRefGit(t, origin, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
 		"-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", "fixture")
 	repo := t.TempDir()
-	runGit(t, repo, "clone", "--no-local", origin, ".")
-	runGit(t, repo, "config", "fetch.recurseSubmodules", "false")
-	require.Equal(t, "main", strings.TrimSpace(runGit(t, repo, "branch", "--show-current")))
+	runInvalidRefGit(t, repo, "clone", "--no-local", origin, ".")
+	runInvalidRefGit(t, repo, "config", "fetch.recurseSubmodules", "false")
+	require.Equal(t, "main", strings.TrimSpace(runInvalidRefGit(t, repo, "branch", "--show-current")))
 	return repo
+}
+
+func runInvalidRefGit(t *testing.T, repo string, args ...string) string {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", args...)
+	cmd.Dir = repo
+	cmd.Env = append(mainCheckoutInspectionEnvironment(os.Environ()),
+		"GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git %v failed: %s", args, output)
+	return string(output)
+}
+
+func TestInvalidRefFixtureIgnoresPersonalGitConfig(t *testing.T) {
+	for _, location := range []string{"home", "xdg"} {
+		t.Run(location, func(t *testing.T) {
+			home, xdg, hooks := t.TempDir(), t.TempDir(), t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("XDG_CONFIG_HOME", xdg)
+			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			require.NoError(t, os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte("#!/bin/sh\necho personal-hook-rejected >&2\nexit 1\n"), 0o700))
+			config := filepath.Join(home, ".gitconfig")
+			if location == "xdg" {
+				require.NoError(t, os.MkdirAll(filepath.Join(xdg, "git"), 0o700))
+				config = filepath.Join(xdg, "git", "config")
+			}
+			runGit(t, home, "config", "--file", config, "core.hooksPath", filepath.ToSlash(hooks))
+			require.Equal(t, filepath.ToSlash(hooks), strings.TrimSpace(runGit(t, home, "config", "--global", "--get", "core.hooksPath")))
+			newInvalidRefFixture(t)
+		})
+	}
 }

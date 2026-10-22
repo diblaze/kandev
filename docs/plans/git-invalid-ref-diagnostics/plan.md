@@ -83,6 +83,11 @@ Catalog validation, full specification lint, documentation coverage, and
 The instance-specific diagnostic report remains local. The committed report
 contains only the sanitized reproduction and its evidence limits.
 
+PR review identified that the shared test Git helper removed the configuration
+isolation overrides. A fixture-local runner now reapplies those overrides.
+Regression coverage verifies rejecting hooks in both home and XDG settings;
+the updated targeted suite contains six test functions. See Task 01 for results.
+
 ## Risks
 
 - Git output varies by version and locale. Unknown shapes must remain unknown.

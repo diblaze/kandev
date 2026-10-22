@@ -53,7 +53,7 @@ Run the new tests before changing code to establish the regression.
 Use local fixture remotes and `t.TempDir`, never the user's repositories.
 
 ```bash
-(cd apps/backend && go test -trimpath ./internal/worktree -run 'Test(InvalidLocalRefDiagnosticClassification|InvalidLocalRefRefreshDiagnostic|RefreshDiagnosticClassification|BaseRefreshDiagnosticEmission|RefreshDiagnosticsPreservePolicy)$' -count=1)
+(cd apps/backend && go test -trimpath ./internal/worktree -run 'Test(InvalidRefFixtureIgnoresPersonalGitConfig|InvalidLocalRefDiagnosticClassification|InvalidLocalRefRefreshDiagnostic|RefreshDiagnosticClassification|BaseRefreshDiagnosticEmission|RefreshDiagnosticsPreservePolicy)$' -count=1)
 bash scripts/lint-go-changed apps/backend/internal/worktree/refresh_diagnostics.go apps/backend/internal/worktree/refresh_invalid_ref_test.go
 python3 scripts/list-docs.py validate
 python3 scripts/lint-spec-files.py --all
@@ -100,3 +100,12 @@ Completed on 2026-10-22 after explicit implementation authorization.
 The real fixture proves healthy fetch, failure with an unrelated empty ref,
 unchanged required/best-effort decisions, preserved broken-ref bytes, and
 restored success after fixture-only removal. No live repository repair ran.
+
+### PR review correction
+
+The fixture now uses a dedicated Git runner that disables global and system
+configuration after removing inherited Git environment overrides. Personal
+hooks cannot reject its empty setup commit. A regression supplies rejecting
+hooks through both home and XDG Git configuration; both cases failed before
+the correction and passed afterward. The complete six-function targeted suite
+and changed-package Go lint passed. Production behavior is unchanged.
