@@ -29,7 +29,6 @@ import {
   type IntegrationAuthHealth,
 } from "@/components/integrations/auth-status-banner";
 import { WorkspaceScopedSection } from "@/components/integrations/workspace-scoped-section";
-import { INTEGRATION_STATUS_REFRESH_MS } from "@/hooks/domains/integrations/use-integration-availability";
 import { useResponsiveBreakpoint } from "@/hooks/use-responsive-breakpoint";
 import {
   getLinearConfig,
@@ -42,6 +41,10 @@ import type { LinearConfig, LinearTeam, TestLinearConnectionResult } from "@/lib
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { settingsCredentialClassName } from "@/components/settings/settings-control";
+import {
+  useLinearConfigPublication,
+  useLinearConfigRefresh,
+} from "./use-linear-config-publication";
 import { LinearIssueWatchersSection } from "./linear-issue-watchers-section";
 import { INTEGRATION_SETTINGS_TARGETS } from "@/lib/settings-discovery/catalog/integrations";
 
@@ -296,6 +299,7 @@ function ActionBar({
 type SettingsActionsArgs = {
   workspaceId: string;
   form: FormState;
+  beginWrite: ReturnType<typeof useLinearConfigPublication>["beginWrite"];
   setConfig: (cfg: LinearConfig | null) => void;
   setBaselineConfig: (cfg: LinearConfig | null) => void;
   setForm: Dispatch<SetStateAction<FormState>>;
@@ -305,6 +309,7 @@ type SettingsActionsArgs = {
 function useSettingsActions({
   workspaceId,
   form,
+  beginWrite,
   setConfig,
   setBaselineConfig,
   setForm,
@@ -336,6 +341,7 @@ function useSettingsActions({
 
   const handleSave = useCallback(async () => {
     const submitted = form;
+    const accept = beginWrite();
     setSaving(true);
     try {
       const saved = await setLinearConfig(
@@ -346,12 +352,14 @@ function useSettingsActions({
         },
         { workspaceId },
       );
-      setConfig(saved);
-      setBaselineConfig(saved);
-      setForm((current) =>
-        JSON.stringify(current) === JSON.stringify(submitted) ? configToForm(saved) : current,
-      );
-      setTestResult(null);
+      if (accept()) {
+        setConfig(saved);
+        setBaselineConfig(saved);
+        setForm((current) =>
+          JSON.stringify(current) === JSON.stringify(submitted) ? configToForm(saved) : current,
+        );
+        setTestResult(null);
+      }
       toast({ description: t("linear:configurationSaved"), variant: "success" });
     } catch (err) {
       toast({ description: t("linear:saveFailed", { error: String(err) }), variant: "error" });
@@ -359,20 +367,33 @@ function useSettingsActions({
     } finally {
       setSaving(false);
     }
-  }, [workspaceId, form, t, toast, setConfig, setBaselineConfig, setForm, setTestResult]);
+  }, [
+    workspaceId,
+    beginWrite,
+    form,
+    t,
+    toast,
+    setConfig,
+    setBaselineConfig,
+    setForm,
+    setTestResult,
+  ]);
 
   const handleDelete = useCallback(async () => {
+    const accept = beginWrite();
     try {
       await deleteLinearConfig({ workspaceId });
-      setConfig(null);
-      setBaselineConfig(null);
-      setForm(emptyForm);
-      setTestResult(null);
+      if (accept()) {
+        setConfig(null);
+        setBaselineConfig(null);
+        setForm(emptyForm);
+        setTestResult(null);
+      }
       toast({ description: t("linear:configurationRemoved"), variant: "success" });
     } catch (err) {
       toast({ description: t("linear:deleteFailed", { error: String(err) }), variant: "error" });
     }
-  }, [workspaceId, t, toast, setConfig, setBaselineConfig, setForm, setTestResult]);
+  }, [workspaceId, beginWrite, t, toast, setConfig, setBaselineConfig, setForm, setTestResult]);
 
   return { saving, testing, handleTest, handleSave, handleDelete };
 }
@@ -417,40 +438,34 @@ function useLinearSettings(workspaceId: string) {
   const [loading, setLoading] = useState(true);
   const [testResult, setTestResult] = useState<TestLinearConnectionResult | null>(null);
   const health = configToHealth(config);
+  const { beginRead, beginWrite } = useLinearConfigPublication(workspaceId);
   const { teams, loadingTeams } = useTeamsLoader(workspaceId, config?.hasSecret, config?.lastOk);
 
   const load = useCallback(async () => {
+    const request = beginRead();
     setLoading(true);
     try {
       const cfg = await getLinearConfig({ workspaceId });
+      if (!request.isCurrent()) return;
       setConfig(cfg);
       setBaselineConfig(cfg);
       setForm(configToForm(cfg));
     } catch (err) {
+      if (!request.isCurrent()) return;
       toast({
         description: t("linear:failedToLoadConfig", { error: String(err) }),
         variant: "error",
       });
     } finally {
-      setLoading(false);
+      if (request.isActive()) setLoading(false);
     }
-  }, [workspaceId, t, toast]);
+  }, [workspaceId, beginRead, t, toast]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // Background refresh so the auth-health banner picks up new probe results.
-  useEffect(() => {
-    const id = setInterval(() => {
-      getLinearConfig({ workspaceId })
-        .then((cfg) => setConfig(cfg))
-        .catch(() => {
-          /* transient failures are fine — next tick retries */
-        });
-    }, INTEGRATION_STATUS_REFRESH_MS);
-    return () => clearInterval(id);
-  }, [workspaceId]);
+  useLinearConfigRefresh(workspaceId, setConfig, beginRead, loading);
 
   const update = useCallback(
     <K extends keyof FormState>(key: K, value: FormState[K]) =>
@@ -462,6 +477,7 @@ function useLinearSettings(workspaceId: string) {
   const { saving, testing, handleTest, handleSave, handleDelete } = useSettingsActions({
     workspaceId,
     form,
+    beginWrite,
     setConfig,
     setBaselineConfig,
     setForm,
