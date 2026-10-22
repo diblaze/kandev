@@ -444,3 +444,30 @@ it("keeps Save out of a pending Remove and releases the route gate on success", 
   await next;
   expect(coordinator.hasDirty).toBe(false);
 });
+
+it.each(["save", "reset"])("preserves edits during Remove before %s", async (nextAction) => {
+  const t = await mounted();
+  await remove();
+  edit("raw entered during Remove");
+  await settle(t.writes[0].response, json({ deleted: true }));
+  expect(input().value).toBe("raw entered during Remove");
+  expect(input().placeholder).toBe(KEY_EXAMPLE);
+  expect(coordinator.hasDirty).toBe(true);
+  if (nextAction === "reset") {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    });
+    expect(input().value).toBe("");
+    expect(coordinator.hasDirty).toBe(false);
+    edit("raw after Reset");
+  }
+  const next = save();
+  expect(t.writes[1].body).toMatchObject({
+    secret: nextAction === "reset" ? "raw after Reset" : "raw entered during Remove",
+  });
+  await settle(t.writes[1].response, json(accepted));
+  await next;
+  expect(input().value).toBe("");
+  expect(coordinator.hasDirty).toBe(false);
+  expect(banner()?.textContent).toContain(accepted.lastError);
+});

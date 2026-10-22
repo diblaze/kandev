@@ -158,3 +158,29 @@ and exact-main combined verification must be refreshed before merge.
   documentation catalog/spec lint passed. Final exact-head combined-tree,
   hosted review/CI, and publication evidence is retained externally; it is
   refreshed after this commit rather than represented by historical receipts.
+
+## Remove settlement draft preservation
+
+The current-head semantic review found that successful Remove cleared edits
+entered after DELETE admission. Preserve the later form as dirty against the
+new null baseline; clear the form only when it still matches the submitted
+snapshot. Keep Reset and next Save behavior, accepted-read fences, and mutation
+exclusion. Add real-consumer RED plus desktop/phone value assertions before
+changing production. Prior verification is historical after this correction.
+
+### Remove settlement verification
+
+- Two real-provider/API assertions failed at the erased draft before the fix;
+  all 23 existing cases passed. Both desktop and phone reproduced the same
+  lost value on the prior build, with retries zero.
+- Final six focused suites passed 88 tests, including 53 Linear publication,
+  removal, and API cases. Both direct next Save and Reset-after-removal paths
+  preserve the accepted baseline and canonical ACK behavior.
+- Final rebuilt desktop and phone each passed with the later draft retained,
+  dirty, and eligible for Save after Remove. Fixture cleanup and full raw
+  source/seed guards passed. Typecheck (8GB), zero-warning ESLint, formatting,
+  and documentation catalog/spec lint passed.
+- The shared local accepted-form updater is used by Save and Remove; this
+  keeps the action hook within the existing function-size limit without a
+  new framework. Exact-head combined checks, assets, CI, and semantic-review
+  results remain externally tracked and are refreshed after commit.

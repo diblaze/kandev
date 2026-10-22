@@ -186,6 +186,11 @@ function configToHealth(config: LinearConfig | null): IntegrationAuthHealth | nu
   };
 }
 
+function acceptedFormUpdate(submitted: FormState, accepted: FormState) {
+  return (current: FormState) =>
+    JSON.stringify(current) === JSON.stringify(submitted) ? accepted : current;
+}
+
 type SettingsActionsArgs = {
   workspaceId: string;
   form: FormState;
@@ -246,9 +251,7 @@ function useSettingsActions({
       if (accept()) {
         setConfig(saved);
         setBaselineConfig(saved);
-        setForm((current) =>
-          JSON.stringify(current) === JSON.stringify(submitted) ? configToForm(saved) : current,
-        );
+        setForm(acceptedFormUpdate(submitted, configToForm(saved)));
         setTestResult(null);
       }
       toast({ description: t("linear:configurationSaved"), variant: "success" });
@@ -272,13 +275,14 @@ function useSettingsActions({
 
   const handleDelete = useCallback(async () => {
     await runExclusive(async () => {
+      const submitted = form;
       const accept = beginWrite();
       try {
         await deleteLinearConfig({ workspaceId });
         if (accept()) {
           setConfig(null);
           setBaselineConfig(null);
-          setForm(emptyForm);
+          setForm(acceptedFormUpdate(submitted, emptyForm));
           setTestResult(null);
         }
         toast({ description: t("linear:configurationRemoved"), variant: "success" });
@@ -290,6 +294,7 @@ function useSettingsActions({
     workspaceId,
     beginWrite,
     runExclusive,
+    form,
     t,
     toast,
     setConfig,

@@ -150,7 +150,9 @@ Confirmed Remove runs through the existing save coordinator `runExclusive`,
 which excludes active saves and other exclusive operations before transport.
 The Save contributor and Remove/confirmation controls observe route mutation
 activity. Release on settlement, including failure; retain the existing draft
-and feedback rules. This serializes same-route admission, not cross-tab or
+and feedback rules. Capture the form at Remove admission and clear it only
+if unchanged at ACK; later edits remain dirty against the new null baseline.
+This serializes same-route admission, not cross-tab or
 server-side ordering.
 
 Desktop and phone reuse the shipped Linear connection card and shared Save/Reset

@@ -238,6 +238,9 @@ export async function exerciseLinearRefresh({
     heldMutation = null;
     await expect(settings.deleteButton).toHaveCount(0);
     await expect(settings.secretInput).toHaveAttribute("placeholder", "lin_api_...");
+    await expect(settings.secretInput).toHaveValue("blocked while removing");
+    await expect(settings.secretInput).toHaveAttribute("data-settings-dirty", "true");
+    await expect(settings.saveButton).toBeEnabled();
   } catch (error) {
     errors.push(new Error("Primary Linear refresh scenario failed", { cause: error }));
   }
