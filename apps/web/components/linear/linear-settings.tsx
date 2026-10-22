@@ -1,15 +1,7 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from "react";
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { IconHexagon } from "@tabler/icons-react";
-import { Button } from "@kandev/ui/button";
 import { CardContent } from "@kandev/ui/card";
 import { Input } from "@kandev/ui/input";
 import { Label } from "@kandev/ui/label";
@@ -17,11 +9,11 @@ import { Separator } from "@kandev/ui/separator";
 import { Alert, AlertDescription } from "@kandev/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@kandev/ui/select";
 import { useToast } from "@/components/toast-provider";
-import { ActionConfirmPopover } from "@/components/confirmation/action-confirm-popover";
-import { InlineConfirmActions } from "@/components/confirmation/inline-confirm-actions";
-import { MobileActionConfirmation } from "@/components/confirmation/mobile-action-confirmation";
 import { SettingsSection } from "@/components/settings/settings-section";
-import { useSettingsSaveContributor } from "@/components/settings/settings-save-provider";
+import {
+  useSettingsSaveContributor,
+  useSettingsSaveCoordinator,
+} from "@/components/settings/settings-save-provider";
 import { SettingsCard } from "@/components/settings/settings-card";
 import { LinearEnabledControl } from "@/components/linear/linear-enabled-control";
 import {
@@ -29,7 +21,6 @@ import {
   type IntegrationAuthHealth,
 } from "@/components/integrations/auth-status-banner";
 import { WorkspaceScopedSection } from "@/components/integrations/workspace-scoped-section";
-import { useResponsiveBreakpoint } from "@/hooks/use-responsive-breakpoint";
 import {
   getLinearConfig,
   setLinearConfig,
@@ -44,7 +35,8 @@ import { settingsCredentialClassName } from "@/components/settings/settings-cont
 import {
   useLinearConfigPublication,
   useLinearConfigRefresh,
-} from "./use-linear-config-publication";
+} from "@/hooks/domains/linear/use-linear-config-publication";
+import { LinearActionBar } from "./linear-action-bar";
 import { LinearIssueWatchersSection } from "./linear-issue-watchers-section";
 import { INTEGRATION_SETTINGS_TARGETS } from "@/lib/settings-discovery/catalog/integrations";
 
@@ -194,108 +186,6 @@ function configToHealth(config: LinearConfig | null): IntegrationAuthHealth | nu
   };
 }
 
-type ActionBarProps = {
-  workspaceId: string;
-  testing: boolean;
-  loading: boolean;
-  hasConfig: boolean;
-  disableTest: boolean;
-  onTest: () => void;
-  onDelete: () => void;
-};
-
-function ActionBar({
-  workspaceId,
-  testing,
-  loading,
-  hasConfig,
-  disableTest,
-  onTest,
-  onDelete,
-}: ActionBarProps) {
-  const { t } = useTranslation();
-  const { isFinePointer, isMobile } = useResponsiveBreakpoint();
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const deleteAnchorRef = useRef<HTMLButtonElement>(null);
-  const removeConfirmation = t("linear:removeLinearConfigurationConfirm");
-  const removeLabel = t("linear:removeConfiguration");
-
-  useEffect(() => {
-    if (!hasConfig && confirmingDelete) setConfirmingDelete(false);
-  }, [confirmingDelete, hasConfig]);
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Button
-        type="button"
-        variant="outline"
-        onClick={onTest}
-        disabled={testing || loading || disableTest}
-        className="cursor-pointer"
-        title={disableTest ? t("linear:pasteAnApiKeyToTest") : undefined}
-        data-testid="linear-test-button"
-      >
-        {testing ? t("linear:testing") : t("linear:testConnection")}
-      </Button>
-      {hasConfig && (isMobile || isFinePointer || !confirmingDelete) && (
-        <Button
-          ref={deleteAnchorRef}
-          type="button"
-          variant="destructive"
-          onClick={() => setConfirmingDelete(true)}
-          className="ml-auto cursor-pointer"
-          data-testid="linear-delete-button"
-        >
-          {removeLabel}
-        </Button>
-      )}
-      <MobileActionConfirmation
-        open={hasConfig && confirmingDelete}
-        targetKey={workspaceId}
-        title={removeConfirmation}
-        cancelLabel={t("common:cancel")}
-        confirmLabel={removeLabel}
-        confirmAriaLabel={removeConfirmation}
-        confirmTestId="linear-remove-confirm"
-        onOpenChange={setConfirmingDelete}
-        focusReturnRef={deleteAnchorRef}
-        onConfirm={onDelete}
-        fallback={
-          !isFinePointer ? (
-            <InlineConfirmActions
-              density="touch"
-              testId="linear-remove-inline-confirmation"
-              ariaLabel={removeConfirmation}
-              description={removeConfirmation}
-              cancelLabel={t("common:cancel")}
-              confirmLabel={removeLabel}
-              confirmAriaLabel={removeConfirmation}
-              confirmTestId="linear-remove-confirm"
-              onCancel={() => setConfirmingDelete(false)}
-              onClose={() => setConfirmingDelete(false)}
-              onConfirm={onDelete}
-            />
-          ) : (
-            <ActionConfirmPopover
-              open={confirmingDelete}
-              anchorRef={deleteAnchorRef}
-              title={removeConfirmation}
-              cancelLabel={t("common:cancel")}
-              confirmLabel={removeLabel}
-              confirmAriaLabel={removeConfirmation}
-              confirmTestId="linear-remove-confirm"
-              testId="linear-remove-confirm-popover"
-              onOpenChange={setConfirmingDelete}
-              onCancel={() => setConfirmingDelete(false)}
-              onConfirm={onDelete}
-            />
-          )
-        }
-      />
-    </div>
-  );
-}
-
 type SettingsActionsArgs = {
   workspaceId: string;
   form: FormState;
@@ -317,6 +207,7 @@ function useSettingsActions({
 }: SettingsActionsArgs) {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const { runExclusive } = useSettingsSaveCoordinator();
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
@@ -380,20 +271,32 @@ function useSettingsActions({
   ]);
 
   const handleDelete = useCallback(async () => {
-    const accept = beginWrite();
-    try {
-      await deleteLinearConfig({ workspaceId });
-      if (accept()) {
-        setConfig(null);
-        setBaselineConfig(null);
-        setForm(emptyForm);
-        setTestResult(null);
+    await runExclusive(async () => {
+      const accept = beginWrite();
+      try {
+        await deleteLinearConfig({ workspaceId });
+        if (accept()) {
+          setConfig(null);
+          setBaselineConfig(null);
+          setForm(emptyForm);
+          setTestResult(null);
+        }
+        toast({ description: t("linear:configurationRemoved"), variant: "success" });
+      } catch (err) {
+        toast({ description: t("linear:deleteFailed", { error: String(err) }), variant: "error" });
       }
-      toast({ description: t("linear:configurationRemoved"), variant: "success" });
-    } catch (err) {
-      toast({ description: t("linear:deleteFailed", { error: String(err) }), variant: "error" });
-    }
-  }, [workspaceId, beginWrite, t, toast, setConfig, setBaselineConfig, setForm, setTestResult]);
+    });
+  }, [
+    workspaceId,
+    beginWrite,
+    runExclusive,
+    t,
+    toast,
+    setConfig,
+    setBaselineConfig,
+    setForm,
+    setTestResult,
+  ]);
 
   return { saving, testing, handleTest, handleSave, handleDelete };
 }
@@ -507,9 +410,11 @@ function useLinearSettings(workspaceId: string) {
 export function LinearConnectionSection({ workspaceId }: { workspaceId: string }) {
   const { t } = useTranslation();
   const s = useLinearSettings(workspaceId);
+  const coordinator = useSettingsSaveCoordinator();
+  const mutationPending = coordinator.exclusiveBusy || coordinator.status === "saving";
   const baseline = configToForm(s.baselineConfig);
   const missingSecret = !s.config?.hasSecret && !s.form.secret;
-  const disableSave = s.saving || missingSecret;
+  const disableSave = s.saving || coordinator.exclusiveBusy || missingSecret;
   const disableTest = missingSecret;
   const revision = JSON.stringify(s.form);
   const dirty = !s.loading && revision !== JSON.stringify(configToForm(s.baselineConfig));
@@ -553,10 +458,11 @@ export function LinearConnectionSection({ workspaceId }: { workspaceId: string }
           />
           <TestResultAlert result={s.testResult} />
           <Separator />
-          <ActionBar
+          <LinearActionBar
             workspaceId={workspaceId}
             testing={s.testing}
             loading={s.loading}
+            mutationPending={mutationPending}
             hasConfig={!!s.config}
             disableTest={disableTest}
             onTest={s.handleTest}

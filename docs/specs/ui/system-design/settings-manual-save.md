@@ -130,6 +130,7 @@ GET `/api/v1/linear/config` maps 204 to null; POST returns canonical configurati
 without exposing the secret. Teams requests consume saved-secret/health state
 and do not participate in config-read ordering.
 
+The domain hooks live in `hooks/domains/linear/use-linear-config-publication.ts`.
 A bounded domain-local `useLinearConfigPublication` follows the existing Jira
 owner/sequence pattern. Each initial or 90-second read captures the current
 mounted owner and advances its sequence. Only that owner's latest read may
@@ -145,8 +146,15 @@ reads update only config/health. Save advances baseline and canonicalizes only
 an unchanged submitted draft. Newer raw edits survive; Reset uses the accepted
 baseline. Later reads, including null and changed health, remain eligible.
 
+Confirmed Remove runs through the existing save coordinator `runExclusive`,
+which excludes active saves and other exclusive operations before transport.
+The Save contributor and Remove/confirmation controls observe route mutation
+activity. Release on settlement, including failure; retain the existing draft
+and feedback rules. This serializes same-route admission, not cross-tab or
+server-side ordering.
+
 Desktop and phone reuse the shipped Linear connection card and shared Save/Reset
-surface, including the phone removal sheet. No markup or navigation changes,
+surface, including the phone removal sheet. No composition or navigation changes,
 shared revision framework, cache migration, backend/API changes, or credential
 policy changes are needed. This repairs local publication, not server ordering.
 

@@ -33,6 +33,24 @@ function initRepository(repository: string) {
   ]);
 }
 
+function mutationGate(method: string) {
+  return {
+    method,
+    captured: Promise.withResolvers<void>(),
+    release: Promise.withResolvers<void>(),
+  };
+}
+
+async function confirmLinearRemoval(page: Page, settings: LinearSettingsPage, touch: boolean) {
+  if (touch) await settings.deleteButton.tap();
+  else await settings.deleteButton.click();
+  const confirm = page.getByTestId("linear-remove-confirm");
+  if (touch) {
+    await expect(page.getByRole("dialog")).toHaveAttribute("data-slot", "drawer-content");
+    await confirm.tap();
+  } else await confirm.click();
+}
+
 // @covers AC-UI-SETTINGS-MANUAL-SAVE-001.4
 export async function exerciseLinearRefresh({
   page,
@@ -62,6 +80,8 @@ export async function exerciseLinearRefresh({
   const captured = Promise.withResolvers<void>();
   const held: Promise<void>[] = [];
   let holding = true;
+  let heldMutation: ReturnType<typeof mutationGate> | null = null;
+  const mutations: ReturnType<typeof mutationGate>[] = [];
   const errors: unknown[] = [];
   try {
     initRepository(repository);
@@ -84,6 +104,27 @@ export async function exerciseLinearRefresh({
     );
     const workspaceId = workspace.id;
     await page.route("**/api/v1/linear/config?workspace_id=*", (route) => {
+      const gate = heldMutation;
+      if (
+        gate &&
+        route.request().method() === gate.method &&
+        new URL(route.request().url()).searchParams.get("workspace_id") === workspaceId
+      ) {
+        const pending = (async () => {
+          try {
+            const response = await route.fetch();
+            expect(response.status()).toBe(200);
+            gate.captured.resolve();
+            await gate.release.promise;
+            await route.fulfill({ response });
+          } catch (error) {
+            gate.captured.reject(error);
+            throw error;
+          }
+        })();
+        held.push(pending);
+        return pending;
+      }
       if (
         route.request().method() !== "GET" ||
         new URL(route.request().url()).searchParams.get("workspace_id") !== workspaceId ||
@@ -161,10 +202,17 @@ export async function exerciseLinearRefresh({
     else await reset.click();
     await expect(settings.secretInput).toHaveValue("");
     await settings.secretInput.fill("next-saved-key");
+    const pendingSave = mutationGate("POST");
+    heldMutation = pendingSave;
+    mutations.push(pendingSave);
     const next = waitForHttp(page, "POST", /\/api\/v1\/linear\/config$/);
     if (touch) await settings.saveButton.tap();
     else await settings.saveButton.click();
+    await pendingSave.captured.promise;
+    await expect(settings.deleteButton).toBeDisabled();
+    pendingSave.release.resolve();
     expect((await next).status()).toBe(200);
+    heldMutation = null;
     await expect(settings.saveButton).toHaveCount(0);
     await page.reload();
     await expect(settings.secretInput).toHaveAttribute("placeholder", "••••••••");
@@ -176,13 +224,18 @@ export async function exerciseLinearRefresh({
     const screenshot = testInfo.outputPath("linear-refresh-saved.png");
     await page.screenshot({ path: screenshot });
     await testInfo.attach("linear-refresh-saved", { path: screenshot, contentType: "image/png" });
-    if (touch) await settings.deleteButton.tap();
-    else await settings.deleteButton.click();
-    const confirm = page.getByTestId("linear-remove-confirm");
-    if (touch) {
-      await expect(page.getByRole("dialog")).toHaveAttribute("data-slot", "drawer-content");
-      await confirm.tap();
-    } else await confirm.click();
+    const pendingRemove = mutationGate("DELETE");
+    heldMutation = pendingRemove;
+    mutations.push(pendingRemove);
+    const removed = waitForHttp(page, "DELETE", /\/api\/v1\/linear\/config$/);
+    await confirmLinearRemoval(page, settings, touch);
+    await pendingRemove.captured.promise;
+    if (touch) await expect(page.getByRole("dialog")).toHaveCount(0);
+    await settings.secretInput.fill("blocked while removing");
+    await expect(settings.saveButton).toBeDisabled();
+    pendingRemove.release.resolve();
+    expect((await removed).status()).toBe(200);
+    heldMutation = null;
     await expect(settings.deleteButton).toHaveCount(0);
     await expect(settings.secretInput).toHaveAttribute("placeholder", "lin_api_...");
   } catch (error) {
@@ -197,6 +250,7 @@ export async function exerciseLinearRefresh({
   };
   holding = false;
   release.resolve();
+  for (const gate of mutations) gate.release.resolve();
   await clean("held routes", () => Promise.all(held));
   await clean("routes and navigation", async () => {
     if (!page.isClosed()) {

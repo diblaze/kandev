@@ -404,3 +404,43 @@ it("retries a confirmed failed Save with the unchanged raw draft", async () => {
   expect(input().value).toBe("");
   expect(banner()?.textContent).toContain(accepted.lastError);
 });
+
+it("keeps confirmed Remove out of a pending Save, then admits Remove", async () => {
+  const t = await mounted();
+  edit("save before remove");
+  fireEvent.click(screen.getByTestId(DELETE_BUTTON));
+  const saving = save();
+  await act(async () => {
+    fireEvent.click(screen.getByTestId("linear-remove-confirm"));
+  });
+  expect(t.writes.map((write) => write.method)).toEqual(["POST"]);
+  await settle(t.writes[0].response, json(accepted));
+  await saving;
+  await remove();
+  expect(t.writes.map((write) => write.method)).toEqual(["POST", "DELETE"]);
+  await settle(t.writes[1].response, failed());
+  expect(input().placeholder).toBe(SAVED_MASK);
+  edit("save after failed remove");
+  const next = save();
+  expect(t.writes[2].method).toBe("POST");
+  await settle(t.writes[2].response, json(accepted));
+  await next;
+  expect(coordinator.hasDirty).toBe(false);
+});
+
+it("keeps Save out of a pending Remove and releases the route gate on success", async () => {
+  const t = await mounted();
+  edit("pending raw draft");
+  await remove();
+  const blocked = save();
+  expect(t.writes.map((write) => write.method)).toEqual(["DELETE"]);
+  expect((await blocked).canLeave).toBe(false);
+  expect(input().value).toBe("pending raw draft");
+  await settle(t.writes[0].response, json({ deleted: true }));
+  edit("new connection raw");
+  const next = save();
+  expect(t.writes[1].method).toBe("POST");
+  await settle(t.writes[1].response, json(accepted));
+  await next;
+  expect(coordinator.hasDirty).toBe(false);
+});

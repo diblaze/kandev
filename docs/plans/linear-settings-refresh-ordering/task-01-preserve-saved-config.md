@@ -56,7 +56,8 @@ Before: an older GET can clear saved mask/removal or revert health after Save.
 After: accepted metadata remains until a legitimate later read. Phone entry is
 its dedicated settings page; Remove opens the shipped bottom sheet. Reuse the
 single settings scroll owner and fixed safe-area Save surface. Structure and
-state are required; spacing is illustrative. No new responsive layout.
+state are required; spacing is illustrative. No new responsive layout. Save and Remove disable conflicting actions while
+a same-route mutation is pending.
 
 ## Verification
 
@@ -65,7 +66,7 @@ state are required; spacing is illustrative. No new responsive layout.
 (cd apps/web && GOMAXPROCS=2 GOFLAGS=-p=2 pnpm e2e:run --host --shards 1 --project chromium tests/integrations/linear-settings-refresh.spec.ts --retries=0)
 (cd apps/web && GOMAXPROCS=2 GOFLAGS=-p=2 pnpm e2e:run --host --no-build --shards 1 --project mobile-chrome tests/integrations/mobile-linear-settings-refresh.spec.ts --retries=0)
 (cd apps/web && NODE_OPTIONS=--max-old-space-size=8192 pnpm run typecheck)
-(cd apps/web && pnpm exec eslint components/linear/linear-settings.tsx components/linear/use-linear-config-publication.ts components/linear/linear-settings-refresh.test.tsx e2e/tests/integrations/linear-settings-refresh-helpers.ts e2e/tests/integrations/linear-settings-refresh.spec.ts e2e/tests/integrations/mobile-linear-settings-refresh.spec.ts)
+(cd apps/web && pnpm exec eslint components/linear/linear-settings.tsx components/linear/linear-action-bar.tsx hooks/domains/linear/use-linear-config-publication.ts components/linear/linear-settings-refresh.test.tsx e2e/tests/integrations/linear-settings-refresh-helpers.ts e2e/tests/integrations/linear-settings-refresh.spec.ts e2e/tests/integrations/mobile-linear-settings-refresh.spec.ts)
 python3 scripts/list-docs.py validate
 python3 scripts/lint-spec-files.py --all
 git diff --check
@@ -73,7 +74,8 @@ git diff --check
 ## Files likely touched
 
 - `apps/web/components/linear/linear-settings.tsx`
-- `apps/web/components/linear/use-linear-config-publication.ts`
+- `apps/web/components/linear/linear-action-bar.tsx`
+- `apps/web/hooks/domains/linear/use-linear-config-publication.ts`
 - `apps/web/components/linear/linear-settings-refresh.test.tsx`
 - `apps/web/e2e/tests/integrations/linear-settings-refresh-helpers.ts`
 - `apps/web/e2e/tests/integrations/linear-settings-refresh.spec.ts`
@@ -96,7 +98,7 @@ sequential
 
 Parent source packet and owning settings-manual-save requirement/design.
 
-## Results
+## Initial checkpoint results
 
 - Permanent real-consumer/API suite: 49 passed across three files (21 refresh
   ordering/lifecycle cases, 4 existing removal cases, 24 API cases), one worker.
@@ -127,3 +129,32 @@ Parent source packet and owning settings-manual-save requirement/design.
 - Diff whitespace and package cross-references checked. Source commit and active
   hook receipt are supplied in the external parent-validation packet. No push/PR
   is authorized at this checkpoint.
+
+## PR review remediation
+
+Greptile identified the required domain-hook location. CodeRabbit identified
+concurrent same-route Save and Remove admission. Move the unchanged publication
+hooks to `hooks/domains/linear/`; use the existing coordinator `runExclusive`
+for confirmed Remove, preventing overlap with Save and other Remove submissions.
+Disable Remove and its confirmation while a mutation owns the route gate.
+Keep raw drafts, retry behavior, accepted-write read fences, and existing
+confirmation compositions. Add real-transport RED controls and native desktop/
+phone busy-action proof before the bounded correction. Reuse this one work order.
+Prior checkpoint results remain historical; new-head checks, assets, reviews,
+and exact-main combined verification must be refreshed before merge.
+
+## Review remediation verification
+
+- Two additional real-consumer mutation admission assertions failed before the
+  correction; all 21 existing refresh controls passed. The initial mixed timeout
+  attempt is retained separately from the corrected two-assertion RED.
+- Six focused suites passed: 86 tests, including 51 Linear publication/removal/API
+  cases and coordinator/exclusive-action/enablement compatibility controls.
+- Desktop and native phone each failed the pending-Save Remove-button assertion
+  on the prior production build, then passed on the rebuilt correction. Both
+  prove Save is disabled during confirmed Remove and allow ordinary subsequent
+  operations. One worker/shard, retries zero, normal resource guards.
+- Changed-file ESLint, frontend typecheck with the documented 8GB heap, and
+  documentation catalog/spec lint passed. Final exact-head combined-tree,
+  hosted review/CI, and publication evidence is retained externally; it is
+  refreshed after this commit rather than represented by historical receipts.
