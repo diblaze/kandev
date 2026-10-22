@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { IconHexagon } from "@tabler/icons-react";
 import { CardContent } from "@kandev/ui/card";
 import { Input } from "@kandev/ui/input";
@@ -348,6 +355,12 @@ function useLinearSettings(workspaceId: string) {
   const health = configToHealth(config);
   const { beginRead, beginWrite } = useLinearConfigPublication(workspaceId);
   const { teams, loadingTeams } = useTeamsLoader(workspaceId, config?.hasSecret, config?.lastOk);
+  const reportLoadError = useEffectEvent((error: unknown) => {
+    toast({
+      description: t("linear:failedToLoadConfig", { error: String(error) }),
+      variant: "error",
+    });
+  });
 
   useEffect(() => {
     let active = true;
@@ -362,10 +375,7 @@ function useLinearSettings(workspaceId: string) {
         setForm(configToForm(cfg));
       } catch (err) {
         if (!request.isCurrent()) return;
-        toast({
-          description: t("linear:failedToLoadConfig", { error: String(err) }),
-          variant: "error",
-        });
+        reportLoadError(err);
       } finally {
         if (active) setLoading(false);
       }
@@ -374,7 +384,7 @@ function useLinearSettings(workspaceId: string) {
     return () => {
       active = false;
     };
-  }, [workspaceId, beginRead, t, toast]);
+  }, [workspaceId, beginRead]);
 
   useLinearConfigRefresh(workspaceId, setConfig, beginRead, loading);
 

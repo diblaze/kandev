@@ -199,7 +199,7 @@ The initial loading lifetime is distinct from config-read admission: an accepted
 write can fence a pending initial result without stranding its loading state.
 Validate that interaction before selecting the minimal effect-lifetime guard.
 
-### Initial lifetime and probe verification
+### Prior-head initial lifetime and probe verification
 
 - On the prior head, three real-consumer tests failed and 25 controls passed.
   Real locale replacement admitted two initial reads; the older completion
@@ -218,3 +218,32 @@ Validate that interaction before selecting the minimal effect-lifetime guard.
   and cleanup passed. Full 8GB typecheck, zero-warning lint, formatting, and
   documentation checks passed. Exact-head/current-main combination, fresh
   assets, hosted checks and semantic review are refreshed externally.
+
+## Locale changes preserve the initial-seeding lifetime
+
+A later real locale change can rerun the current initial loader and clear a
+raw draft, including on the proof base. Keep one initial-load lifetime per
+mounted workspace. Reuse the repository's native React effect-event pattern
+for current-locale error feedback, so translation identity does not restart
+config/form seeding. Revise locale controls to assert no new GET admission;
+keep workspace/StrictMode replacement controls. Prove dirty draft and localized
+error behavior with real i18next/API RED before production. No new seed or
+revision framework is needed.
+
+### Locale-lifetime verification
+
+- Four intended real-consumer RED tests failed and 27 controls passed on the
+  prior head, including a raw draft erased by the actually admitted locale
+  read. The final producer admits no locale-triggered config read; revised
+  controls explicitly assert that absence instead of releasing invented reads.
+- Six focused suites passed 94 tests, including 59 Linear consumer/API cases.
+  Dirty draft and Reset baseline survive locale changes, pending initial loads
+  still seed once, accepted Save stays authoritative, and pending-load errors
+  use the current locale. Existing workspace/StrictMode controls still pass.
+- The only new callback is the repository-established native React effect
+  event for localized load errors. Workspace identity owns initial seeding;
+  config publication keeps its local read/ACK fence. No seed/revision framework.
+- Fresh rebuilt desktop and native phone each passed the full shared scenario
+  with retries zero. Fixture/source/seed guards and cleanup passed. Typecheck
+  (8GB), zero-warning lint, format, and docs checks passed. New-head combined,
+  assets, hosted checks and thread/review evidence remain externally tracked.

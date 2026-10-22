@@ -121,8 +121,9 @@ retain the accepted configuration. Same-route Save and confirmed Remove cannot
 submit overlapping configuration
 mutations; the pending action disables conflicting submissions and releases the
 gate after success or failure. Initial loading still seeds the form before
-background refreshes begin, including when a locale change replaces a pending
-initial read. Test connection cannot start during a pending Save or Remove.
+background refreshes begin. Locale changes preserve that initial-load lifetime
+and any raw draft; they do not restart form seeding. Test connection cannot
+start during a pending Save or Remove.
 Background health refreshes do not replace the draft
 or its Reset baseline. Failed writes retain the draft and accepted baseline.
 Successful Remove clears

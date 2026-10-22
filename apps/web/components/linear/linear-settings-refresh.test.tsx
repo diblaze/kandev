@@ -480,25 +480,24 @@ it.each(["save", "reset"])("preserves edits during Remove before %s", async (nex
   expect(banner()?.textContent).toContain(accepted.lastError);
 });
 
-it("keeps replacement initial seeding pending across a real locale change", async () => {
+it("keeps initial seeding pending across a real locale change without restarting it", async () => {
   const t = transport();
   render(tree());
   await act(async () => {
     await i18n.changeLanguage("pt-pt");
   });
-  expect(t.reads).toHaveLength(2);
-  await settle(t.reads[0], json(initial));
-  expect.soft(input().disabled).toBe(true);
+  expect(t.reads).toHaveLength(1);
+  expect(input().disabled).toBe(true);
   await tick();
-  expect.soft(t.reads).toHaveLength(2);
-  await settle(t.reads[1], json(accepted));
+  expect(t.reads).toHaveLength(1);
+  await settle(t.reads[0], json(accepted));
   expect(input().disabled).toBe(false);
   expect(input().placeholder).toBe(SAVED_MASK);
   expect(coordinator.hasDirty).toBe(false);
   expect(banner()?.textContent).toContain(accepted.lastError);
   await tick();
-  expect(t.reads).toHaveLength(3);
-  await settle(t.reads[2], json(initial));
+  expect(t.reads).toHaveLength(2);
+  await settle(t.reads[1], json(initial));
 });
 
 it.each(["POST", "DELETE"])("blocks new Test probes during pending %s", async (method) => {
@@ -519,22 +518,53 @@ it.each(["POST", "DELETE"])("blocks new Test probes during pending %s", async (m
   await settle(t.probes[1].response, json({ ok: true }));
 });
 
-it("finishes replacement loading after an accepted Save fences its data", async () => {
+it("keeps an accepted Save authoritative across a real locale change", async () => {
   const t = await mounted();
-  edit("save across locale replacement");
+  edit("save across locale change");
   const saving = save();
   await act(async () => {
     await i18n.changeLanguage("pt-pt");
   });
-  expect(t.reads).toHaveLength(2);
-  expect(input().disabled).toBe(true);
+  expect(t.reads).toHaveLength(1);
+  expect(input().disabled).toBe(false);
   await settle(t.writes[0].response, json(accepted));
   await saving;
-  await settle(t.reads[1], json(initial));
-  expect(input().disabled).toBe(false);
   expect(banner()?.textContent).toContain(accepted.lastError);
   expect(coordinator.hasDirty).toBe(false);
   await tick();
-  expect(t.reads).toHaveLength(3);
-  await settle(t.reads[2], json(initial));
+  expect(t.reads).toHaveLength(2);
+  await settle(t.reads[1], json(initial));
+});
+
+it("preserves a dirty draft and Reset baseline when the real locale changes", async () => {
+  const t = await mounted();
+  edit("raw draft across locale");
+  await act(async () => {
+    await i18n.changeLanguage("pt-pt");
+  });
+  const redundantRead = t.reads[1];
+  if (redundantRead) await settle(redundantRead, json(accepted));
+  expect(input().value).toBe("raw draft across locale");
+  expect(t.reads).toHaveLength(1);
+  expect(coordinator.hasDirty).toBe(true);
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("settings:reset") }));
+  });
+  expect(input().value).toBe("");
+  expect(coordinator.hasDirty).toBe(false);
+  expect(screen.getByRole(COMBOBOX).textContent).toContain("Engineering");
+});
+
+it("reports a pending initial failure in the current locale without restarting reads", async () => {
+  const t = transport();
+  render(tree());
+  await act(async () => {
+    await i18n.changeLanguage("pt-pt");
+  });
+  expect(t.reads).toHaveLength(1);
+  await settle(t.reads[0], failed());
+  expect(input().disabled).toBe(false);
+  expect(screen.getByText(/Confirmed transport failure/).textContent).toContain(
+    i18n.t("linear:failedToLoadConfig", { error: "" }).trim(),
+  );
 });
