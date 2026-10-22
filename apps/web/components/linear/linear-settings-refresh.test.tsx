@@ -387,3 +387,20 @@ it("keeps the latest absent read against an older successful read", async () => 
   expect(screen.queryByTestId(DELETE_BUTTON)).toBeNull();
   expect(input().placeholder).toBe(KEY_EXAMPLE);
 });
+
+it("retries a confirmed failed Save with the unchanged raw draft", async () => {
+  const t = await mounted();
+  edit(" retry this raw key ");
+  const first = save();
+  await settle(t.writes[0].response, failed());
+  expect((await first).canLeave).toBe(false);
+  expect(coordinator.status).toBe("error");
+  expect(input().value).toBe(" retry this raw key ");
+  const retry = save();
+  expect(t.writes[1].body).toEqual(t.writes[0].body);
+  await settle(t.writes[1].response, json(accepted));
+  expect((await retry).canLeave).toBe(true);
+  expect(coordinator.hasDirty).toBe(false);
+  expect(input().value).toBe("");
+  expect(banner()?.textContent).toContain(accepted.lastError);
+});

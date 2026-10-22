@@ -84,7 +84,7 @@ git diff --check
 ```
 ## Verification results
 
-- Permanent real-consumer/API suite: 48 passed across three files (20 refresh
+- Permanent real-consumer/API suite: 49 passed across three files (21 refresh
   ordering/lifecycle cases, 4 existing removal cases, 24 API cases), one worker.
   Final command ran after all production and test corrections.
 - Corrected pre-fix permanent RED: 11 expected assertion failures and 6 passing
