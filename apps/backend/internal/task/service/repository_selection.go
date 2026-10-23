@@ -58,7 +58,9 @@ func (s *Service) preflightRepositorySelections(ctx context.Context, req *Create
 func (s *Service) preflightRepositoryInputs(
 	ctx context.Context, workspaceID string, inputs []TaskRepositoryInput,
 ) error {
-	for index, input := range inputs {
+	for index := range inputs {
+		s.trustConnectedGitHubRemote(ctx, workspaceID, &inputs[index])
+		input := inputs[index]
 		needsInspection, err := repositorySelectionNeedsInspection(input)
 		if err != nil {
 			return err
@@ -95,11 +97,15 @@ func repositorySelectionNeedsInspection(input TaskRepositoryInput) (bool, error)
 		return true, nil
 	}
 
-	parsedProvider, _, _, _, err := parseRemoteRepositoryURL(effectiveRemoteURL(input), provider)
+	parsedProvider, _, _, canonical, err := parseRemoteRepositoryURL(effectiveRemoteURL(input), provider)
 	if err != nil {
 		return false, NewRepositorySelectionError(RepositorySelectionErrorInvalid, nil)
 	}
 	if provider != "" && !strings.EqualFold(parsedProvider, provider) {
+		return false, NewRepositorySelectionError(RepositorySelectionErrorInvalid, nil)
+	}
+	if parsedProvider == providerGitHub && !input.TrustedRemote &&
+		remoteProviderHost(parsedProvider, canonical) != githubProviderHost {
 		return false, NewRepositorySelectionError(RepositorySelectionErrorInvalid, nil)
 	}
 	return false, nil

@@ -16,7 +16,7 @@ type stubReviewResolver struct {
 }
 
 func (s stubReviewResolver) ResolveForReview(
-	_ context.Context, _, _, _, _, _ string,
+	_ context.Context, _, _, _, _, _, _ string,
 ) (string, string, error) {
 	return s.repoID, s.baseBranch, nil
 }
@@ -55,7 +55,7 @@ func TestResolveReviewRepository_RejectsUnsafeHeadBranch(t *testing.T) {
 				BaseBranch: "main",
 				HeadBranch: tc.headBranch,
 			}
-			got := svc.resolveReviewRepository(context.Background(), "ws1", pr)
+			got := svc.resolveReviewRepository(context.Background(), "ws1", "", pr)
 			if len(got) != 1 {
 				t.Fatalf("expected 1 repo row, got %d", len(got))
 			}

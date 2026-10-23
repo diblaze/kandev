@@ -117,7 +117,7 @@ type IssueTaskRepository struct {
 
 // RepositoryResolver resolves a GitHub repo to a local clone + Repository DB record.
 type RepositoryResolver interface {
-	ResolveForReview(ctx context.Context, workspaceID, provider, owner, name, defaultBranch string) (repositoryID, baseBranch string, err error)
+	ResolveForReview(ctx context.Context, workspaceID, provider, host, owner, name, defaultBranch string) (repositoryID, baseBranch string, err error)
 }
 
 // ReviewTaskRequest contains the data for creating a task from a review watch PR.
@@ -500,7 +500,7 @@ func (s *Service) createReviewTask(ctx context.Context, evt *github.NewReviewPRE
 		return
 	}
 
-	repositories := s.resolveReviewRepository(ctx, evt.WorkspaceID, pr)
+	repositories := s.resolveReviewRepository(ctx, evt.WorkspaceID, evt.GitHubHost, pr)
 	task, err := s.reviewTaskCreator.CreateReviewTask(ctx, buildReviewTaskRequest(evt, repositories, repoSlug))
 	if err != nil {
 		if isWatcherCapacityRejection(err) {
@@ -736,7 +736,7 @@ func (s *Service) autoStartReviewTask(
 
 // resolveReviewRepository attempts to resolve and clone the PR's repository.
 // Returns a slice with one entry on success, or nil on failure (graceful degradation).
-func (s *Service) resolveReviewRepository(ctx context.Context, workspaceID string, pr *github.PR) []ReviewTaskRepository {
+func (s *Service) resolveReviewRepository(ctx context.Context, workspaceID, host string, pr *github.PR) []ReviewTaskRepository {
 	if s.repositoryResolver == nil {
 		return nil
 	}
@@ -747,7 +747,7 @@ func (s *Service) resolveReviewRepository(ctx context.Context, workspaceID strin
 		zap.String("pr_head_branch", pr.HeadBranch))
 
 	repoID, baseBranch, err := s.repositoryResolver.ResolveForReview(
-		ctx, workspaceID, "github", pr.RepoOwner, pr.RepoName, pr.BaseBranch,
+		ctx, workspaceID, "github", host, pr.RepoOwner, pr.RepoName, pr.BaseBranch,
 	)
 	if err != nil {
 		s.logger.Warn("failed to resolve repository for review task (continuing without repo)",
@@ -1857,7 +1857,7 @@ func (s *Service) createIssueTask(ctx context.Context, evt *github.NewIssueEvent
 		return
 	}
 
-	repositories := s.resolveIssueRepository(ctx, evt.WorkspaceID, issue)
+	repositories := s.resolveIssueRepository(ctx, evt.WorkspaceID, evt.GitHubHost, issue)
 
 	req := &IssueTaskRequest{
 		WorkspaceID:    evt.WorkspaceID,
@@ -1963,7 +1963,7 @@ func (s *Service) attachIssueTaskToReservation(ctx context.Context, evt *github.
 
 // resolveIssueRepository attempts to resolve and clone the issue's repository.
 // Returns a slice with one entry on success, or nil on failure (graceful degradation).
-func (s *Service) resolveIssueRepository(ctx context.Context, workspaceID string, issue *github.Issue) []IssueTaskRepository {
+func (s *Service) resolveIssueRepository(ctx context.Context, workspaceID, host string, issue *github.Issue) []IssueTaskRepository {
 	if s.repositoryResolver == nil {
 		return nil
 	}
@@ -1971,7 +1971,7 @@ func (s *Service) resolveIssueRepository(ctx context.Context, workspaceID string
 	s.logger.Debug("resolving issue repository", zap.String("repo", repoSlug))
 
 	repoID, baseBranch, err := s.repositoryResolver.ResolveForReview(
-		ctx, workspaceID, "github", issue.RepoOwner, issue.RepoName, "",
+		ctx, workspaceID, "github", host, issue.RepoOwner, issue.RepoName, "",
 	)
 	if err != nil {
 		s.logger.Warn("failed to resolve repository for issue task (continuing without repo)",

@@ -1,7 +1,7 @@
 ---
 id: "04-enterprise-repository-identity"
 title: "Enterprise repository identity"
-status: pending
+status: done
 wave: 4
 depends_on:
   - "03-host-routed-operations"
@@ -120,6 +120,12 @@ GitLab origin verifier does.
 **Governed by:** Go limits.
 **Specifics:** `ResolveForReview(ctx, workspaceID, provider, host, owner, name, defaultBranch)` (line 1356) uses `host` when provider is `github`, falling back to `defaultProviderHostname`; update the `RepositoryResolver` interface in `internal/orchestrator` and its callers, which pass the review watch's `GitHubHost`.
 
+### `apps/backend/internal/github/service_git_transport.go` and `apps/backend/internal/backendapp/git_credentials.go`
+**What:** modified (added during implementation).
+**Justified by:** E31, system design Security ("the token for a host is sent only to that host's endpoints")
+**Governed by:** Go limits.
+**Specifics:** `Service.ResolveGitCredential(ctx, workspaceID, provider, host, owner, repo)` sets `ResolveCredentialRequest.Host`; `repositoryCloneCredentialProvider` derives the host from the request's `ProviderHost` with `github.RepositoryGitHubHost`. Without it a managed clone of an enterprise repository sent the `github.com` token to the enterprise origin.
+
 ### Tests
 **What:** added.
 **Justified by:** E8, E9, E10, E31
@@ -157,4 +163,46 @@ Task 03 (`WorkspaceGitHubHosts`, review watch host).
 
 ## Results
 
-Pending.
+Implemented test-first.
+
+What was done:
+
+- `repoclone.SSHUser(host)`: `<subdomain>` on a `<subdomain>.ghe.com` host, `git` elsewhere; `CloneURLWithHost` SSH URLs use it.
+- Remote parsing (`service_tasks.go`): any `user@host:path` without `://` is SCP style; a `github` provider hint parses an unknown host as GitHub; `parseGitHubRemote` builds the canonical URL on its host (`www.github.com` still maps to `github.com`, SCP canonical uses `SSHUser`); `remoteProviderHost` returns `https://<host>` for GitHub.
+- Trust (`repository_origin.go`): `WorkspaceGitHubHostsReader` and `SetWorkspaceGitHubHostsReader`; `connectedGitHubEnterpriseHosts` (reader error logs at debug and trusts nothing); `trustConnectedGitHubRemote` marks a remote on a connected enterprise host as provider `github` with `TrustedRemote`; `untrustedRemoteOrigin` replaces the GitLab-only checks in `resolveRepoInputRemote` and `validateBuiltInRemoteHints` and also rejects an untrusted GitHub origin. `repositorySelectionNeedsInspection` rejects an untrusted enterprise GitHub origin.
+- Trust is applied in `preflightRepositoryInputs` (task creation, repository replacement, `RegisterRemoteRepository`), in `previewRemoteWorkspaceRepository`, and in `resolveRepositoryWorkspaceSource`.
+- Local creation: `resolveRepositoryProviderIdentity(repository, enterpriseHosts)` tags provider `github` and `https://<host>` for an origin on a connected enterprise host; `canonicalCloneOrigin` takes the provider so the stored `RemoteURL` is the canonical GitHub form.
+- `Service.ReclassifyWorkspaceGitHubRepositories(ctx, workspaceID, host)`: rows with an empty provider whose local origin (preferred) or `RemoteURL` is on `host` get provider, provider host, owner, name, and canonical remote URL; one `RepositoryUpdated` per row; update errors are joined and the rest continue.
+- `backendapp.wireGitHubRepositoryIdentity` sets the hosts reader and the host-connected observer (reclassification, error logged).
+- Review and issue watches: `NewReviewPREvent.GitHubHost` and `NewIssueEvent.GitHubHost` carry the watch host; the orchestrator passes it to `RepositoryResolver.ResolveForReview(ctx, workspaceID, provider, host, owner, name, defaultBranch)`; the backendapp resolver looks up, builds the clone URL, and clones (`EnsureWorkspaceClonedForProvider`, so the managed path and credential use the provider host) on that host, `github.com` when empty.
+- Clone credentials route by host (see the added Changes entry).
+
+Verification (from `apps/backend`, `GOMAXPROCS=4 GOMEMLIMIT=6GiB`, `-p 2`, one run at a time):
+
+- `go test -trimpath -tags fts5 ./internal/task/service -run 'Test(EnterpriseRepositoryIdentity|RemoteRepositoryEnterprise|ReclassifyWorkspaceGitHubRepositories|Service_CreateRepository)' -count=1`: `ok 0.473s`.
+- `go test -trimpath -tags fts5 ./internal/repoclone -run 'TestCloneURLWithHost|TestGitHubHTTPSCloneURLEnterpriseHost' -count=1`: `ok 0.015s`.
+- `go test -trimpath -tags fts5 ./internal/task/... ./internal/repoclone -count=1`: every package `ok` except `internal/task/service`, whose only failure `TestWorkspaceRecoveryProjectsRelocationErrorFromEveryEntryPoint` fails identically on an untouched `git archive HEAD` export (`worktree uses a checkout feature that cannot be transferred safely`).
+- `go test -trimpath -tags fts5 ./internal/github -count=1`: `ok 27.930s`; `./internal/backendapp`: `ok 109.940s`.
+- `go test -trimpath -tags fts5 ./internal/orchestrator/... -count=1`: 37 failures in `internal/orchestrator` and `internal/orchestrator/executor`, all in the known environmental baseline list; every other subpackage `ok`.
+- With `-race`, one package at a time: `internal/repoclone` `ok 3.547s`, `internal/github` `ok 68.068s`, `internal/task/service` only the baseline failure above. `internal/backendapp` and `internal/orchestrator` were not run with `-race` (memory limit on this machine).
+- `go build -tags fts5 ./...` and `go vet` of every touched package: clean. `gofmt -l` on changed files: none.
+- From the repository root, `bash scripts/lint-go-changed <changed files>` per package group (repoclone, github, task/service, orchestrator, backendapp): `0 issues.` each.
+
+Tests that passed on their first run and were then proven by breaking the code: `TestGitHubHTTPSCloneURLEnterpriseHost` (forced `expectedHost = ""`), `TestRemoteRepositoryEnterpriseTaskCreation` (`TrustedRemote = false`), the resolve half of `TestRemoteRepositoryEnterpriseWorkspaceSource` (dropped the trust call), `TestReviewRepositoryResolutionUsesWatchHost` (passed `""` at both call sites), `TestResolveGitCredentialRoutesByHost` (dropped `Host`), `TestRepositoryCloneCredentialProviderRoutesGitHubByProviderHost` and `TestResolveForReviewClonesOnGivenHost` (passed `""`), `TestWireGitHubRepositoryIdentityClassifiesConnectedHosts` (dropped the reader wiring).
+
+Deviations:
+
+- Trust is set in `preflightRepositoryInputs` (and the two workspace-source paths), not in `verifyRemoteRepositoryOrigin`: `RegisterRemoteRepository` runs preflight first, and preflight would reject an enterprise URL before the verifier ran. `verifyRemoteRepositoryOrigin` is unchanged.
+- The SCP canonical `RemoteURL` uses the host's SSH user (`octo@octo.ghe.com:org/repo.git` for an `org@octo.ghe.com:...` origin), not the origin's user.
+- `ReclassifyWorkspaceGitHubRepositories` lives in `repository_origin.go`, not `service_resources.go` (2614 lines); it also rewrites `RemoteURL` to the canonical form so a reclassified row matches a newly created one.
+- Workspace-source attachment (`service_workspace_sources.go`) was not listed; without it the placement preview would accept an enterprise source that attachment then rejects.
+- `ResolveGitCredential` host routing was not listed and is a security fix (see Changes).
+- The backendapp resolver clones with `EnsureWorkspaceClonedForProvider` instead of `EnsureWorkspaceCloned`, so the managed clone path gets the host segment and the clone credential the host.
+
+Deferred:
+
+- Automation `github_pr` trigger data carries no host, so `resolveGitHubPRTriggerRepository` still resolves on `github.com`. The trigger payload has `html_url`; deriving the host from it belongs with the URL-host work of task 05.
+
+Unverified:
+
+- The host-connected observer half of `wireGitHubRepositoryIdentity` has no backendapp test (triggering it needs a validated connection save); the observer call is covered in `internal/github` and reclassification in `internal/task/service`.

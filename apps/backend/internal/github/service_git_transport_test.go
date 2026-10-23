@@ -21,7 +21,7 @@ func TestResolveGitCredentialUsesWorkspacePAT(t *testing.T) {
 	service := &Service{resolver: resolver}
 
 	username, password, err := service.ResolveGitCredential(
-		context.Background(), "workspace-a", "github", "acme", "private",
+		context.Background(), "workspace-a", "github", "", "acme", "private",
 	)
 	if err != nil {
 		t.Fatalf("ResolveGitCredential(): %v", err)
@@ -51,7 +51,7 @@ func TestResolveGitCredentialUsesSelectedGHCLIAccount(t *testing.T) {
 	service := &Service{resolver: resolver}
 
 	_, password, err := service.ResolveGitCredential(
-		context.Background(), "workspace-a", "github", "acme", "private",
+		context.Background(), "workspace-a", "github", "", "acme", "private",
 	)
 	if err != nil {
 		t.Fatalf("ResolveGitCredential(): %v", err)
@@ -79,7 +79,7 @@ func TestResolveGitCredentialUsesMigratedLegacyCredential(t *testing.T) {
 	service := &Service{resolver: resolver}
 
 	username, password, err := service.ResolveGitCredential(
-		context.Background(), "workspace-a", "github", "acme", "private",
+		context.Background(), "workspace-a", "github", "", "acme", "private",
 	)
 	if err != nil {
 		t.Fatalf("ResolveGitCredential(): %v", err)
@@ -105,7 +105,7 @@ func TestResolveGitCredentialRejectsMissingMigratedLegacyCredential(t *testing.T
 	service := &Service{resolver: resolver}
 
 	_, _, err := service.ResolveGitCredential(
-		context.Background(), "workspace-a", "github", "acme", "private",
+		context.Background(), "workspace-a", "github", "", "acme", "private",
 	)
 	if !errors.Is(err, ErrGitHubNotConfigured) {
 		t.Fatalf("ResolveGitCredential() error = %v, want ErrGitHubNotConfigured", err)
@@ -139,7 +139,7 @@ func TestResolveGitCredentialNeverUsesPersonalConnection(t *testing.T) {
 	service := &Service{resolver: resolver}
 
 	_, password, err := service.ResolveGitCredential(
-		context.Background(), "workspace-a", "github", "acme", "private",
+		context.Background(), "workspace-a", "github", "", "acme", "private",
 	)
 	if err != nil {
 		t.Fatalf("ResolveGitCredential(): %v", err)
@@ -174,7 +174,7 @@ func TestResolveGitCredentialRejectsAppWithoutGitRead(t *testing.T) {
 	service := &Service{resolver: resolver}
 
 	_, _, err := service.ResolveGitCredential(
-		context.Background(), "workspace-a", "github", "acme", "private",
+		context.Background(), "workspace-a", "github", "", "acme", "private",
 	)
 	if !errors.Is(err, ErrGitHubCapabilityDenied) {
 		t.Fatalf("ResolveGitCredential() error = %v, want capability denied", err)
@@ -208,7 +208,7 @@ func TestResolveGitCredentialUsesAppWithGitRead(t *testing.T) {
 	service := &Service{resolver: resolver}
 
 	_, password, err := service.ResolveGitCredential(
-		context.Background(), "workspace-a", "github", "acme", "private",
+		context.Background(), "workspace-a", "github", "", "acme", "private",
 	)
 	if err != nil {
 		t.Fatalf("ResolveGitCredential(): %v", err)

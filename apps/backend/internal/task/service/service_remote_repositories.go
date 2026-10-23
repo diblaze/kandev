@@ -101,9 +101,8 @@ func validateBuiltInRemoteHints(input TaskRepositoryInput) error {
 		return NewRepositorySelectionError(RepositorySelectionErrorInvalid,
 			fmt.Errorf("remote_url provider host %q does not match %q", providerHost, input.ProviderHost))
 	}
-	if provider == providerGitLab && providerHost != "https://gitlab.com" && !input.TrustedRemote {
-		return NewRepositorySelectionError(RepositorySelectionErrorInvalid,
-			fmt.Errorf("untrusted GitLab origin %q", providerHost))
+	if err := untrustedRemoteOrigin(provider, providerHost, input.TrustedRemote); err != nil {
+		return NewRepositorySelectionError(RepositorySelectionErrorInvalid, err)
 	}
 	return nil
 }

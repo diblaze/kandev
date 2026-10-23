@@ -105,9 +105,18 @@ func CloneURLWithHost(provider, host, owner, name, protocol string) (string, err
 		if strings.Contains(resolvedHost, ":") {
 			return fmt.Sprintf("ssh://git@%s/%s/%s.git", resolvedHost, owner, name), nil
 		}
-		return fmt.Sprintf("git@%s:%s/%s.git", resolvedHost, owner, name), nil
+		return fmt.Sprintf("%s@%s:%s/%s.git", SSHUser(resolvedHost), resolvedHost, owner, name), nil
 	}
 	return fmt.Sprintf("%s://%s/%s/%s.git", httpsScheme, resolvedHost, owner, name), nil
+}
+
+// SSHUser returns the SSH user of a Git host: the subdomain on a
+// GitHub Enterprise Cloud <subdomain>.ghe.com host, git everywhere else.
+func SSHUser(host string) string {
+	if subdomain, ok := strings.CutSuffix(strings.ToLower(host), ".ghe.com"); ok && subdomain != "" && !strings.Contains(subdomain, ".") {
+		return subdomain
+	}
+	return "git"
 }
 
 func normalizeGitProviderHost(host string) (string, string, error) {

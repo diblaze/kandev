@@ -1940,7 +1940,7 @@ func (s *Service) resolveGitHubPRTriggerRepository(
 	}
 	owner, name := parts[0], parts[1]
 	repoID, baseBranch, err := s.repositoryResolver.ResolveForReview(
-		ctx, workspaceID, "github", owner, name, data.BaseBranch,
+		ctx, workspaceID, "github", "", owner, name, data.BaseBranch,
 	)
 	if err != nil || repoID == "" {
 		s.logger.Warn("failed to resolve PR trigger repository",

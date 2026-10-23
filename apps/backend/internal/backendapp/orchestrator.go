@@ -1350,7 +1350,7 @@ type repositoryResolverAdapter struct {
 }
 
 type reviewRepositoryCloner interface {
-	EnsureWorkspaceCloned(context.Context, string, string, string, string, string) (string, error)
+	EnsureWorkspaceClonedForProvider(context.Context, string, string, string, string, string, string, string, string) (string, error)
 	BuildCloneURLWithHost(context.Context, string, string, string, string) (string, error)
 }
 
@@ -1361,9 +1361,9 @@ type reviewRepositoryCloner interface {
 // performed. Otherwise the repo is cloned into the kandev-managed location and
 // a Repository entity is created.
 func (a *repositoryResolverAdapter) ResolveForReview(
-	ctx context.Context, workspaceID, provider, owner, name, defaultBranch string,
+	ctx context.Context, workspaceID, provider, host, owner, name, defaultBranch string,
 ) (string, string, error) {
-	hostname, err := defaultProviderHostname(provider)
+	hostname, err := reviewProviderHostname(provider, host)
 	if err != nil {
 		return "", "", err
 	}
@@ -1382,7 +1382,9 @@ func (a *repositoryResolverAdapter) ResolveForReview(
 		return "", "", fmt.Errorf("unsupported provider: %w", err)
 	}
 
-	localPath, err := a.cloner.EnsureWorkspaceCloned(ctx, workspaceID, provider, cloneURL, owner, name)
+	localPath, err := a.cloner.EnsureWorkspaceClonedForProvider(
+		ctx, workspaceID, cloneURL, provider, providerHost, owner, name, "", "",
+	)
 	if err != nil {
 		return "", "", fmt.Errorf("clone repository: %w", err)
 	}
@@ -1402,6 +1404,15 @@ func (a *repositoryResolverAdapter) ResolveForReview(
 
 	baseBranch := a.resolveReviewBaseBranch(ctx, repo, localPath, defaultBranch)
 	return repo.ID, baseBranch, nil
+}
+
+// reviewProviderHostname returns the host to look up and clone a review
+// repository on: the pull request's GitHub host, github.com when it is empty.
+func reviewProviderHostname(provider, host string) (string, error) {
+	if strings.EqualFold(provider, gitCredentialGitHubProviderID) || provider == "" {
+		return githubpkg.RepositoryGitHubHost(host)
+	}
+	return defaultProviderHostname(provider)
 }
 
 func defaultProviderHostname(provider string) (string, error) {

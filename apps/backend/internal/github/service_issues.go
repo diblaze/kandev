@@ -457,6 +457,7 @@ func (s *Service) publishNewIssueEvent(ctx context.Context, watch *IssueWatch, i
 	event := bus.NewEvent(events.GitHubNewIssue, "github", &NewIssueEvent{
 		CreatedByUserID:   watch.CreatedByUserID,
 		IssueWatchID:      watch.ID,
+		GitHubHost:        watch.GitHubHost,
 		WorkspaceID:       watch.WorkspaceID,
 		WorkflowID:        watch.WorkflowID,
 		WorkflowStepID:    watch.WorkflowStepID,

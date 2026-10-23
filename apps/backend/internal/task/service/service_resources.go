@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -1138,7 +1139,7 @@ func (s *Service) createRepository(
 	}
 
 	if resolveProvider {
-		resolveRepositoryProviderIdentity(repository)
+		resolveRepositoryProviderIdentity(repository, s.connectedGitHubEnterpriseHosts(ctx, req.WorkspaceID))
 	}
 
 	if err := validateProviderScopeAndRepoIDPair(repository.ProviderScope, repository.ProviderRepoID); err != nil {
@@ -1186,12 +1187,15 @@ func (s *Service) createRepository(
 // ResolveGitRemoteIdentity-based fallback only runs when canonicalCloneOrigin
 // doesn't recognize the host (e.g. a self-hosted GitLab/GitHub Enterprise
 // instance), since it doesn't guarantee a byte-identical canonical form.
-func resolveRepositoryProviderIdentity(repository *models.Repository) {
+func resolveRepositoryProviderIdentity(repository *models.Repository, enterpriseHosts []string) {
 	if repository.LocalPath == "" {
 		return
 	}
 	if repository.Provider == "" || repository.ProviderHost == "" {
 		p, h, o, n := ResolveGitRemoteProviderIdentity(repository.LocalPath)
+		if p == "" {
+			p, h = enterpriseGitHubIdentity(h, enterpriseHosts)
+		}
 		if repository.Provider == "" {
 			repository.Provider = p
 		}
@@ -1202,7 +1206,7 @@ func resolveRepositoryProviderIdentity(repository *models.Repository) {
 		}
 	}
 	if repository.RemoteURL == "" {
-		if origin := canonicalCloneOrigin(repository.LocalPath); origin != "" {
+		if origin := canonicalCloneOrigin(repository.LocalPath, repository.Provider); origin != "" {
 			repository.RemoteURL = origin
 		} else if origin, owner, name := ResolveGitRemoteIdentity(repository.LocalPath); origin != "" && owner != "" && name != "" {
 			repository.RemoteURL = origin + "/" + owner + "/" + name
@@ -1210,15 +1214,29 @@ func resolveRepositoryProviderIdentity(repository *models.Repository) {
 	}
 }
 
+// enterpriseGitHubIdentity tags a remote origin whose host is a connected
+// GitHub enterprise host as a GitHub repository on that host.
+func enterpriseGitHubIdentity(origin string, enterpriseHosts []string) (provider, providerHost string) {
+	parsed, err := url.Parse(origin)
+	if err != nil || !slices.Contains(enterpriseHosts, strings.ToLower(parsed.Hostname())) {
+		return "", origin
+	}
+	return providerGitHub, protocolHTTPS + "://" + strings.ToLower(parsed.Hostname())
+}
+
 // canonicalCloneOrigin returns a credential-free clone URL for a local
 // checkout's origin. Invalid and unsupported origins deliberately remain
 // empty so host-local-only repositories cannot leak credentials into storage.
-func canonicalCloneOrigin(localPath string) string {
+func canonicalCloneOrigin(localPath, provider string) string {
 	raw, err := readGitRemoteOriginURL(localPath)
 	if err != nil || raw == "" {
 		return ""
 	}
-	_, _, _, canonical, err := parseRemoteRepositoryURL(raw, "")
+	hint := ""
+	if provider == providerGitHub {
+		hint = providerGitHub
+	}
+	_, _, _, canonical, err := parseRemoteRepositoryURL(raw, hint)
 	if err != nil {
 		return ""
 	}

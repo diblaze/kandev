@@ -577,7 +577,7 @@ func TestResolveForReviewRedetectsStoredMasterAfterClonePath(t *testing.T) {
 		taskSvc: harness.taskSvc,
 		logger:  newTestLogger(),
 	}
-	repoID, baseBranch, err := adapter.ResolveForReview(ctx, workspace.ID, "github", "owner", "repo", "")
+	repoID, baseBranch, err := adapter.ResolveForReview(ctx, workspace.ID, "github", "", "owner", "repo", "")
 	if err != nil {
 		t.Fatalf("ResolveForReview: %v", err)
 	}
@@ -620,11 +620,11 @@ func TestRepositoryResolverAdapterUsesCurrentGitProtocol(t *testing.T) {
 		logger:  newTestLogger(),
 	}
 
-	if _, _, err := adapter.ResolveForReview(ctx, workspace.ID, "github", "owner", "one", ""); err != nil {
+	if _, _, err := adapter.ResolveForReview(ctx, workspace.ID, "github", "", "owner", "one", ""); err != nil {
 		t.Fatalf("first ResolveForReview: %v", err)
 	}
 	cloner.protocol = repoclone.ProtocolHTTPS
-	if _, _, err := adapter.ResolveForReview(ctx, workspace.ID, "github", "owner", "two", ""); err != nil {
+	if _, _, err := adapter.ResolveForReview(ctx, workspace.ID, "github", "", "owner", "two", ""); err != nil {
 		t.Fatalf("second ResolveForReview: %v", err)
 	}
 
@@ -638,14 +638,16 @@ func TestRepositoryResolverAdapterUsesCurrentGitProtocol(t *testing.T) {
 }
 
 type recordingReviewRepositoryCloner struct {
-	protocol  string
-	paths     []string
-	cloneURLs []string
+	protocol      string
+	paths         []string
+	cloneURLs     []string
+	providerHosts []string
 }
 
-func (c *recordingReviewRepositoryCloner) EnsureWorkspaceCloned(
-	_ context.Context, _, _, _, _, name string,
+func (c *recordingReviewRepositoryCloner) EnsureWorkspaceClonedForProvider(
+	_ context.Context, _, _, _, providerHost, _, _, _, _ string,
 ) (string, error) {
+	c.providerHosts = append(c.providerHosts, providerHost)
 	path := c.paths[0]
 	c.paths = c.paths[1:]
 	return path, nil

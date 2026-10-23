@@ -89,6 +89,7 @@ func (s *Service) previewLocalWorkspaceRepository(ctx context.Context, workspace
 
 func (s *Service) previewRemoteWorkspaceRepository(ctx context.Context, workspaceID string, source WorkspaceSourceInput) (*models.Repository, error) {
 	input := TaskRepositoryInput{RemoteURL: source.RemoteURL, GitHubURL: source.GitHubURL, Provider: source.Provider, ProviderOwner: source.ProviderOwner, ProviderName: source.ProviderName}
+	s.trustConnectedGitHubRemote(ctx, workspaceID, &input)
 	provider, owner, name, canonical, err := parseRemoteRepositoryURL(effectiveRemoteURL(input), input.Provider)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidWorkspaceSource, err)
@@ -100,7 +101,7 @@ func (s *Service) previewRemoteWorkspaceRepository(ctx context.Context, workspac
 	host := remoteProviderHost(provider, canonical)
 	if (source.Provider != "" && !strings.EqualFold(source.Provider, provider)) ||
 		(source.ProviderHost != "" && !strings.EqualFold(strings.TrimRight(source.ProviderHost, "/"), host)) ||
-		(provider == providerGitLab && host != "https://gitlab.com") {
+		untrustedRemoteOrigin(provider, host, input.TrustedRemote) != nil {
 		return nil, fmt.Errorf("%w: unsupported remote repository origin", ErrInvalidWorkspaceSource)
 	}
 	existing, err := s.repoEntities.GetRepositoryByProviderIdentity(ctx, models.ProviderRepositoryIdentity{WorkspaceID: workspaceID, Provider: provider, Host: host, RepositoryID: source.ProviderRepoID, Owner: owner, Name: name})

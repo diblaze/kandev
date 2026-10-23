@@ -1286,6 +1286,7 @@ type PRFeedbackEvent struct {
 type NewReviewPREvent struct {
 	CreatedByUserID   string `json:"created_by_user_id,omitempty"`
 	ReviewWatchID     string `json:"review_watch_id"`
+	GitHubHost        string `json:"github_host,omitempty"`
 	WorkspaceID       string `json:"workspace_id"`
 	WorkflowID        string `json:"workflow_id"`
 	WorkflowStepID    string `json:"workflow_step_id"`
@@ -1432,6 +1433,7 @@ type IssueWatchTask struct {
 type NewIssueEvent struct {
 	CreatedByUserID   string `json:"created_by_user_id,omitempty"`
 	IssueWatchID      string `json:"issue_watch_id"`
+	GitHubHost        string `json:"github_host,omitempty"`
 	WorkspaceID       string `json:"workspace_id"`
 	WorkflowID        string `json:"workflow_id"`
 	WorkflowStepID    string `json:"workflow_step_id"`

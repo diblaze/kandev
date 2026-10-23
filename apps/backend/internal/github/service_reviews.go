@@ -995,6 +995,7 @@ func (s *Service) publishNewReviewPREvent(ctx context.Context, watch *ReviewWatc
 	event := bus.NewEvent(events.GitHubNewReviewPR, "github", &NewReviewPREvent{
 		CreatedByUserID:   watch.CreatedByUserID,
 		ReviewWatchID:     watch.ID,
+		GitHubHost:        watch.GitHubHost,
 		WorkspaceID:       watch.WorkspaceID,
 		WorkflowID:        watch.WorkflowID,
 		WorkflowStepID:    watch.WorkflowStepID,

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kandev/kandev/internal/gitcredentials"
+	githubpkg "github.com/kandev/kandev/internal/github"
 	"github.com/kandev/kandev/internal/githubauth"
 	"github.com/kandev/kandev/internal/plugins"
 	"github.com/kandev/kandev/internal/repoclone"
@@ -78,7 +79,7 @@ type pluginCredentialService interface {
 
 type githubCloneCredentialService interface {
 	ResolveGitCredential(
-		context.Context, string, string, string, string,
+		context.Context, string, string, string, string, string,
 	) (username, password string, err error)
 }
 
@@ -108,8 +109,12 @@ func (p repositoryCloneCredentialProvider) ResolveGitCredential(
 		if p.github == nil {
 			return "", "", repoclone.ErrWorkspaceCredentialUnavailable
 		}
+		host, err := githubpkg.RepositoryGitHubHost(request.ProviderHost)
+		if err != nil {
+			return "", "", err
+		}
 		return p.github.ResolveGitCredential(
-			ctx, request.WorkspaceID, providerID, request.Owner, request.Name,
+			ctx, request.WorkspaceID, providerID, host, request.Owner, request.Name,
 		)
 	}
 	if p.plugins == nil {

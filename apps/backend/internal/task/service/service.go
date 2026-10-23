@@ -585,6 +585,7 @@ type Service struct {
 	remoteBranchLister             RemoteBranchLister
 	repositorySelectionResolver    RepositorySelectionResolver
 	gitLabRepositoryOriginVerifier GitLabRepositoryOriginVerifier
+	workspaceGitHubHostsReader     WorkspaceGitHubHostsReader
 	repoCloneLocation              RepoCloneLocation
 	blockers                       BlockerRepository
 	comments                       CommentRepository

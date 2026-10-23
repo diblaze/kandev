@@ -29,7 +29,8 @@ type RepositoryDiscoveryConfig struct {
 
 const (
 	githubProviderName = "github"
-	githubProviderHost = "https://github.com"
+	githubHostname     = "github.com"
+	githubProviderHost = "https://" + githubHostname
 )
 
 // LocalRepoStatus reports the current branch and dirty file paths for a

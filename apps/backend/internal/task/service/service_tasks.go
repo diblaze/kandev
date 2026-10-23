@@ -1683,8 +1683,8 @@ func (s *Service) resolveRepoInputRemote(
 	if repoInput.ProviderHost != "" && !strings.EqualFold(strings.TrimRight(repoInput.ProviderHost, "/"), providerHost) {
 		return "", "", false, fmt.Errorf("remote_url provider host %q does not match %q", providerHost, repoInput.ProviderHost)
 	}
-	if provider == providerGitLab && providerHost != "https://gitlab.com" && !repoInput.TrustedRemote {
-		return "", "", false, fmt.Errorf("untrusted GitLab origin %q", providerHost)
+	if err := untrustedRemoteOrigin(provider, providerHost, repoInput.TrustedRemote); err != nil {
+		return "", "", false, err
 	}
 	repo, repoCreated, createErr := s.FindOrCreateRepository(ctx, &FindOrCreateRepositoryRequest{
 		WorkspaceID:    workspaceID,
@@ -1814,6 +1814,9 @@ func parseRemoteRepositoryURL(raw, providerHint string) (provider, owner, name, 
 			(parsed.Scheme == protocolHTTP || parsed.Scheme == protocolHTTPS) {
 			return parseGitLabRemote(parsed.Scheme, originHost, parts, false)
 		}
+		if strings.EqualFold(providerHint, providerGitHub) {
+			return parseGitHubRemote(host, parts, sshStyle)
+		}
 		return "", "", "", "", fmt.Errorf("unsupported remote repository host: %s", host)
 	}
 }
@@ -1823,11 +1826,11 @@ func normalizeRemoteRepositoryURL(raw string) (*url.URL, bool, error) {
 	if raw == "" {
 		return nil, false, fmt.Errorf("empty remote repository URL")
 	}
-	sshStyle := strings.HasPrefix(raw, "git@") && strings.Contains(raw, ":")
+	user, hostAndPath, hasUser := strings.Cut(raw, "@")
+	sshStyle := hasUser && user != "" && !strings.Contains(raw, "://") && strings.Contains(hostAndPath, ":")
 	if sshStyle {
-		hostAndPath := strings.TrimPrefix(raw, "git@")
-		separator := strings.Index(hostAndPath, ":")
-		raw = "ssh://git@" + hostAndPath[:separator] + "/" + hostAndPath[separator+1:]
+		host, path, _ := strings.Cut(hostAndPath, ":")
+		raw = "ssh://" + user + "@" + host + "/" + path
 	} else if !strings.Contains(raw, "://") {
 		raw = "https://" + raw
 	}
@@ -1843,9 +1846,13 @@ func parseGitHubRemote(host string, parts []string, sshStyle bool) (string, stri
 		return "", "", "", "", fmt.Errorf("invalid GitHub repository URL: expected github.com/owner/repo")
 	}
 	owner, name := parts[0], parts[1]
-	canonical := fmt.Sprintf("https://github.com/%s/%s.git", owner, name)
+	webHost := host
+	if host == "www."+githubHostname {
+		webHost = githubHostname
+	}
+	canonical := fmt.Sprintf("https://%s/%s/%s.git", webHost, owner, name)
 	if sshStyle {
-		canonical = fmt.Sprintf("git@%s:%s/%s.git", host, owner, name)
+		canonical = fmt.Sprintf("%s@%s:%s/%s.git", repoclone.SSHUser(host), host, owner, name)
 	}
 	return providerGitHub, owner, name, canonical, nil
 }
@@ -1875,13 +1882,14 @@ func parseGitLabRemote(scheme, host string, parts []string, sshStyle bool) (stri
 }
 
 func remoteProviderHost(provider, remoteURL string) string {
-	if provider == providerGitHub {
-		return githubProviderHost
-	}
-	if !strings.EqualFold(provider, providerGitLab) {
+	isGitHub := provider == providerGitHub
+	if !isGitHub && !strings.EqualFold(provider, providerGitLab) {
 		return ""
 	}
 	origin, _ := ParseGitRemoteIdentity(remoteURL)
+	if isGitHub && (origin == "" || strings.HasSuffix(origin, "://www."+githubHostname)) {
+		return githubProviderHost
+	}
 	if strings.HasPrefix(origin, protocolHTTP+"://") || strings.HasPrefix(origin, protocolHTTPS+"://") {
 		return origin
 	}

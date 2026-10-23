@@ -552,6 +552,19 @@ func wireTaskWorkflowCrossReferences(
 	workflowSvc.SetImportProfileCatalog(newWorkflowImportProfileCatalog(repos))
 }
 
+// wireGitHubRepositoryIdentity lets the task service classify repositories on
+// the workspace's connected GitHub hosts, and reclassifies existing ones when a
+// host connects.
+func wireGitHubRepositoryIdentity(taskSvc *taskservice.Service, githubSvc *github.Service, log *logger.Logger) {
+	taskSvc.SetWorkspaceGitHubHostsReader(githubSvc)
+	githubSvc.SetHostConnectedObserver(func(ctx context.Context, workspaceID, host string) {
+		if _, err := taskSvc.ReclassifyWorkspaceGitHubRepositories(ctx, workspaceID, host); err != nil {
+			log.Warn("reclassify workspace GitHub repositories",
+				zap.String("workspace_id", workspaceID), zap.String("github_host", host), zap.Error(err))
+		}
+	})
+}
+
 // thirdPartyProviders holds the code-host and issue-tracker integrations
 // initThirdPartyProviders constructs, so provideServices can wire them
 // without repeating each one's init-and-record boilerplate inline.
@@ -586,6 +599,7 @@ func initThirdPartyProviders(
 		taskSvc.SetTaskStatusSummaryPRReader(&githubTaskStatusSummaryPRReader{gh: githubSvc})
 		githubSvc.SetComparisonTargetObserver(taskSvc)
 		githubSvc.SetPromptResolver(promptSvc)
+		wireGitHubRepositoryIdentity(taskSvc, githubSvc, log)
 		taskSvc.SetContributionDestinationPreparer(&githubContributionDestinationPreparer{service: githubSvc, taskSvc: taskSvc})
 		if brokerErr := githubSvc.ConfigureCredentialBroker(&githubBrokerScopeAuthorizer{repo: repos.Task, provider: githubSvc}); brokerErr != nil {
 			log.Warn("GitHub credential broker initialization failed", zap.Error(brokerErr))
