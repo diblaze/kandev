@@ -67,7 +67,7 @@ type AppRegistrationWebhookVerifier interface {
 	GetWebhookConfig(context.Context) (AppWebhookConfig, error)
 }
 
-type AppRegistrationVerifierFactory func(int64, []byte) (AppRegistrationVerifier, error)
+type AppRegistrationVerifierFactory func(string, int64, []byte) (AppRegistrationVerifier, error)
 
 type AppRegistrationImporter struct {
 	repository *AppRegistrationRepository
@@ -94,7 +94,7 @@ func (s *AppRegistrationImporter) Import(
 	if duplicate, err := s.findDuplicate(ctx, validated); err != nil || duplicate != nil {
 		return nil, duplicateOrPersistenceError(duplicate, err)
 	}
-	verifier, err := s.verifierFactory()(validated.AppID, []byte(validated.PrivateKey))
+	verifier, err := s.verifierFactory()(validated.GitHubHost, validated.AppID, []byte(validated.PrivateKey))
 	if err != nil {
 		return nil, importError(AppRegistrationImportVerificationFailed)
 	}
@@ -211,8 +211,8 @@ func (s *AppRegistrationImporter) verifierFactory() AppRegistrationVerifierFacto
 	if s.verifier != nil {
 		return s.verifier
 	}
-	return func(appID int64, privateKey []byte) (AppRegistrationVerifier, error) {
-		return NewAppClient(appID, privateKey)
+	return func(host string, appID int64, privateKey []byte) (AppRegistrationVerifier, error) {
+		return NewAppClient(host, appID, privateKey)
 	}
 }
 

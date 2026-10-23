@@ -197,6 +197,17 @@ func TestResolveGHAccountTokenSelectsExactAccount(t *testing.T) {
 	}
 }
 
+func TestResolveGHAccountTokenUsesEnterpriseHost(t *testing.T) {
+	runner := &modernGHTokenRunner{}
+	if _, err := resolveGHAccountToken(context.Background(), runner, "OCTO.ghe.com", "alice"); err != nil {
+		t.Fatalf("resolveGHAccountToken: %v", err)
+	}
+	want := []string{"auth", "token", "--hostname", "octo.ghe.com", "--user", "alice"}
+	if got := runner.args[len(runner.args)-1]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("token args = %#v, want %#v", got, want)
+	}
+}
+
 type legacyGHTokenRunner struct {
 	args [][]string
 }
@@ -291,10 +302,10 @@ func TestResolveGHAccountTokenDoesNotFallBackAfterNamedAccountFailure(t *testing
 	}
 }
 
-func TestResolveGHAccountTokenRejectsUnsupportedHost(t *testing.T) {
+func TestResolveGHAccountTokenRejectsInvalidHost(t *testing.T) {
 	runner := &fakeGHAccountRunner{output: "must-not-run"}
-	if _, err := resolveGHAccountToken(context.Background(), runner, "git.example.com", "alice"); err == nil {
-		t.Fatal("expected unsupported host error")
+	if _, err := resolveGHAccountToken(context.Background(), runner, "https://git.example.com", "alice"); err == nil {
+		t.Fatal("expected invalid host error")
 	}
 	if len(runner.args) != 0 {
 		t.Fatalf("runner called with %#v", runner.args)

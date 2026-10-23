@@ -293,7 +293,7 @@ func (s *AppRegistrationLifecycleService) CompleteManifest(
 	if s.converter == nil {
 		return AppRegistrationManifestResult{}, errors.New("GitHub App manifest conversion is unavailable")
 	}
-	converted, err := s.converter.Convert(ctx, strings.TrimSpace(callback.Code))
+	converted, err := s.converter.Convert(ctx, defaultGitHubAppHost, strings.TrimSpace(callback.Code))
 	if err != nil {
 		return AppRegistrationManifestResult{}, err
 	}

@@ -931,7 +931,7 @@ type gistFileDTO struct {
 // switch to wrapping in `GitHubAPIError`) if the caller needs per-status
 // mapping like the merge endpoint does.
 func (c *PATClient) post(ctx context.Context, endpoint string, body []byte) error {
-	u := githubAPIBase + endpoint
+	u := c.endpoints.REST + endpoint
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -967,7 +967,7 @@ func (c *PATClient) requestJSON(
 	body []byte,
 	result interface{},
 ) error {
-	u := githubAPIBase + endpoint
+	u := c.endpoints.REST + endpoint
 	req, err := http.NewRequestWithContext(ctx, method, u, bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -996,7 +996,7 @@ func (c *PATClient) requestJSON(
 // delete sends a DELETE request. 2xx and 404 both return nil-or-typed-error per caller intent.
 // Here we return a typed error on any non-2xx so callers can inspect for 404.
 func (c *PATClient) delete(ctx context.Context, endpoint string) error {
-	u := githubAPIBase + endpoint
+	u := c.endpoints.REST + endpoint
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
 	if err != nil {
 		return err
@@ -1027,7 +1027,7 @@ func (c *PATClient) putJSON(ctx context.Context, endpoint string, body []byte, r
 }
 
 func (c *PATClient) get(ctx context.Context, endpoint string, result interface{}) error {
-	url := githubAPIBase + endpoint
+	url := c.endpoints.REST + endpoint
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -1051,7 +1051,7 @@ func (c *PATClient) get(ctx context.Context, endpoint string, result interface{}
 
 // getPaginated is like get but also returns the "next" link from the Link header, if any.
 func (c *PATClient) getPaginated(ctx context.Context, endpoint string, result interface{}) (string, error) {
-	u := githubAPIBase + endpoint
+	u := c.endpoints.REST + endpoint
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return "", err
@@ -1073,11 +1073,11 @@ func (c *PATClient) getPaginated(ctx context.Context, endpoint string, result in
 	if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
 		return "", err
 	}
-	return parseNextLink(resp.Header.Get("Link")), nil
+	return parseNextLink(resp.Header.Get("Link"), c.endpoints.REST), nil
 }
 
 // parseNextLink extracts the "next" URL path+query from a GitHub Link header.
-func parseNextLink(header string) string {
+func parseNextLink(header, apiBase string) string {
 	if header == "" {
 		return ""
 	}
@@ -1093,8 +1093,8 @@ func parseNextLink(header string) string {
 		}
 		link := part[start+1 : end]
 		// Strip the base URL to return just the path+query for our get method
-		if strings.HasPrefix(link, githubAPIBase) {
-			return link[len(githubAPIBase):]
+		if strings.HasPrefix(link, apiBase) {
+			return link[len(apiBase):]
 		}
 		return link
 	}

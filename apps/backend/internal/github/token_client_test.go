@@ -25,7 +25,7 @@ func TestTokenClient_PATCompatibility(t *testing.T) {
 }
 
 func TestTokenClient_AppUserConstructor(t *testing.T) {
-	client := NewAppUserTokenClient("ghu_token", 123, "octocat")
+	client := NewAppUserTokenClient(defaultGitHubHost, "ghu_token", 123, "octocat")
 	principal := client.Principal()
 	if principal.Kind != TokenCredentialUser || principal.PrincipalID != "user:123" || principal.Login != "octocat" {
 		t.Fatalf("App user principal = %+v", principal)

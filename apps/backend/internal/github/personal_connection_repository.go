@@ -437,7 +437,7 @@ func (p *personalAuthCredentialProvider) ResolveUser(
 		return nil, fmt.Errorf("%w: personal connection changed during resolution", ErrGitHubConnectionInvalid)
 	}
 	tracker := NewRateTracker(nil, nil)
-	client := NewAppUserTokenClient(token, current.GitHubUserID, current.Login).WithRateTracker(tracker)
+	client := NewAppUserTokenClient(defaultGitHubHost, token, current.GitHubUserID, current.Login).WithRateTracker(tracker)
 	return &ResolvedCredential{
 		Client: client,
 		Principal: AuthPrincipal{

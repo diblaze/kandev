@@ -48,7 +48,7 @@ func decodeJWTPart(t *testing.T, part string, out any) {
 func TestAppClient_JWTClaimsAndSignature(t *testing.T) {
 	key, pemBytes := testAppPrivateKey(t)
 	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
-	client, err := NewAppClient(12345, pemBytes)
+	client, err := NewAppClient(defaultGitHubHost, 12345, pemBytes)
 	if err != nil {
 		t.Fatalf("NewAppClient: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestAppClient_MintInstallationTokenScopesPermissions(t *testing.T) {
 		}, nil
 	})
 
-	client, err := NewAppClient(123, pemBytes)
+	client, err := NewAppClient(defaultGitHubHost, 123, pemBytes)
 	if err != nil {
 		t.Fatalf("NewAppClient: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestAppClient_GetInstallation(t *testing.T) {
 			)),
 		}, nil
 	})
-	client, err := NewAppClient(123, pemBytes)
+	client, err := NewAppClient(defaultGitHubHost, 123, pemBytes)
 	if err != nil {
 		t.Fatalf("NewAppClient: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestAppClient_GetAuthenticatedApp(t *testing.T) {
 			}`)),
 		}, nil
 	})
-	client, err := NewAppClient(123, pemBytes)
+	client, err := NewAppClient(defaultGitHubHost, 123, pemBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestAppClient_GetAuthenticatedApp(t *testing.T) {
 
 func TestAppClient_GetAuthenticatedAppBoundsProviderResponse(t *testing.T) {
 	_, pemBytes := testAppPrivateKey(t)
-	client, err := NewAppClient(123, pemBytes)
+	client, err := NewAppClient(defaultGitHubHost, 123, pemBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestAppClient_GetAuthenticatedAppBoundsProviderResponse(t *testing.T) {
 
 func TestAppClient_GetWebhookConfig(t *testing.T) {
 	_, pemBytes := testAppPrivateKey(t)
-	client, err := NewAppClient(123, pemBytes)
+	client, err := NewAppClient(defaultGitHubHost, 123, pemBytes)
 	if err != nil {
 		t.Fatal(err)
 	}

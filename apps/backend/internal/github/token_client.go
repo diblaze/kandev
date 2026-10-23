@@ -38,6 +38,7 @@ type TokenClient struct {
 	username      string // cached after first GetAuthenticatedUser call
 	rateTracker   *RateTracker
 	principal     TokenPrincipal
+	endpoints     githubEndpoints
 	mergePollWait func(context.Context, time.Duration) error
 }
 
@@ -52,7 +53,15 @@ func NewTokenClient(token string, principal TokenPrincipal) *TokenClient {
 			Timeout: 30 * time.Second,
 		},
 		principal: principal,
+		endpoints: endpointsForHost(defaultGitHubHost),
 	}
+}
+
+// WithHost binds the client to the endpoints of a normalized GitHub host, so
+// its token is sent only to that host.
+func (c *TokenClient) WithHost(host string) *TokenClient {
+	c.endpoints = endpointsForHost(host)
+	return c
 }
 
 // NewPATClient creates a PAT-based GitHub client.
@@ -61,12 +70,12 @@ func NewPATClient(token string) *PATClient {
 }
 
 // NewAppUserTokenClient creates a client for a GitHub App user access token.
-func NewAppUserTokenClient(token string, githubUserID int64, login string) *TokenClient {
+func NewAppUserTokenClient(host, token string, githubUserID int64, login string) *TokenClient {
 	return NewTokenClient(token, TokenPrincipal{
 		Kind:        TokenCredentialUser,
 		PrincipalID: fmt.Sprintf("user:%d", githubUserID),
 		Login:       login,
-	})
+	}).WithHost(host)
 }
 
 // Principal returns the actor metadata attached at construction.

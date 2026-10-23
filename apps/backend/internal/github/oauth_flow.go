@@ -253,11 +253,12 @@ type GitHubOAuthClient struct {
 	now          func() time.Time
 }
 
-func NewGitHubOAuthClient(clientID, clientSecret string) *GitHubOAuthClient {
+func NewGitHubOAuthClient(host, clientID, clientSecret string) *GitHubOAuthClient {
+	endpoints := endpointsForHost(host)
 	return &GitHubOAuthClient{
 		clientID: clientID, clientSecret: clientSecret,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
-		webBaseURL: "https://github.com", apiBaseURL: githubAPIBase, now: time.Now,
+		webBaseURL: endpoints.Web, apiBaseURL: endpoints.REST, now: time.Now,
 	}
 }
 

@@ -702,7 +702,7 @@ func (c *PATClient) ExecuteGraphQL(ctx context.Context, query string, variables 
 	if err != nil {
 		return fmt.Errorf("marshal graphql: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, githubAPIBase+"/graphql", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoints.GraphQL, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}

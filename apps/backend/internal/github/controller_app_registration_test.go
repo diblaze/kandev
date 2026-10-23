@@ -101,7 +101,7 @@ func setupAppRegistrationController(t *testing.T) (*gin.Engine, *Service, *Store
 			context.Context, string, string,
 		) ([]netip.Addr, error) {
 			return []netip.Addr{netip.MustParseAddr("203.0.114.10")}, nil
-		}), func(int64, []byte) (AppRegistrationVerifier, error) {
+		}), func(string, int64, []byte) (AppRegistrationVerifier, error) {
 			return appRegistrationVerifierFunc(func(context.Context) (AuthenticatedApp, error) {
 				return AuthenticatedApp{
 					ID: 101, ClientID: "Iv1.client", Slug: "kandev-app",

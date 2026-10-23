@@ -19,7 +19,7 @@ var (
 const defaultGitHubAppHost = "github.com"
 
 type DeploymentAppManifestConverter interface {
-	Convert(context.Context, string) (ManifestConversionResult, error)
+	Convert(ctx context.Context, host, code string) (ManifestConversionResult, error)
 }
 
 func requireDeploymentAppOperator(ctx context.Context, userID string) error {

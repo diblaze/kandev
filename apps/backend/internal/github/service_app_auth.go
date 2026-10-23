@@ -153,7 +153,7 @@ func (s *Service) buildDeploymentAppRuntime(
 	if err != nil {
 		return nil, fmt.Errorf("load GitHub App private key: %w", err)
 	}
-	appClient, err := NewAppClient(resolved.Config.AppID, privateKey)
+	appClient, err := NewAppClient(resolved.Registration.GitHubHost, resolved.Config.AppID, privateKey)
 	if err != nil {
 		return nil, fmt.Errorf("initialize GitHub App client: %w", err)
 	}
@@ -171,7 +171,7 @@ func (s *Service) buildDeploymentAppRuntimeWithClient(
 		return nil, errors.New("GitHub App runtime configuration is incomplete")
 	}
 	flows := NewOAuthFlowManager(s.store)
-	oauth := NewGitHubOAuthClient(config.ClientID, config.ClientSecret)
+	oauth := NewGitHubOAuthClient(resolved.Registration.GitHubHost, config.ClientID, config.ClientSecret)
 	personalRepo := s.personalConnections
 	if personalRepo == nil {
 		personalRepo = NewStorePersonalConnectionRepository(s.store, s.connectionSecrets)
@@ -179,6 +179,7 @@ func (s *Service) buildDeploymentAppRuntimeWithClient(
 	connectionStore := &serviceAppConnectionStore{service: s}
 	personal := NewPersonalAuthService(PersonalAuthConfig{
 		RegistrationID: resolved.Registration.ID,
+		Host:           resolved.Registration.GitHubHost,
 		ClientID:       config.ClientID,
 		CallbackURL:    baseURL + "/api/v1/github/app/registrations/" + resolved.Registration.ID + "/personal/callback",
 	}, flows, personalRepo, oauth)
@@ -191,7 +192,7 @@ func (s *Service) buildDeploymentAppRuntimeWithClient(
 		appClient: appClient, installationTokens: tokens,
 		installationProvider: NewCachedInstallationCredentialProvider(tokens),
 		appInstallationAuth: NewAppInstallationService(AppInstallationConfig{
-			RegistrationID: registrationID, Slug: config.Slug,
+			RegistrationID: registrationID, Host: resolved.Registration.GitHubHost, Slug: config.Slug,
 			CallbackURL: baseURL + "/api/v1/github/app/registrations/" + registrationID + "/install/callback",
 		}, flows, connectionStore, appClient, oauth),
 		personalAuth: personal,

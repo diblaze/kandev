@@ -53,6 +53,7 @@ type PersonalConnectionRepository interface {
 
 type PersonalAuthConfig struct {
 	RegistrationID string
+	Host           string
 	ClientID       string
 	CallbackURL    string
 }
@@ -133,7 +134,7 @@ func (s *PersonalAuthService) Start(
 	if err != nil {
 		return PersonalAuthStart{}, err
 	}
-	authorizeURL := &url.URL{Scheme: "https", Host: "github.com", Path: "/login/oauth/authorize"}
+	authorizeURL := oauthAuthorizeURL(s.config.Host)
 	query := authorizeURL.Query()
 	query.Set("client_id", s.config.ClientID)
 	query.Set("redirect_uri", s.config.CallbackURL)
@@ -551,4 +552,10 @@ func validatePersonalAuthConfig(config PersonalAuthConfig) error {
 		return errors.New("personal GitHub callback URL must be absolute")
 	}
 	return nil
+}
+
+// oauthAuthorizeURL is the OAuth authorization page of host.
+func oauthAuthorizeURL(host string) *url.URL {
+	authorizeURL, _ := url.Parse(endpointsForHost(host).Web + "/login/oauth/authorize")
+	return authorizeURL
 }

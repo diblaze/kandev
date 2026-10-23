@@ -40,7 +40,7 @@ func TestAppRegistrationImportReturnsKnownDuplicateWithoutVerification(t *testin
 		t.Fatal(err)
 	}
 	importer := NewAppRegistrationImporter(repository, importPublicResolver(),
-		func(int64, []byte) (AppRegistrationVerifier, error) {
+		func(string, int64, []byte) (AppRegistrationVerifier, error) {
 			t.Fatal("duplicate import attempted provider verification")
 			return nil, nil
 		})
@@ -76,7 +76,7 @@ func TestAppRegistrationImportRejectsIdentityAndPolicyMismatchWithoutSecrets(t *
 			repository := NewAppRegistrationRepository(store, newFakeConnectionSecrets())
 			request := validAppRegistrationImportRequest(t)
 			importer := NewAppRegistrationImporter(repository, importPublicResolver(),
-				func(int64, []byte) (AppRegistrationVerifier, error) {
+				func(string, int64, []byte) (AppRegistrationVerifier, error) {
 					return appRegistrationVerifierFunc(func(context.Context) (AuthenticatedApp, error) {
 						app := authenticatedAppForImport(t, request)
 						tt.mutate(&app)
@@ -108,7 +108,7 @@ func TestAppRegistrationImportBoundsSecretInputsBeforeVerification(t *testing.T)
 	importer := NewAppRegistrationImporter(
 		NewAppRegistrationRepository(newTestStore(t), newFakeConnectionSecrets()),
 		importPublicResolver(),
-		func(int64, []byte) (AppRegistrationVerifier, error) {
+		func(string, int64, []byte) (AppRegistrationVerifier, error) {
 			t.Fatal("oversized import reached verifier")
 			return nil, nil
 		},
@@ -124,7 +124,7 @@ func TestAppRegistrationImportSanitizesVerificationFailure(t *testing.T) {
 	importer := NewAppRegistrationImporter(
 		NewAppRegistrationRepository(newTestStore(t), newFakeConnectionSecrets()),
 		importPublicResolver(),
-		func(int64, []byte) (AppRegistrationVerifier, error) {
+		func(string, int64, []byte) (AppRegistrationVerifier, error) {
 			return nil, errors.New(request.ClientSecret + request.WebhookSecret + request.PrivateKey)
 		},
 	)
@@ -144,7 +144,7 @@ func TestAppRegistrationImportRejectsWrongExposedWebhookConfig(t *testing.T) {
 	repository := NewAppRegistrationRepository(store, newFakeConnectionSecrets())
 	request := validAppRegistrationImportRequest(t)
 	importer := NewAppRegistrationImporter(repository, importPublicResolver(),
-		func(int64, []byte) (AppRegistrationVerifier, error) {
+		func(string, int64, []byte) (AppRegistrationVerifier, error) {
 			return appRegistrationVerifierWithWebhook{
 				app: authenticatedAppForImport(t, request),
 				config: AppWebhookConfig{
@@ -167,7 +167,7 @@ func TestAppRegistrationImportAcceptsDocumentedAuthenticatedAppShapeAndPersists(
 	request := validAppRegistrationImportRequest(t)
 	verified := false
 	importer := NewAppRegistrationImporter(repository, importPublicResolver(),
-		func(appID int64, privateKey []byte) (AppRegistrationVerifier, error) {
+		func(_ string, appID int64, privateKey []byte) (AppRegistrationVerifier, error) {
 			if appID != request.AppID || string(privateKey) != request.PrivateKey {
 				t.Fatalf("verifier credentials = app %d key %q", appID, privateKey)
 			}

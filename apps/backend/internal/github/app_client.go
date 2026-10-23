@@ -102,7 +102,7 @@ type AppClient struct {
 }
 
 // NewAppClient parses an RSA private key and creates a GitHub App client.
-func NewAppClient(appID int64, privateKeyPEM []byte) (*AppClient, error) {
+func NewAppClient(host string, appID int64, privateKeyPEM []byte) (*AppClient, error) {
 	if appID <= 0 {
 		return nil, fmt.Errorf("GitHub App ID must be positive")
 	}
@@ -114,7 +114,7 @@ func NewAppClient(appID int64, privateKeyPEM []byte) (*AppClient, error) {
 		appID:      appID,
 		privateKey: privateKey,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
-		baseURL:    githubAPIBase,
+		baseURL:    endpointsForHost(host).REST,
 		now:        time.Now,
 	}, nil
 }

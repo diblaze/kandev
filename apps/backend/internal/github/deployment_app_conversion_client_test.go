@@ -48,7 +48,7 @@ func TestManifestConversionParsesIdentityAndGeneratedCredentials(t *testing.T) {
 	client.apiBaseURL = "https://api.test"
 	client.httpClient.Transport = transport
 
-	result, err := client.Convert(context.Background(), "code/with/slashes")
+	result, err := client.Convert(context.Background(), defaultGitHubHost, "code/with/slashes")
 	if err != nil {
 		t.Fatalf("Convert() error = %v", err)
 	}
@@ -135,7 +135,7 @@ func TestManifestConversionUsesStableSanitizedErrors(t *testing.T) {
 			client := NewManifestConversionClient()
 			client.apiBaseURL = "https://api.test"
 			client.httpClient.Transport = tt.transport
-			_, err := client.Convert(context.Background(), conversionCode)
+			_, err := client.Convert(context.Background(), defaultGitHubHost, conversionCode)
 			var conversionErr *ManifestConversionError
 			if !errors.As(err, &conversionErr) || conversionErr.Code != tt.wantCode ||
 				conversionErr.StatusCode != tt.wantStatus {
@@ -165,7 +165,7 @@ func TestManifestConversionRejectsMissingRequiredFieldsWithoutLeakingThem(t *tes
 	client := NewManifestConversionClient()
 	client.apiBaseURL = "https://api.test"
 	client.httpClient.Transport = transport
-	_, err := client.Convert(context.Background(), "code")
+	_, err := client.Convert(context.Background(), defaultGitHubHost, "code")
 	var conversionErr *ManifestConversionError
 	if !errors.As(err, &conversionErr) || conversionErr.Code != ManifestConversionInvalidResponse {
 		t.Fatalf("error = %#v, want invalid response", err)

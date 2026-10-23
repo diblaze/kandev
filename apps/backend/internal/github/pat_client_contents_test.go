@@ -330,7 +330,7 @@ func TestParseNextLink(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := parseNextLink(tc.header); got != tc.want {
+			if got := parseNextLink(tc.header, githubAPIBase); got != tc.want {
 				t.Errorf("parseNextLink(%q) = %q, want %q", tc.header, got, tc.want)
 			}
 		})

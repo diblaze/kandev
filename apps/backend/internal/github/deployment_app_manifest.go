@@ -214,7 +214,7 @@ func BuildDeploymentAppManifest(
 	}
 	return DeploymentAppManifestSubmission{
 		Revision:        DeploymentAppManifestRevision,
-		RegistrationURL: manifestRegistrationURL(ownerType, ownerLogin),
+		RegistrationURL: manifestRegistrationURL(defaultGitHubAppHost, ownerType, ownerLogin),
 		Manifest: DeploymentAppManifest{
 			Name:        deploymentAppName(ownerLogin, baseURL),
 			Description: "Repository automation for Kandev workspaces.",
@@ -300,11 +300,12 @@ func validManifestOwner(ownerType ManifestOwnerType, ownerLogin string) bool {
 		githubOwnerLoginPattern.MatchString(ownerLogin)
 }
 
-func manifestRegistrationURL(ownerType ManifestOwnerType, ownerLogin string) string {
+func manifestRegistrationURL(host string, ownerType ManifestOwnerType, ownerLogin string) string {
+	web := endpointsForHost(host).Web
 	if ownerType == ManifestOwnerOrganization {
-		return "https://github.com/organizations/" + url.PathEscape(ownerLogin) + "/settings/apps/new"
+		return web + "/organizations/" + url.PathEscape(ownerLogin) + "/settings/apps/new"
 	}
-	return "https://github.com/settings/apps/new"
+	return web + "/settings/apps/new"
 }
 
 func deploymentAppName(ownerLogin, baseURL string) string {

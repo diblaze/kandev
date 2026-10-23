@@ -183,14 +183,11 @@ func ResolveGHAccountToken(ctx context.Context, host, login string) (string, err
 }
 
 func resolveGHAccountToken(ctx context.Context, runner ghAccountCommandRunner, host, login string) (string, error) {
-	host = strings.TrimSpace(host)
+	host, err := normalizeGitHubHost(host)
+	if err != nil {
+		return "", err
+	}
 	login = strings.TrimSpace(login)
-	if host == "" {
-		host = defaultGitHubHost
-	}
-	if host != defaultGitHubHost {
-		return "", fmt.Errorf("unsupported GitHub host %q", host)
-	}
 	if login == "" {
 		return "", fmt.Errorf("GitHub login is required")
 	}

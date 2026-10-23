@@ -44,6 +44,7 @@ type appInstallationStore interface {
 
 type AppInstallationConfig struct {
 	RegistrationID string
+	Host           string
 	Slug           string
 	CallbackURL    string
 }
@@ -121,15 +122,9 @@ func (s *AppInstallationService) Start(
 	if err != nil {
 		return AppInstallationStart{}, err
 	}
-	installURL := &url.URL{
-		Scheme: "https",
-		Host:   "github.com",
-		Path:   "/apps/" + s.config.Slug + "/installations/new",
-	}
-	query := installURL.Query()
-	query.Set("state", flow.State)
-	installURL.RawQuery = query.Encode()
-	return AppInstallationStart{URL: installURL.String(), State: flow.State, ExpiresAt: flow.ExpiresAt}, nil
+	return AppInstallationStart{
+		URL: appInstallationURL(s.config.Host, s.config.Slug, flow.State), State: flow.State, ExpiresAt: flow.ExpiresAt,
+	}, nil
 }
 
 func (s *AppInstallationService) Complete(
@@ -294,4 +289,11 @@ func consumeCallbackFlow(
 		AppRegistrationID: registrationID,
 		Kind:              kind,
 	})
+}
+
+// appInstallationURL is the page where a user installs the App on host.
+func appInstallationURL(host, slug, state string) string {
+	endpoints := endpointsForHost(host)
+	return endpoints.Web + endpoints.AppInstallPrefix + url.PathEscape(slug) +
+		"/installations/new?" + url.Values{"state": {state}}.Encode()
 }

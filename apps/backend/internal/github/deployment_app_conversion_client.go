@@ -77,7 +77,7 @@ func (r ManifestConversionResult) Redacted() ManifestConversionResult {
 
 type ManifestConversionClient struct {
 	httpClient *http.Client
-	apiBaseURL string
+	apiBaseURL string // test override; empty uses the host's REST endpoint
 }
 
 func NewManifestConversionClient() *ManifestConversionClient {
@@ -88,18 +88,21 @@ func NewManifestConversionClient() *ManifestConversionClient {
 				return http.ErrUseLastResponse
 			},
 		},
-		apiBaseURL: "https://api.github.com",
 	}
 }
 
 func (c *ManifestConversionClient) Convert(
 	ctx context.Context,
-	conversionCode string,
+	host, conversionCode string,
 ) (ManifestConversionResult, error) {
 	if c == nil || c.httpClient == nil || strings.TrimSpace(conversionCode) == "" {
 		return ManifestConversionResult{}, &ManifestConversionError{Code: ManifestConversionCodeInvalid}
 	}
-	endpoint := strings.TrimRight(c.apiBaseURL, "/") +
+	apiBase := c.apiBaseURL
+	if apiBase == "" {
+		apiBase = endpointsForHost(host).REST
+	}
+	endpoint := strings.TrimRight(apiBase, "/") +
 		"/app-manifests/" + url.PathEscape(conversionCode) + "/conversions"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, http.NoBody)
 	if err != nil {

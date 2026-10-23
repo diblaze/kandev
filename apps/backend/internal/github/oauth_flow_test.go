@@ -172,7 +172,7 @@ func TestOAuthFlowGitHubClientExchangesRefreshesAndVerifiesUser(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewGitHubOAuthClient("client-id", "client-secret")
+	client := NewGitHubOAuthClient(defaultGitHubHost, "client-id", "client-secret")
 	client.webBaseURL = server.URL
 	client.apiBaseURL = server.URL
 	client.httpClient = server.Client()

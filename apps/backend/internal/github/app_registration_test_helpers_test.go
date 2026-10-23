@@ -7,7 +7,7 @@ import (
 
 type manifestConverterFunc func(context.Context, string) (ManifestConversionResult, error)
 
-func (f manifestConverterFunc) Convert(ctx context.Context, code string) (ManifestConversionResult, error) {
+func (f manifestConverterFunc) Convert(ctx context.Context, _, code string) (ManifestConversionResult, error) {
 	return f(ctx, code)
 }
 
