@@ -29,7 +29,7 @@ func TestInitializeWorkspaceDefaultsPersistsExecutorAndBindsActiveCLI(t *testing
 	if settings.TaskGitCredentialsMode != TaskGitCredentialsModeExecutor {
 		t.Fatalf("task Git mode = %q, want executor", settings.TaskGitCredentialsMode)
 	}
-	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1")
+	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("GetWorkspaceConnection: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestInitializeWorkspaceDefaultsDoesNotBindOperatorCLIForMember(t *testing.T
 	if settings.TaskGitCredentialsMode != TaskGitCredentialsModeExecutor {
 		t.Fatalf("task Git mode = %q, want executor", settings.TaskGitCredentialsMode)
 	}
-	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1")
+	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("GetWorkspaceConnection: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestInitializeWorkspaceDefaultsSoftFailsWhenCLIUnavailable(t *testing.T) {
 	if settings.TaskGitCredentialsMode != TaskGitCredentialsModeExecutor {
 		t.Fatalf("task Git mode = %q, want executor", settings.TaskGitCredentialsMode)
 	}
-	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1")
+	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("GetWorkspaceConnection: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestInitializeWorkspaceDefaultsIgnoresInvalidActiveCLI(t *testing.T) {
 	if err := service.InitializeWorkspaceDefaults(context.Background(), "ws-1"); err != nil {
 		t.Fatalf("InitializeWorkspaceDefaults: %v", err)
 	}
-	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1")
+	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("GetWorkspaceConnection: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestInitializeWorkspaceDefaultsPreservesExistingWorkspaceState(t *testing.T
 	if settings.TaskGitCredentialsMode != TaskGitCredentialsModeManaged || settings.RepoScopeMode != RepoScopeModeRepos {
 		t.Fatalf("existing settings changed: %+v", settings)
 	}
-	connection, err := service.store.GetWorkspaceConnection(ctx, "ws-1")
+	connection, err := service.store.GetWorkspaceConnection(ctx, "ws-1", defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("GetWorkspaceConnection: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestInitializeFreshWorkspaceDefaultsSeedsExistingInitialWorkspace(t *testin
 	if settings.TaskGitCredentialsMode != TaskGitCredentialsModeExecutor {
 		t.Fatalf("task Git mode = %q, want executor", settings.TaskGitCredentialsMode)
 	}
-	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1")
+	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("GetWorkspaceConnection: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestInitializeFreshWorkspaceDefaultsSkipsExistingGitHubStore(t *testing.T) 
 	if settings.TaskGitCredentialsMode != TaskGitCredentialsModeManaged {
 		t.Fatalf("existing store task Git mode = %q, want managed fallback", settings.TaskGitCredentialsMode)
 	}
-	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1")
+	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("GetWorkspaceConnection: %v", err)
 	}

@@ -93,14 +93,14 @@ func TestCopyWorkspaceSettingsToWorkspace_DoesNotCopyAuthentication(t *testing.T
 	if _, err := svc.CopyWorkspaceSettingsToWorkspace(ctx, src, dst); err != nil {
 		t.Fatalf("copy: %v", err)
 	}
-	connection, err := svc.store.GetWorkspaceConnection(ctx, dst)
+	connection, err := svc.store.GetWorkspaceConnection(ctx, dst, defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("get target connection: %v", err)
 	}
 	if connection != nil {
 		t.Fatalf("target inherited workspace auth: %+v", connection)
 	}
-	user, err := svc.store.GetUserConnection(ctx, dst, "default-user")
+	user, err := svc.store.GetUserConnection(ctx, dst, "default-user", defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("get target user connection: %v", err)
 	}

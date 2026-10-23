@@ -13,13 +13,14 @@ type testConnectionReader struct {
 
 func (r testConnectionReader) GetWorkspaceConnection(
 	_ context.Context,
-	workspaceID string,
+	workspaceID, _ string,
 ) (*WorkspaceConnection, error) {
 	return r.workspaces[workspaceID], nil
 }
 
 func (testConnectionReader) GetUserConnection(
 	context.Context,
+	string,
 	string,
 	string,
 ) (*UserConnection, error) {

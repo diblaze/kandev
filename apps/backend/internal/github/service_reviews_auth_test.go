@@ -13,13 +13,13 @@ type reviewWatchConnectionReader struct {
 }
 
 func (r reviewWatchConnectionReader) GetWorkspaceConnection(
-	context.Context, string,
+	context.Context, string, string,
 ) (*WorkspaceConnection, error) {
 	return r.workspace, r.err
 }
 
 func (r reviewWatchConnectionReader) GetUserConnection(
-	context.Context, string, string,
+	context.Context, string, string, string,
 ) (*UserConnection, error) {
 	return r.user, r.err
 }

@@ -34,7 +34,7 @@ type appInstallationVerifier interface {
 }
 
 type appInstallationStore interface {
-	GetWorkspaceConnection(context.Context, string) (*WorkspaceConnection, error)
+	GetWorkspaceConnection(ctx context.Context, workspaceID, host string) (*WorkspaceConnection, error)
 	ReplaceWorkspaceConnection(
 		context.Context,
 		*WorkspaceConnection,
@@ -104,7 +104,7 @@ func (s *AppInstallationService) Start(
 	if err := validateAppInstallationConfig(s.config); err != nil {
 		return AppInstallationStart{}, err
 	}
-	existing, err := s.store.GetWorkspaceConnection(ctx, workspaceID)
+	existing, err := s.store.GetWorkspaceConnection(ctx, workspaceID, githubHostOrDefault(s.config.Host))
 	if err != nil {
 		return AppInstallationStart{}, fmt.Errorf("load GitHub workspace connection: %w", err)
 	}
@@ -230,7 +230,7 @@ func (s *AppInstallationService) newInstallationConnection(
 	return &WorkspaceConnection{
 		WorkspaceID:              flow.WorkspaceID,
 		Source:                   ConnectionSourceGitHubAppInstallation,
-		GitHubHost:               "github.com",
+		GitHubHost:               githubHostOrDefault(s.config.Host),
 		InstallationID:           &installation.ID,
 		InstallationAccountLogin: installation.AccountLogin,
 		InstallationAccountType:  installation.AccountType,

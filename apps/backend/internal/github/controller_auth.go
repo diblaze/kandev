@@ -34,7 +34,7 @@ func githubUserID(ctx context.Context) string {
 
 func (c *Controller) httpGetWorkspaceConnection(ctx *gin.Context) {
 	status, err := c.service.GetWorkspaceAuthStatus(
-		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx),
+		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), ctx.Query("host"),
 	)
 	if err != nil {
 		writeGitHubAuthError(ctx, err)
@@ -56,20 +56,28 @@ func (c *Controller) httpListCLIAccounts(ctx *gin.Context) {
 	workspaceID := strings.TrimSpace(ctx.Query("workspace_id"))
 	if workspaceID != "" {
 		status, statusErr := c.service.GetWorkspaceAuthStatus(
-			ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx),
+			ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), "",
 		)
 		if statusErr != nil {
 			writeGitHubAuthError(ctx, statusErr)
 			return
 		}
-		if status.Automation != nil && status.Automation.Source == ConnectionSourceGHCLI {
-			for index := range accounts {
-				accounts[index].Selected = strings.EqualFold(accounts[index].Host, status.Automation.GitHubHost) &&
-					strings.EqualFold(accounts[index].Login, status.Automation.Login)
-			}
+		for index := range accounts {
+			accounts[index].Selected = selectedCLIAccount(accounts[index], status.Hosts)
 		}
 	}
 	ctx.JSON(http.StatusOK, gin.H{"accounts": accounts})
+}
+
+// selectedCLIAccount reports whether account is the CLI connection of its host.
+func selectedCLIAccount(account GHAccount, hosts []WorkspaceHostStatus) bool {
+	for _, host := range hosts {
+		if host.Source == ConnectionSourceGHCLI && strings.EqualFold(account.Host, host.GitHubHost) &&
+			strings.EqualFold(account.Login, host.Login) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Controller) httpSetWorkspaceConnection(ctx *gin.Context) {
@@ -90,7 +98,7 @@ func (c *Controller) httpSetWorkspaceConnection(ctx *gin.Context) {
 
 func (c *Controller) httpDeleteWorkspaceConnection(ctx *gin.Context) {
 	if err := c.service.DeleteWorkspaceConnection(
-		ctx.Request.Context(), workspaceIDFromRouteOrQuery(ctx),
+		ctx.Request.Context(), workspaceIDFromRouteOrQuery(ctx), ctx.Query("host"),
 	); err != nil {
 		writeGitHubAuthError(ctx, err)
 		return
@@ -162,7 +170,7 @@ func (c *Controller) httpStartPersonalAuth(ctx *gin.Context) {
 		return
 	}
 	result, err := c.service.StartPersonalAuth(
-		ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx),
+		ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), ctx.Query("host"),
 	)
 	if err != nil {
 		writeGitHubAuthError(ctx, err)
@@ -212,7 +220,7 @@ func validGitHubCallbackState(state string) bool {
 
 func (c *Controller) httpDisconnectPersonalAuth(ctx *gin.Context) {
 	if err := c.service.DisconnectPersonalAuth(
-		ctx.Request.Context(), workspaceIDFromRouteOrQuery(ctx), currentGitHubUserID(ctx),
+		ctx.Request.Context(), workspaceIDFromRouteOrQuery(ctx), currentGitHubUserID(ctx), ctx.Query("host"),
 	); err != nil {
 		writeGitHubAuthError(ctx, err)
 		return
@@ -316,6 +324,10 @@ func writeGitHubAuthError(ctx *gin.Context, err error) {
 	}
 	message := strings.TrimSpace(err.Error())
 	payload := gin.H{"code": code, "error": message}
+	var hostError *HostNotConnectedError
+	if errors.As(err, &hostError) {
+		payload["host"] = hostError.Host
+	}
 	var importError *AppRegistrationImportError
 	if errors.As(err, &importError) {
 		if importError.ExistingRegistrationID != "" {

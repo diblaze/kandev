@@ -174,7 +174,7 @@ func TestMockControllerWorkspaceConnectionsResolveIsolatedPrincipals(t *testing.
 		t.Fatalf("seed CLI connection: %d %s", second.Code, second.Body.String())
 	}
 
-	app, err := svc.GetWorkspaceAuthStatus(context.Background(), "workspace-1", DefaultUserID)
+	app, err := svc.GetWorkspaceAuthStatus(context.Background(), "workspace-1", DefaultUserID, "")
 	if err != nil || app.Automation == nil || app.Automation.Actor == nil {
 		t.Fatalf("app status = %+v, err = %v", app, err)
 	}
@@ -182,7 +182,7 @@ func TestMockControllerWorkspaceConnectionsResolveIsolatedPrincipals(t *testing.
 		!app.Automation.Capabilities[CapabilityPullRequestRead] || app.Automation.Capabilities[CapabilityPullRequestWrite] {
 		t.Fatalf("app automation = %+v", app.Automation)
 	}
-	cli, err := svc.GetWorkspaceAuthStatus(context.Background(), "workspace-2", DefaultUserID)
+	cli, err := svc.GetWorkspaceAuthStatus(context.Background(), "workspace-2", DefaultUserID, "")
 	if err != nil || cli.Automation == nil || cli.Automation.Actor == nil ||
 		cli.Automation.Actor.Kind != AuthPrincipalHuman || cli.Automation.Actor.Login != "alice" {
 		t.Fatalf("CLI status = %+v, err = %v", cli, err)
@@ -214,7 +214,7 @@ func TestMockControllerPersonalCLIAvailabilityTransitionsAndReset(t *testing.T) 
 	if accounts.Code != http.StatusOK {
 		t.Fatalf("seed CLI accounts: %d %s", accounts.Code, accounts.Body.String())
 	}
-	status, err := svc.GetWorkspaceAuthStatus(context.Background(), "workspace-1", DefaultUserID)
+	status, err := svc.GetWorkspaceAuthStatus(context.Background(), "workspace-1", DefaultUserID, "")
 	if err != nil || status.EffectivePersonalActor == nil || status.EffectivePersonalActor.Login != "bob" ||
 		!status.GitHubAppAvailable {
 		t.Fatalf("workspace status = %+v, err = %v", status, err)
@@ -229,7 +229,7 @@ func TestMockControllerPersonalCLIAvailabilityTransitionsAndReset(t *testing.T) 
 	if pat.Code != http.StatusOK {
 		t.Fatalf("configure mock PAT: %d %s", pat.Code, pat.Body.String())
 	}
-	patStatus, err := svc.GetWorkspaceAuthStatus(context.Background(), "workspace-2", DefaultUserID)
+	patStatus, err := svc.GetWorkspaceAuthStatus(context.Background(), "workspace-2", DefaultUserID, "")
 	if err != nil || patStatus.Automation == nil || patStatus.Automation.Actor == nil ||
 		patStatus.Automation.Actor.Login != "carol" {
 		t.Fatalf("configured PAT status = %+v, err = %v", patStatus, err)
@@ -240,7 +240,7 @@ func TestMockControllerPersonalCLIAvailabilityTransitionsAndReset(t *testing.T) 
 	if configured.Code != http.StatusOK {
 		t.Fatalf("configure injected CLI account: %d %s", configured.Code, configured.Body.String())
 	}
-	cliStatus, err := svc.GetWorkspaceAuthStatus(context.Background(), "workspace-2", DefaultUserID)
+	cliStatus, err := svc.GetWorkspaceAuthStatus(context.Background(), "workspace-2", DefaultUserID, "")
 	if err != nil || cliStatus.Automation == nil || cliStatus.Automation.Actor == nil ||
 		cliStatus.Automation.Actor.Login != "alice" {
 		t.Fatalf("configured CLI status = %+v, err = %v", cliStatus, err)
@@ -250,7 +250,7 @@ func TestMockControllerPersonalCLIAvailabilityTransitionsAndReset(t *testing.T) 
 	if transition.Code != http.StatusOK {
 		t.Fatalf("transition connection: %d %s", transition.Code, transition.Body.String())
 	}
-	status, err = svc.GetWorkspaceAuthStatus(context.Background(), "workspace-1", DefaultUserID)
+	status, err = svc.GetWorkspaceAuthStatus(context.Background(), "workspace-1", DefaultUserID, "")
 	if err != nil || status.Authenticated || status.Automation.Status != ConnectionStatusSuspended {
 		t.Fatalf("suspended status = %+v, err = %v", status, err)
 	}
@@ -259,11 +259,11 @@ func TestMockControllerPersonalCLIAvailabilityTransitionsAndReset(t *testing.T) 
 	if reset.Code != http.StatusOK {
 		t.Fatalf("reset: %d %s", reset.Code, reset.Body.String())
 	}
-	connection, err := store.GetWorkspaceConnection(context.Background(), "workspace-1")
+	connection, err := store.GetWorkspaceConnection(context.Background(), "workspace-1", defaultGitHubHost)
 	if err != nil || connection != nil {
 		t.Fatalf("connection after reset = %+v, err = %v", connection, err)
 	}
-	status, err = svc.GetWorkspaceAuthStatus(context.Background(), "workspace-1", DefaultUserID)
+	status, err = svc.GetWorkspaceAuthStatus(context.Background(), "workspace-1", DefaultUserID, "")
 	if err != nil || status.GitHubAppAvailable || status.Personal != nil {
 		t.Fatalf("status after reset = %+v, err = %v", status, err)
 	}
@@ -300,7 +300,7 @@ func TestMockControllerDeletesWorkspaceAndPersonalConnections(t *testing.T) {
 	if personal.Code != http.StatusOK {
 		t.Fatalf("delete personal: %d %s", personal.Code, personal.Body.String())
 	}
-	if got, err := store.GetUserConnection(context.Background(), "workspace-1", DefaultUserID); err != nil || got != nil {
+	if got, err := store.GetUserConnection(context.Background(), "workspace-1", DefaultUserID, defaultGitHubHost); err != nil || got != nil {
 		t.Fatalf("personal after delete = %+v, err = %v", got, err)
 	}
 	workspace := serveMockJSON(t, router, http.MethodDelete,
@@ -308,7 +308,7 @@ func TestMockControllerDeletesWorkspaceAndPersonalConnections(t *testing.T) {
 	if workspace.Code != http.StatusOK {
 		t.Fatalf("delete workspace: %d %s", workspace.Code, workspace.Body.String())
 	}
-	if got, err := store.GetWorkspaceConnection(context.Background(), "workspace-1"); err != nil || got != nil {
+	if got, err := store.GetWorkspaceConnection(context.Background(), "workspace-1", defaultGitHubHost); err != nil || got != nil {
 		t.Fatalf("workspace after delete = %+v, err = %v", got, err)
 	}
 }

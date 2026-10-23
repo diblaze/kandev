@@ -75,6 +75,7 @@ type AppRegistrationCatalog struct {
 
 type AppRegistrationManifestStartRequest struct {
 	WorkspaceID   string                    `json:"workspace_id"`
+	GitHubHost    string                    `json:"github_host"`
 	DisplayName   string                    `json:"display_name"`
 	OwnerType     ManifestOwnerType         `json:"owner_type"`
 	OwnerLogin    string                    `json:"owner_login"`
@@ -165,7 +166,7 @@ func (s *AppRegistrationLifecycleService) List(
 	if workspaceID == "" {
 		return AppRegistrationCatalog{}, ErrGitHubWorkspaceRequired
 	}
-	selected, err := s.store.GetWorkspaceConnection(ctx, workspaceID)
+	connections, err := s.store.ListWorkspaceConnections(ctx, workspaceID)
 	if err != nil {
 		return AppRegistrationCatalog{}, err
 	}
@@ -186,10 +187,19 @@ func (s *AppRegistrationLifecycleService) List(
 			return AppRegistrationCatalog{}, workspaceCountErr
 		}
 		item := appRegistrationCatalogItem(registration, bindings, workspaceBindings)
-		item.Selected = selected != nil && selected.AppRegistrationID == registration.ID
+		item.Selected = workspaceUsesAppRegistration(connections, registration.ID)
 		result.Registrations = append(result.Registrations, item)
 	}
 	return result, nil
+}
+
+func workspaceUsesAppRegistration(connections []*WorkspaceConnection, registrationID string) bool {
+	for _, connection := range connections {
+		if connection.AppRegistrationID == registrationID {
+			return true
+		}
+	}
+	return false
 }
 
 func appRegistrationCatalogItem(
@@ -224,13 +234,17 @@ func (s *AppRegistrationLifecycleService) StartManifest(
 		len(request.DisplayName) > maxAppRegistrationDisplayName {
 		return AppRegistrationManifestStart{}, errors.New("workspace and display name are required")
 	}
+	host, err := normalizeGitHubHost(request.GitHubHost)
+	if err != nil {
+		return AppRegistrationManifestStart{}, err
+	}
 	baseURL, err := ValidatePublicGitHubBaseURL(ctx, request.PublicBaseURL, s.resolver)
 	if err != nil {
 		return AppRegistrationManifestStart{}, err
 	}
 	registrationID := uuid.NewString()
 	submission, err := BuildAppRegistrationManifest(AppRegistrationManifestRequest{
-		RegistrationID: registrationID, OwnerType: request.OwnerType, OwnerLogin: request.OwnerLogin,
+		RegistrationID: registrationID, GitHubHost: host, OwnerType: request.OwnerType, OwnerLogin: request.OwnerLogin,
 		PublicBaseURL: baseURL, Visibility: request.Visibility,
 	})
 	if err != nil {
@@ -243,7 +257,7 @@ func (s *AppRegistrationLifecycleService) StartManifest(
 	now := s.now().UTC()
 	digest := sha256.Sum256([]byte(state))
 	flow := &DeploymentAppRegistrationFlow{
-		StateHash: stateDigestString(digest), RegistrationID: registrationID,
+		StateHash: stateDigestString(digest), RegistrationID: registrationID, GitHubHost: host,
 		WorkspaceID: request.WorkspaceID, UserID: userID, OperatorUserID: userID,
 		OwnerType: deploymentOwnerType(request.OwnerType), OwnerLogin: request.OwnerLogin,
 		DisplayName: request.DisplayName, Visibility: normalizedAppVisibility(request.Visibility),
@@ -293,7 +307,7 @@ func (s *AppRegistrationLifecycleService) CompleteManifest(
 	if s.converter == nil {
 		return AppRegistrationManifestResult{}, errors.New("GitHub App manifest conversion is unavailable")
 	}
-	converted, err := s.converter.Convert(ctx, defaultGitHubAppHost, strings.TrimSpace(callback.Code))
+	converted, err := s.converter.Convert(ctx, flow.GitHubHost, strings.TrimSpace(callback.Code))
 	if err != nil {
 		return AppRegistrationManifestResult{}, err
 	}
@@ -355,7 +369,7 @@ func registrationFromManifestFlow(
 ) *AppRegistration {
 	return &AppRegistration{
 		ID: flow.RegistrationID, Source: AppRegistrationSourceManaged,
-		DisplayName: flow.DisplayName, GitHubHost: defaultGitHubAppHost,
+		DisplayName: flow.DisplayName, GitHubHost: flow.GitHubHost,
 		AppID: converted.AppID, ClientID: converted.ClientID, Slug: converted.Slug,
 		OwnerLogin: converted.Owner.Login, OwnerType: deploymentOwnerTypeFromGitHub(converted.Owner.Type),
 		Visibility: flow.Visibility, PublicBaseURL: flow.PublicBaseURL,

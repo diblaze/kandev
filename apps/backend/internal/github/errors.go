@@ -2,11 +2,32 @@ package github
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/kandev/kandev/internal/common/authcircuit"
 )
+
+// HostNotConnectedError reports a GitHub host the workspace has no connection
+// for. It wraps ErrGitHubNotConfigured, so callers that handle a missing
+// connection keep working.
+type HostNotConnectedError struct{ Host string }
+
+func (e *HostNotConnectedError) Error() string {
+	return fmt.Sprintf("GitHub host %q is not connected for this workspace", e.Host)
+}
+
+func (e *HostNotConnectedError) Unwrap() error { return ErrGitHubNotConfigured }
+
+// hostNotConfiguredError keeps the github.com error unchanged and names any
+// other host that has no connection.
+func hostNotConfiguredError(host string) error {
+	if host == defaultGitHubHost {
+		return ErrGitHubNotConfigured
+	}
+	return &HostNotConnectedError{Host: host}
+}
 
 // ErrInvalidPRURL signals that a caller-supplied PR URL could not be parsed.
 // Used by AssociateExistingPRByURL so HTTP callers can translate the failure

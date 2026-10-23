@@ -43,7 +43,7 @@ func setupWorkspaceClone(t *testing.T) (bootStateTestHarness, *github.Store, sec
 	require.NoError(t, h.taskRepo.CreateRepository(ctx, &models.Repository{WorkspaceID: source.ID, Name: "Repo", SourceType: "local", LocalPath: t.TempDir()}))
 	require.NoError(t, gh.UpsertWorkspaceSettings(ctx, &github.WorkspaceSettings{WorkspaceID: source.ID, RepoScopeMode: github.RepoScopeModeAll, SavedPresets: []byte(`[{"id":"mine","default":true}]`), DefaultQueryPresets: []byte(`{"pr":[],"issue":[]}`)}))
 	require.NoError(t, gh.UpsertWorkspaceConnection(ctx, &github.WorkspaceConnection{WorkspaceID: source.ID, Source: github.ConnectionSourcePAT, GitHubHost: "github.com", Login: "user", Status: github.ConnectionStatusActive}))
-	require.NoError(t, secretStore.Create(ctx, &secrets.SecretWithValue{Secret: secrets.Secret{ID: github.WorkspacePATSecretKey(source.ID), Name: "PAT"}, Value: "private-token"}))
+	require.NoError(t, secretStore.Create(ctx, &secrets.SecretWithValue{Secret: secrets.Secret{ID: github.WorkspacePATSecretKey(source.ID, "github.com"), Name: "PAT"}, Value: "private-token"}))
 	return h, gh, secretStore, source
 }
 
@@ -72,8 +72,8 @@ func TestWorkspaceCloneAtomicCreation(t *testing.T) {
 	var count int
 	require.NoError(t, h.db.GetContext(ctx, &count, h.db.Rebind(`SELECT count(*) FROM tasks WHERE workspace_id = ?`), target.ID))
 	require.Zero(t, count)
-	require.NoError(t, secretStore.Delete(ctx, github.WorkspacePATSecretKey(source.ID)))
-	token, err := secretStore.Reveal(ctx, github.WorkspacePATSecretKey(target.ID))
+	require.NoError(t, secretStore.Delete(ctx, github.WorkspacePATSecretKey(source.ID, "github.com")))
+	token, err := secretStore.Reveal(ctx, github.WorkspacePATSecretKey(target.ID, "github.com"))
 	require.NoError(t, err)
 	require.Equal(t, "private-token", token)
 }
@@ -105,10 +105,10 @@ type cancellingCloneIntegration struct {
 	cancel context.CancelFunc
 }
 
-func (c cancellingCloneIntegration) CopyWorkspaceConfigurationTx(ctx context.Context, tx *sqlx.Tx, sourceID, targetID string) (bool, error) {
-	needsPAT, err := c.store.CopyWorkspaceConfigurationTx(ctx, tx, sourceID, targetID)
+func (c cancellingCloneIntegration) CopyWorkspaceConfigurationTx(ctx context.Context, tx *sqlx.Tx, sourceID, targetID string) ([]string, error) {
+	patHosts, err := c.store.CopyWorkspaceConfigurationTx(ctx, tx, sourceID, targetID)
 	c.cancel()
-	return needsPAT, err
+	return patHosts, err
 }
 
 func TestWorkspaceCloneCancellation(t *testing.T) {
@@ -122,7 +122,7 @@ func TestWorkspaceCloneCancellation(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	_, err = h.taskRepo.GetWorkspace(t.Context(), "cancelled")
 	require.ErrorIs(t, err, repoerrors.ErrWorkspaceNotFound)
-	_, err = secretStore.Get(t.Context(), github.WorkspacePATSecretKey("cancelled"))
+	_, err = secretStore.Get(t.Context(), github.WorkspacePATSecretKey("cancelled", "github.com"))
 	require.ErrorIs(t, err, secrets.ErrNotFound)
 }
 

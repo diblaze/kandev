@@ -13,8 +13,9 @@ type appInstallationMemoryStore struct {
 	connection *WorkspaceConnection
 }
 
-func (s *appInstallationMemoryStore) GetWorkspaceConnection(_ context.Context, workspaceID string) (*WorkspaceConnection, error) {
-	if s.connection == nil || s.connection.WorkspaceID != workspaceID {
+func (s *appInstallationMemoryStore) GetWorkspaceConnection(_ context.Context, workspaceID, host string) (*WorkspaceConnection, error) {
+	if s.connection == nil || s.connection.WorkspaceID != workspaceID ||
+		githubHostOrDefault(s.connection.GitHubHost) != host {
 		return nil, nil
 	}
 	copy := *s.connection

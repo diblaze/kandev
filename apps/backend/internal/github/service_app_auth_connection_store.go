@@ -14,15 +14,15 @@ type serviceAppConnectionStore struct {
 	service *Service
 }
 
-func (r *serviceAppConnectionStore) GetWorkspaceConnection(ctx context.Context, workspaceID string) (*WorkspaceConnection, error) {
-	return r.service.store.GetWorkspaceConnection(ctx, workspaceID)
+func (r *serviceAppConnectionStore) GetWorkspaceConnection(ctx context.Context, workspaceID, host string) (*WorkspaceConnection, error) {
+	return r.service.store.GetWorkspaceConnection(ctx, workspaceID, host)
 }
 
 func (r *serviceAppConnectionStore) UpsertWorkspaceConnection(ctx context.Context, connection *WorkspaceConnection) error {
-	lock := r.service.workspaceConnectionMutationLock(connection.WorkspaceID)
+	lock := r.service.workspaceConnectionMutationLock(connection.WorkspaceID, connection.GitHubHost)
 	lock.Lock()
 	defer lock.Unlock()
-	existing, err := r.service.store.GetWorkspaceConnection(ctx, connection.WorkspaceID)
+	existing, err := r.service.store.GetWorkspaceConnection(ctx, connection.WorkspaceID, connection.GitHubHost)
 	if err != nil {
 		return err
 	}
@@ -31,10 +31,18 @@ func (r *serviceAppConnectionStore) UpsertWorkspaceConnection(ctx context.Contex
 }
 
 func (r *serviceAppConnectionStore) ReplaceWorkspaceConnection(ctx context.Context, connection *WorkspaceConnection, expected WorkspaceConnectionExpectation) error {
-	lock := r.service.workspaceConnectionMutationLock(connection.WorkspaceID)
+	if err := r.replaceWorkspaceConnection(ctx, connection, expected); err != nil {
+		return err
+	}
+	r.service.notifyHostConnected(ctx, connection.WorkspaceID, connection.GitHubHost)
+	return nil
+}
+
+func (r *serviceAppConnectionStore) replaceWorkspaceConnection(ctx context.Context, connection *WorkspaceConnection, expected WorkspaceConnectionExpectation) error {
+	lock := r.service.workspaceConnectionMutationLock(connection.WorkspaceID, connection.GitHubHost)
 	lock.Lock()
 	defer lock.Unlock()
-	existing, err := r.service.store.GetWorkspaceConnection(ctx, connection.WorkspaceID)
+	existing, err := r.service.store.GetWorkspaceConnection(ctx, connection.WorkspaceID, connection.GitHubHost)
 	if err != nil {
 		return err
 	}
@@ -51,8 +59,9 @@ func (r *serviceAppConnectionStore) upsertWorkspaceConnectionLocked(ctx context.
 	}
 	var previousPAT string
 	var hadPreviousPAT bool
+	patKey := WorkspacePATSecretKey(connection.WorkspaceID, connection.GitHubHost)
 	if existing != nil && existing.Source == ConnectionSourcePAT {
-		previousPAT, hadPreviousPAT, err = revealOptionalSecret(ctx, r.service.connectionSecrets, WorkspacePATSecretKey(connection.WorkspaceID))
+		previousPAT, hadPreviousPAT, err = revealOptionalSecret(ctx, r.service.connectionSecrets, patKey)
 		if err != nil {
 			return err
 		}
@@ -61,8 +70,8 @@ func (r *serviceAppConnectionStore) upsertWorkspaceConnectionLocked(ctx context.
 		return fmt.Errorf("replace workspace GitHub connection: %w", err)
 	}
 	if existing != nil && existing.Source == ConnectionSourcePAT && hadPreviousPAT {
-		if err := r.service.connectionSecrets.Delete(ctx, WorkspacePATSecretKey(connection.WorkspaceID)); err != nil {
-			return errors.Join(err, restoreWorkspaceConnection(ctx, r.service.store, existing, connection.WorkspaceID), restoreOptionalSecret(ctx, r.service.connectionSecrets, WorkspacePATSecretKey(connection.WorkspaceID), workspacePATSecretName, previousPAT, hadPreviousPAT))
+		if err := r.service.connectionSecrets.Delete(ctx, patKey); err != nil {
+			return errors.Join(err, restoreWorkspaceConnection(ctx, r.service.store, existing, connection.WorkspaceID, connection.GitHubHost), restoreOptionalSecret(ctx, r.service.connectionSecrets, patKey, workspacePATSecretName, previousPAT, hadPreviousPAT))
 		}
 	}
 	if existing != nil && existing.InstallationID != nil {
@@ -87,7 +96,7 @@ func (r *serviceAppConnectionStore) ListWorkspaceConnectionsByAppInstallation(ct
 }
 
 func (r *serviceAppConnectionStore) TransitionWorkspaceInstallationConnection(ctx context.Context, expected, next *WorkspaceConnection) (bool, error) {
-	lock := r.service.workspaceConnectionMutationLock(expected.WorkspaceID)
+	lock := r.service.workspaceConnectionMutationLock(expected.WorkspaceID, expected.GitHubHost)
 	lock.Lock()
 	defer lock.Unlock()
 	updated, err := r.service.store.TransitionWorkspaceInstallationConnection(ctx, expected, next)
@@ -117,9 +126,9 @@ func (r *serviceAppConnectionStore) CompleteAppRegistrationWebhookDelivery(ctx c
 	return r.service.store.CompleteAppRegistrationWebhookDelivery(ctx, registrationID, deliveryID, status, result, processedAt)
 }
 
-func restoreWorkspaceConnection(ctx context.Context, store *Store, connection *WorkspaceConnection, workspaceID string) error {
+func restoreWorkspaceConnection(ctx context.Context, store *Store, connection *WorkspaceConnection, workspaceID, host string) error {
 	if connection == nil {
-		return store.DeleteWorkspaceConnection(ctx, workspaceID)
+		return store.DeleteWorkspaceConnection(ctx, workspaceID, host)
 	}
 	return store.UpsertWorkspaceConnection(ctx, connection)
 }
@@ -130,10 +139,10 @@ func (u *installationRepositorySettingsUpdater) ApplyInstallationRepositories(ct
 	if u == nil || u.service == nil {
 		return false, errors.New("GitHub installation repository updater is not configured")
 	}
-	lock := u.service.workspaceConnectionMutationLock(change.WorkspaceID)
+	lock := u.service.workspaceConnectionMutationLock(change.WorkspaceID, change.Host)
 	lock.Lock()
 	defer lock.Unlock()
-	connection, err := u.service.store.GetWorkspaceConnection(ctx, change.WorkspaceID)
+	connection, err := u.service.store.GetWorkspaceConnection(ctx, change.WorkspaceID, change.Host)
 	if err != nil {
 		return false, err
 	}

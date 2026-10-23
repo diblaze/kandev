@@ -21,13 +21,13 @@ type personalAuthMemoryRepository struct {
 	version     int64
 }
 
-func (r *personalAuthMemoryRepository) GetWorkspaceConnection(_ context.Context, _ string) (*WorkspaceConnection, error) {
+func (r *personalAuthMemoryRepository) GetWorkspaceConnection(_ context.Context, _, _ string) (*WorkspaceConnection, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.workspace, nil
 }
 
-func (r *personalAuthMemoryRepository) GetUserConnection(_ context.Context, _, _ string) (*UserConnection, error) {
+func (r *personalAuthMemoryRepository) GetUserConnection(_ context.Context, _, _, _ string) (*UserConnection, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.connection == nil {
@@ -39,6 +39,7 @@ func (r *personalAuthMemoryRepository) GetUserConnection(_ context.Context, _, _
 
 func (r *personalAuthMemoryRepository) GetPersonalConnectionGeneration(
 	context.Context,
+	string,
 	string,
 	string,
 ) (int64, error) {
@@ -54,7 +55,7 @@ func (r *personalAuthMemoryRepository) currentGenerationLocked() int64 {
 	return personalConnectionGeneration(r.connection)
 }
 
-func (r *personalAuthMemoryRepository) GetPersonalTokens(_ context.Context, _, _ string) (GitHubOAuthTokens, error) {
+func (r *personalAuthMemoryRepository) GetPersonalTokens(_ context.Context, _, _, _ string) (GitHubOAuthTokens, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.tokens, nil
@@ -100,7 +101,7 @@ func (r *personalAuthMemoryRepository) ReplacePersonalConnectionForFlow(
 }
 
 func (r *personalAuthMemoryRepository) MarkPersonalConnectionInvalid(
-	_ context.Context, _, _ string, expectedGeneration int64, _ error,
+	_ context.Context, _, _, _ string, expectedGeneration int64, _ error,
 ) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -115,7 +116,7 @@ func (r *personalAuthMemoryRepository) MarkPersonalConnectionInvalid(
 	return nil
 }
 
-func (r *personalAuthMemoryRepository) RevokePersonalConnection(_ context.Context, _, _ string) error {
+func (r *personalAuthMemoryRepository) RevokePersonalConnection(_ context.Context, _, _, _ string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.version = r.currentGenerationLocked() + 1
@@ -139,7 +140,7 @@ func (r *personalAuthMemoryRepository) RevokePersonalConnectionIfUnchanged(
 	return true, nil
 }
 
-func (r *personalAuthMemoryRepository) RevokeWorkspacePersonalConnections(_ context.Context, _ string) error {
+func (r *personalAuthMemoryRepository) RevokeWorkspacePersonalConnections(_ context.Context, _, _ string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.version = r.currentGenerationLocked() + 1
@@ -321,7 +322,7 @@ func TestPersonalAuthCompletionRacingPATSwitchLeavesNoPersonalConnection(t *test
 	)
 	service.now = func() time.Time { return now }
 	var workspaceLock sync.Mutex
-	service.SetWorkspaceMutationLock(func(string) *sync.Mutex { return &workspaceLock })
+	service.SetWorkspaceMutationLock(func(string, string) *sync.Mutex { return &workspaceLock })
 	started, err := service.Start(context.Background(), "workspace-1", "user-1")
 	if err != nil {
 		t.Fatal(err)
@@ -387,7 +388,7 @@ func TestPersonalAuthCompleteCannotOverwriteNewerReconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.RevokePersonalConnection(context.Background(), "workspace-1", "user-1"); err != nil {
+	if err := repo.RevokePersonalConnection(context.Background(), "workspace-1", "user-1", defaultGitHubHost); err != nil {
 		t.Fatal(err)
 	}
 	reconnected := &UserConnection{

@@ -30,6 +30,9 @@ type Store struct {
 	appLifecycleLocksMu        sync.Mutex
 	appLifecycleLocks          map[string]*appRegistrationLifecycleLock
 	prWatchMigration           *PRWatchMigrationStats
+	// connectionHostMigrationFailpoint is a test-only hook run after each
+	// connection host-key migration step; an error aborts the migration.
+	connectionHostMigrationFailpoint func(step int) error
 }
 
 type appRegistrationLifecycleLock struct {
@@ -263,105 +266,8 @@ const createTablesSQL = `
 		updated_at DATETIME NOT NULL
 	);
 
-	CREATE TABLE IF NOT EXISTS github_workspace_connections (
-		workspace_id TEXT PRIMARY KEY,
-		source TEXT NOT NULL CHECK (source IN ('legacy_shared', 'pat', 'gh_cli', 'github_app_installation')),
-		github_host TEXT NOT NULL CHECK (github_host <> ''),
-		login TEXT,
-		installation_id BIGINT,
-		installation_account_login TEXT,
-		installation_account_type TEXT CHECK (
-			installation_account_type IS NULL OR installation_account_type IN ('User', 'Organization')
-		),
-		app_registration_id TEXT,
-		status TEXT NOT NULL CHECK (status IN ('active', 'invalid', 'suspended', 'revoked')),
-		credential_generation BIGINT NOT NULL DEFAULT 1 CHECK (credential_generation > 0),
-		last_error TEXT,
-		created_at TIMESTAMP NOT NULL,
-		updated_at TIMESTAMP NOT NULL,
-		CHECK (
-			(source = 'legacy_shared' AND login IS NULL AND installation_id IS NULL AND app_registration_id IS NULL) OR
-			(source IN ('pat', 'gh_cli') AND login IS NOT NULL AND login <> '' AND installation_id IS NULL AND app_registration_id IS NULL) OR
-			(source = 'github_app_installation' AND installation_id IS NOT NULL AND installation_id > 0 AND
-			 installation_account_login IS NOT NULL AND installation_account_login <> '' AND
-			 installation_account_type IS NOT NULL AND app_registration_id IS NOT NULL)
-		),
-		FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
-		FOREIGN KEY (app_registration_id) REFERENCES github_app_registrations(id) ON DELETE RESTRICT
-	);
-
-	CREATE TABLE IF NOT EXISTS github_user_connections (
-		workspace_id TEXT NOT NULL,
-		user_id TEXT NOT NULL,
-		app_registration_id TEXT NOT NULL,
-		github_user_id BIGINT NOT NULL CHECK (github_user_id > 0),
-		login TEXT NOT NULL CHECK (login <> ''),
-		status TEXT NOT NULL CHECK (status IN ('active', 'invalid', 'revoked')),
-		access_expires_at TIMESTAMP NOT NULL,
-		refresh_expires_at TIMESTAMP,
-		credential_generation BIGINT NOT NULL DEFAULT 1 CHECK (credential_generation > 0),
-		last_error TEXT,
-		created_at TIMESTAMP NOT NULL,
-		updated_at TIMESTAMP NOT NULL,
-		PRIMARY KEY (workspace_id, user_id),
-		FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
-		FOREIGN KEY (app_registration_id) REFERENCES github_app_registrations(id) ON DELETE RESTRICT
-	);
-
-	CREATE TRIGGER IF NOT EXISTS github_user_connections_registration_insert
-	BEFORE INSERT ON github_user_connections
-	BEGIN
-		SELECT CASE WHEN NOT EXISTS (
-			SELECT 1 FROM github_workspace_connections workspace
-			WHERE workspace.workspace_id = NEW.workspace_id
-				AND workspace.source = 'github_app_installation'
-				AND workspace.app_registration_id = NEW.app_registration_id
-		) THEN RAISE(ABORT, 'personal GitHub App registration must match workspace') END;
-	END;
-
-	CREATE TRIGGER IF NOT EXISTS github_user_connections_registration_update
-	BEFORE UPDATE OF workspace_id, app_registration_id ON github_user_connections
-	BEGIN
-		SELECT CASE WHEN NOT EXISTS (
-			SELECT 1 FROM github_workspace_connections workspace
-			WHERE workspace.workspace_id = NEW.workspace_id
-				AND workspace.source = 'github_app_installation'
-				AND workspace.app_registration_id = NEW.app_registration_id
-		) THEN RAISE(ABORT, 'personal GitHub App registration must match workspace') END;
-	END;
-
-	CREATE TRIGGER IF NOT EXISTS github_workspace_connections_registration_update
-	BEFORE UPDATE OF source, app_registration_id ON github_workspace_connections
-	BEGIN
-		SELECT CASE WHEN EXISTS (
-			SELECT 1 FROM github_user_connections personal
-			WHERE personal.workspace_id = OLD.workspace_id
-				AND (
-					NEW.source <> 'github_app_installation' OR
-					NEW.app_registration_id IS NULL OR
-					personal.app_registration_id <> NEW.app_registration_id
-				)
-		) THEN RAISE(ABORT, 'workspace GitHub App registration must match personal connections') END;
-	END;
-
-	CREATE TRIGGER IF NOT EXISTS github_workspace_connections_registration_delete
-	BEFORE DELETE ON github_workspace_connections
-	BEGIN
-		SELECT CASE WHEN EXISTS (
-			SELECT 1 FROM github_user_connections personal
-			WHERE personal.workspace_id = OLD.workspace_id
-		) THEN RAISE(ABORT, 'workspace GitHub App connection still has personal connections') END;
-	END;
-
-	CREATE TABLE IF NOT EXISTS github_user_connection_versions (
-		workspace_id TEXT NOT NULL,
-		user_id TEXT NOT NULL,
-		credential_generation BIGINT NOT NULL DEFAULT 0 CHECK (credential_generation >= 0),
-		updated_at TIMESTAMP NOT NULL,
-		PRIMARY KEY (workspace_id, user_id),
-		FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
-	);
-
+` + workspaceConnectionsTableSQL + userConnectionsTableSQL + connectionTriggersSQL +
+	userConnectionVersionsTableSQL + `
 	CREATE TABLE IF NOT EXISTS github_auth_flows (
 		state_hash TEXT PRIMARY KEY,
 		workspace_id TEXT NOT NULL,
@@ -470,6 +376,125 @@ const createTablesSQL = `
 	);
 `
 
+const workspaceConnectionsTableSQL = `
+	CREATE TABLE IF NOT EXISTS github_workspace_connections (
+		workspace_id TEXT NOT NULL,
+		source TEXT NOT NULL CHECK (source IN ('legacy_shared', 'pat', 'gh_cli', 'github_app_installation')),
+		github_host TEXT NOT NULL CHECK (github_host <> ''),
+		login TEXT,
+		installation_id BIGINT,
+		installation_account_login TEXT,
+		installation_account_type TEXT CHECK (
+			installation_account_type IS NULL OR installation_account_type IN ('User', 'Organization')
+		),
+		app_registration_id TEXT,
+		status TEXT NOT NULL CHECK (status IN ('active', 'invalid', 'suspended', 'revoked')),
+		credential_generation BIGINT NOT NULL DEFAULT 1 CHECK (credential_generation > 0),
+		last_error TEXT,
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL,
+		CHECK (
+			(source = 'legacy_shared' AND login IS NULL AND installation_id IS NULL AND app_registration_id IS NULL) OR
+			(source IN ('pat', 'gh_cli') AND login IS NOT NULL AND login <> '' AND installation_id IS NULL AND app_registration_id IS NULL) OR
+			(source = 'github_app_installation' AND installation_id IS NOT NULL AND installation_id > 0 AND
+			 installation_account_login IS NOT NULL AND installation_account_login <> '' AND
+			 installation_account_type IS NOT NULL AND app_registration_id IS NOT NULL)
+		),
+		PRIMARY KEY (workspace_id, github_host),
+		FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+		FOREIGN KEY (app_registration_id) REFERENCES github_app_registrations(id) ON DELETE RESTRICT
+	);
+`
+
+const userConnectionsTableSQL = `
+	CREATE TABLE IF NOT EXISTS github_user_connections (
+		workspace_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		github_host TEXT NOT NULL DEFAULT 'github.com',
+		app_registration_id TEXT NOT NULL,
+		github_user_id BIGINT NOT NULL CHECK (github_user_id > 0),
+		login TEXT NOT NULL CHECK (login <> ''),
+		status TEXT NOT NULL CHECK (status IN ('active', 'invalid', 'revoked')),
+		access_expires_at TIMESTAMP NOT NULL,
+		refresh_expires_at TIMESTAMP,
+		credential_generation BIGINT NOT NULL DEFAULT 1 CHECK (credential_generation > 0),
+		last_error TEXT,
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL,
+		PRIMARY KEY (workspace_id, user_id, github_host),
+		FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+		FOREIGN KEY (app_registration_id) REFERENCES github_app_registrations(id) ON DELETE RESTRICT
+	);
+`
+
+// connectionTriggersSQL ties each personal connection to the App installation
+// connection of the same workspace and GitHub host. postgresGitHubAuthTriggers
+// is the PostgreSQL twin and must stay in step.
+//
+//nolint:dupword // each SQLite trigger body ends a CASE and then the trigger with END.
+const connectionTriggersSQL = `
+	CREATE TRIGGER IF NOT EXISTS github_user_connections_registration_insert
+	BEFORE INSERT ON github_user_connections
+	BEGIN
+		SELECT CASE WHEN NOT EXISTS (
+			SELECT 1 FROM github_workspace_connections workspace
+			WHERE workspace.workspace_id = NEW.workspace_id
+				AND workspace.github_host = NEW.github_host
+				AND workspace.source = 'github_app_installation'
+				AND workspace.app_registration_id = NEW.app_registration_id
+		) THEN RAISE(ABORT, 'personal GitHub App registration must match workspace') END;
+	END;
+
+	CREATE TRIGGER IF NOT EXISTS github_user_connections_registration_update
+	BEFORE UPDATE OF workspace_id, app_registration_id ON github_user_connections
+	BEGIN
+		SELECT CASE WHEN NOT EXISTS (
+			SELECT 1 FROM github_workspace_connections workspace
+			WHERE workspace.workspace_id = NEW.workspace_id
+				AND workspace.github_host = NEW.github_host
+				AND workspace.source = 'github_app_installation'
+				AND workspace.app_registration_id = NEW.app_registration_id
+		) THEN RAISE(ABORT, 'personal GitHub App registration must match workspace') END;
+	END;
+
+	CREATE TRIGGER IF NOT EXISTS github_workspace_connections_registration_update
+	BEFORE UPDATE OF source, app_registration_id ON github_workspace_connections
+	BEGIN
+		SELECT CASE WHEN EXISTS (
+			SELECT 1 FROM github_user_connections personal
+			WHERE personal.workspace_id = OLD.workspace_id
+				AND personal.github_host = OLD.github_host
+				AND (
+					NEW.source <> 'github_app_installation' OR
+					NEW.app_registration_id IS NULL OR
+					personal.app_registration_id <> NEW.app_registration_id
+				)
+		) THEN RAISE(ABORT, 'workspace GitHub App registration must match personal connections') END;
+	END;
+
+	CREATE TRIGGER IF NOT EXISTS github_workspace_connections_registration_delete
+	BEFORE DELETE ON github_workspace_connections
+	BEGIN
+		SELECT CASE WHEN EXISTS (
+			SELECT 1 FROM github_user_connections personal
+			WHERE personal.workspace_id = OLD.workspace_id
+				AND personal.github_host = OLD.github_host
+		) THEN RAISE(ABORT, 'workspace GitHub App connection still has personal connections') END;
+	END;
+`
+
+const userConnectionVersionsTableSQL = `
+	CREATE TABLE IF NOT EXISTS github_user_connection_versions (
+		workspace_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		github_host TEXT NOT NULL DEFAULT 'github.com',
+		credential_generation BIGINT NOT NULL DEFAULT 0 CHECK (credential_generation >= 0),
+		updated_at TIMESTAMP NOT NULL,
+		PRIMARY KEY (workspace_id, user_id, github_host),
+		FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+	);
+`
+
 const appRegistrationTablesSQL = `
 	CREATE TABLE IF NOT EXISTS github_app_registrations (
 		id TEXT PRIMARY KEY CHECK (id <> ''),
@@ -498,6 +523,7 @@ const appRegistrationTablesSQL = `
 	CREATE TABLE IF NOT EXISTS github_app_registration_flows (
 		state_hash TEXT PRIMARY KEY,
 		registration_id TEXT NOT NULL CHECK (registration_id <> ''),
+		github_host TEXT NOT NULL DEFAULT 'github.com',
 		workspace_id TEXT NOT NULL CHECK (workspace_id <> ''),
 		user_id TEXT NOT NULL CHECK (user_id <> ''),
 		owner_type TEXT NOT NULL CHECK (owner_type IN ('User', 'Organization')),
@@ -687,7 +713,10 @@ func (s *Store) initSchemaUpgrades() error {
 	if err := s.addTaskPRWorkflowAttentionColumn(); err != nil {
 		return err
 	}
-	return nil
+	if err := s.addAppRegistrationFlowHostColumn(); err != nil {
+		return err
+	}
+	return s.migrateGitHubConnectionsToHostKey()
 }
 
 var taskPRMergeQueueColumnDDL = []struct {
@@ -1068,6 +1097,23 @@ func (s *Store) unpublishedGitHubAuthSchemaNeedsReset() (bool, error) {
 	return false, nil
 }
 
+func (s *Store) addAppRegistrationFlowHostColumn() error {
+	columns, err := s.tableColumns("github_app_registration_flows")
+	if err != nil {
+		return fmt.Errorf("read github_app_registration_flows columns: %w", err)
+	}
+	if _, exists := columns["github_host"]; exists {
+		return nil
+	}
+	if _, err := s.db.Exec(schemaSQLForDriver(
+		`ALTER TABLE github_app_registration_flows ADD COLUMN github_host TEXT NOT NULL DEFAULT 'github.com'`,
+		s.db.DriverName(),
+	)); err != nil {
+		return fmt.Errorf("add github_app_registration_flows.github_host: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) addAppRegistrationReferenceColumns() error {
 	for _, migration := range []struct {
 		table     string
@@ -1136,6 +1182,7 @@ BEGIN
 	IF NOT EXISTS (
 		SELECT 1 FROM github_workspace_connections workspace
 		WHERE workspace.workspace_id = NEW.workspace_id
+			AND workspace.github_host = NEW.github_host
 			AND workspace.source = 'github_app_installation'
 			AND workspace.app_registration_id = NEW.app_registration_id
 	) THEN
@@ -1154,6 +1201,7 @@ BEGIN
 		IF EXISTS (
 			SELECT 1 FROM github_user_connections personal
 			WHERE personal.workspace_id = OLD.workspace_id
+				AND personal.github_host = OLD.github_host
 		) THEN
 			RAISE EXCEPTION 'workspace GitHub App connection still has personal connections';
 		END IF;
@@ -1163,6 +1211,7 @@ BEGIN
 	IF EXISTS (
 		SELECT 1 FROM github_user_connections personal
 		WHERE personal.workspace_id = OLD.workspace_id
+			AND personal.github_host = OLD.github_host
 			AND (
 				NEW.source <> 'github_app_installation'
 				OR NEW.app_registration_id IS NULL
@@ -1205,10 +1254,12 @@ func (s *Store) backfillGitHubUserConnectionVersions() error {
 		return nil
 	}
 	if _, err := s.db.Exec(`
-		INSERT INTO github_user_connection_versions (workspace_id, user_id, credential_generation, updated_at)
-		SELECT workspace_id, user_id, credential_generation, updated_at FROM github_user_connections
+		INSERT INTO github_user_connection_versions (
+			workspace_id, user_id, github_host, credential_generation, updated_at
+		)
+		SELECT workspace_id, user_id, github_host, credential_generation, updated_at FROM github_user_connections
 		WHERE true
-		ON CONFLICT(workspace_id, user_id) DO UPDATE SET
+		ON CONFLICT(workspace_id, user_id, github_host) DO UPDATE SET
 			credential_generation = CASE
 				WHEN github_user_connection_versions.credential_generation > excluded.credential_generation
 				THEN github_user_connection_versions.credential_generation
@@ -1317,7 +1368,7 @@ func (s *Store) seedLegacyWorkspaceConnections() error {
 		SELECT id, 'legacy_shared', 'github.com', 'active', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 		FROM workspaces
 		WHERE TRUE
-		ON CONFLICT(workspace_id) DO NOTHING`)
+		ON CONFLICT(workspace_id, github_host) DO NOTHING`)
 	if err != nil {
 		return fmt.Errorf("seed legacy github workspace connections: %w", err)
 	}

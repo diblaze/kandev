@@ -153,7 +153,7 @@ func (s *Service) enableMockAuth(client *MockClient) *MockAuthState {
 			return "mock-gh:" + host + ":" + login, nil
 		}
 	}
-	s.tokenClientFactory = func(token string) Client {
+	s.tokenClientFactory = func(_, token string) Client {
 		login := strings.TrimSpace(strings.TrimPrefix(token, "mock-pat:"))
 		if strings.HasPrefix(token, "mock-gh:") {
 			parts := strings.Split(token, ":")

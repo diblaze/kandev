@@ -80,3 +80,11 @@ func HostFromProviderHost(providerHost string) (string, error) {
 	}
 	return normalizeGitHubHost(raw)
 }
+
+// githubHostOrDefault maps an empty stored or configured host to github.com.
+func githubHostOrDefault(host string) string {
+	if host == "" {
+		return defaultGitHubHost
+	}
+	return host
+}

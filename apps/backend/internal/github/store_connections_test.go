@@ -36,7 +36,7 @@ func TestStoreWorkspaceConnectionRoundTrip(t *testing.T) {
 	if err := store.UpsertWorkspaceConnection(ctx, connection); err != nil {
 		t.Fatalf("upsert workspace connection: %v", err)
 	}
-	got, err := store.GetWorkspaceConnection(ctx, "ws-1")
+	got, err := store.GetWorkspaceConnection(ctx, "ws-1", defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("get workspace connection: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestStoreWorkspaceConnectionRoundTrip(t *testing.T) {
 	if err := store.UpsertWorkspaceConnection(ctx, connection); err != nil {
 		t.Fatalf("replace workspace connection: %v", err)
 	}
-	got, err = store.GetWorkspaceConnection(ctx, "ws-1")
+	got, err = store.GetWorkspaceConnection(ctx, "ws-1", defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("get replaced workspace connection: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestStoreInstallationTransitionRejectsReplacedWorkspaceConnection(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, err := store.GetWorkspaceConnection(ctx, "ws-1")
+	connection, err := store.GetWorkspaceConnection(ctx, "ws-1", defaultGitHubHost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestStoreUserConnectionRoundTrip(t *testing.T) {
 	if err := store.UpsertUserConnection(ctx, connection); err != nil {
 		t.Fatalf("upsert user connection: %v", err)
 	}
-	got, err := store.GetUserConnection(ctx, "ws-1", "default-user")
+	got, err := store.GetUserConnection(ctx, "ws-1", "default-user", defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("get user connection: %v", err)
 	}
@@ -143,10 +143,10 @@ func TestStoreUserConnectionRoundTrip(t *testing.T) {
 		t.Fatalf("user connection = %+v", got)
 	}
 
-	if err := store.DeleteUserConnection(ctx, "ws-1", "default-user"); err != nil {
+	if err := store.DeleteUserConnection(ctx, "ws-1", "default-user", defaultGitHubHost); err != nil {
 		t.Fatalf("delete user connection: %v", err)
 	}
-	got, err = store.GetUserConnection(ctx, "ws-1", "default-user")
+	got, err = store.GetUserConnection(ctx, "ws-1", "default-user", defaultGitHubHost)
 	if err != nil || got != nil {
 		t.Fatalf("user connection after delete = %+v, err %v", got, err)
 	}
@@ -247,7 +247,7 @@ func TestStoreLegacyMigrationSeedsExistingWorkspacesAndBackfillsOwnership(t *tes
 		t.Fatalf("migrate legacy store: %v", err)
 	}
 	for _, workspaceID := range []string{"ws-1", "ws-2"} {
-		got, getErr := store.GetWorkspaceConnection(ctx, workspaceID)
+		got, getErr := store.GetWorkspaceConnection(ctx, workspaceID, defaultGitHubHost)
 		if getErr != nil {
 			t.Fatalf("get legacy connection %s: %v", workspaceID, getErr)
 		}
@@ -295,7 +295,7 @@ func TestStoreLegacyMigrationSeedsExistingWorkspacesAndBackfillsOwnership(t *tes
 
 func TestStoreFreshSchemaDoesNotCreateLegacyConnection(t *testing.T) {
 	store := newTestStore(t)
-	got, err := store.GetWorkspaceConnection(context.Background(), "ws-new")
+	got, err := store.GetWorkspaceConnection(context.Background(), "ws-new", defaultGitHubHost)
 	if err != nil {
 		t.Fatalf("get fresh connection: %v", err)
 	}
@@ -367,11 +367,11 @@ func TestStoreDeleteWorkspaceAuthData(t *testing.T) {
 	if err := store.DeleteWorkspaceAuthData(ctx, "ws-1"); err != nil {
 		t.Fatalf("delete workspace auth data: %v", err)
 	}
-	workspace, err := store.GetWorkspaceConnection(ctx, "ws-1")
+	workspace, err := store.GetWorkspaceConnection(ctx, "ws-1", defaultGitHubHost)
 	if err != nil || workspace != nil {
 		t.Fatalf("workspace connection after delete = %+v, err %v", workspace, err)
 	}
-	user, err := store.GetUserConnection(ctx, "ws-1", "user-1")
+	user, err := store.GetUserConnection(ctx, "ws-1", "user-1", defaultGitHubHost)
 	if err != nil || user != nil {
 		t.Fatalf("user connection after delete = %+v, err %v", user, err)
 	}
@@ -382,13 +382,13 @@ func TestStoreDeleteWorkspaceAuthData(t *testing.T) {
 }
 
 func TestGitHubSecretKeysAreWorkspaceAndUserScoped(t *testing.T) {
-	if got, want := WorkspacePATSecretKey("ws-1"), "github:workspace:ws-1:pat"; got != want {
+	if got, want := WorkspacePATSecretKey("ws-1", defaultGitHubHost), "github:workspace:ws-1:pat"; got != want {
 		t.Fatalf("workspace PAT key = %q, want %q", got, want)
 	}
-	if got, want := UserAccessTokenSecretKey("ws-1", "user-1"), "github:user:ws-1:user-1:access"; got != want {
+	if got, want := UserAccessTokenSecretKey("ws-1", "user-1", defaultGitHubHost), "github:user:ws-1:user-1:access"; got != want {
 		t.Fatalf("user access key = %q, want %q", got, want)
 	}
-	if got, want := UserRefreshTokenSecretKey("ws-1", "user-1"), "github:user:ws-1:user-1:refresh"; got != want {
+	if got, want := UserRefreshTokenSecretKey("ws-1", "user-1", defaultGitHubHost), "github:user:ws-1:user-1:refresh"; got != want {
 		t.Fatalf("user refresh key = %q, want %q", got, want)
 	}
 }

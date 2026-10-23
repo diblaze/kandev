@@ -48,7 +48,7 @@ func (f *taskChangeRequestAutomationGitHubFake) GetTaskCIOptionsResponse(context
 	return f.options, nil
 }
 
-func (f *taskChangeRequestAutomationGitHubFake) GetWorkspaceAuthStatus(context.Context, string, string) (*github.WorkspaceAuthStatus, error) {
+func (f *taskChangeRequestAutomationGitHubFake) GetWorkspaceAuthStatus(context.Context, string, string, string) (*github.WorkspaceAuthStatus, error) {
 	return &github.WorkspaceAuthStatus{
 		Automation:    &github.WorkspaceAutomationStatus{},
 		Authenticated: true,

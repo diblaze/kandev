@@ -197,7 +197,7 @@ func (s *Service) buildDeploymentAppRuntimeWithClient(
 		}, flows, connectionStore, appClient, oauth),
 		personalAuth: personal,
 		webhookAuth: NewAppRegistrationWebhookService(
-			registrationID, config.WebhookSecret, connectionStore,
+			registrationID, resolved.Registration.GitHubHost, config.WebhookSecret, connectionStore,
 			&installationRepositorySettingsUpdater{service: s}, personalRepo, s.eventBus,
 			GitHubWebhookReconciliation{Installations: appClient, Personal: personal},
 		),
@@ -459,31 +459,49 @@ type WorkspaceAuthStatus struct {
 	RequiredScopes               []string                   `json:"required_scopes"`
 	RateLimit                    *GitHubRateLimitInfo       `json:"rate_limit,omitempty"`
 	PRDiscoveryHealth            *PRDiscoveryHealth         `json:"pr_discovery_health,omitempty"`
+	Hosts                        []WorkspaceHostStatus      `json:"hosts"`
 }
 
+// WorkspaceHostStatus summarizes the connection of one GitHub host.
+type WorkspaceHostStatus struct {
+	GitHubHost               string           `json:"github_host"`
+	Source                   ConnectionSource `json:"source"`
+	Login                    string           `json:"login,omitempty"`
+	InstallationAccountLogin string           `json:"installation_account_login,omitempty"`
+	Status                   ConnectionStatus `json:"status"`
+	LastError                string           `json:"last_error,omitempty"`
+	PersonalLogin            string           `json:"personal_login,omitempty"`
+}
+
+// GetWorkspaceAuthStatus projects the connection of host (empty means
+// github.com) and lists every host connection of the workspace.
 func (s *Service) GetWorkspaceAuthStatus(
 	ctx context.Context,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 ) (*WorkspaceAuthStatus, error) {
-	return s.getWorkspaceAuthStatus(ctx, workspaceID, userID, false)
+	return s.getWorkspaceAuthStatus(ctx, workspaceID, userID, host, false)
 }
 
 // RefreshWorkspaceRateLimit returns the workspace status after fetching a
 // fresh GitHub rate-limit snapshot for the resolved automation credential.
 func (s *Service) RefreshWorkspaceRateLimit(
 	ctx context.Context,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 ) (*WorkspaceAuthStatus, error) {
-	return s.getWorkspaceAuthStatus(ctx, workspaceID, userID, true)
+	return s.getWorkspaceAuthStatus(ctx, workspaceID, userID, host, true)
 }
 
 func (s *Service) getWorkspaceAuthStatus(
 	ctx context.Context,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 	refreshRateLimit bool,
 ) (*WorkspaceAuthStatus, error) {
 	if strings.TrimSpace(workspaceID) == "" {
 		return nil, ErrGitHubWorkspaceRequired
+	}
+	host, err := normalizeGitHubHost(host)
+	if err != nil {
+		return nil, err
 	}
 	if err := s.authorizeWorkspaceAccess(ctx, workspaceID); err != nil {
 		return nil, err
@@ -491,17 +509,21 @@ func (s *Service) getWorkspaceAuthStatus(
 	if s == nil || s.store == nil {
 		return nil, ErrGitHubNotConfigured
 	}
-	connection, err := s.store.GetWorkspaceConnection(ctx, workspaceID)
+	connection, err := s.store.GetWorkspaceConnection(ctx, workspaceID, host)
 	if err != nil {
 		return nil, err
 	}
-	personal, err := s.workspacePersonalConnection(ctx, workspaceID, userID)
+	personal, err := s.workspacePersonalConnection(ctx, workspaceID, userID, host)
+	if err != nil {
+		return nil, err
+	}
+	hosts, err := s.workspaceHostStatuses(ctx, workspaceID, userID)
 	if err != nil {
 		return nil, err
 	}
 	status := &WorkspaceAuthStatus{
 		WorkspaceID: workspaceID, Personal: personal, RequiredScopes: RequiredGitHubScopes,
-		AuthMethod: AuthMethodNone,
+		AuthMethod: AuthMethodNone, Hosts: hosts,
 	}
 	// A status response is authoritative for the current connection. Seed an
 	// explicit runtime-scoped unknown projection so a disconnected or
@@ -523,7 +545,7 @@ func (s *Service) getWorkspaceAuthStatus(
 		return status, nil
 	}
 	automation, resolveErr := s.resolver.Resolve(ctx, ResolveCredentialRequest{
-		WorkspaceID: workspaceID, Purpose: CredentialPurposeAutomation,
+		WorkspaceID: workspaceID, Host: host, Purpose: CredentialPurposeAutomation,
 	})
 	if resolveErr != nil || automation == nil {
 		return status, nil
@@ -542,8 +564,35 @@ func (s *Service) getWorkspaceAuthStatus(
 		automation.CredentialGeneration,
 	)
 
-	s.populateEffectivePersonalActors(ctx, workspaceID, userID, status)
+	s.populateEffectivePersonalActors(ctx, workspaceID, userID, host, status)
 	return status, nil
+}
+
+func (s *Service) workspaceHostStatuses(
+	ctx context.Context,
+	workspaceID, userID string,
+) ([]WorkspaceHostStatus, error) {
+	connections, err := s.store.ListWorkspaceConnections(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	hosts := make([]WorkspaceHostStatus, 0, len(connections))
+	for _, connection := range connections {
+		personal, err := s.workspacePersonalConnection(ctx, workspaceID, userID, connection.GitHubHost)
+		if err != nil {
+			return nil, err
+		}
+		host := WorkspaceHostStatus{
+			GitHubHost: connection.GitHubHost, Source: connection.Source, Login: connection.Login,
+			InstallationAccountLogin: connection.InstallationAccountLogin,
+			Status:                   connection.Status, LastError: connection.LastError,
+		}
+		if personal != nil {
+			host.PersonalLogin = personal.Login
+		}
+		hosts = append(hosts, host)
+	}
+	return hosts, nil
 }
 
 func (s *Service) seedWorkspaceRateLimit(
@@ -597,12 +646,12 @@ func hasCompleteRateLimitSnapshot(tracker *RateTracker) bool {
 
 func (s *Service) workspacePersonalConnection(
 	ctx context.Context,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 ) (*UserConnection, error) {
 	if userID == "" {
 		return nil, nil
 	}
-	return s.store.GetUserConnection(ctx, workspaceID, userID)
+	return s.store.GetUserConnection(ctx, workspaceID, userID, host)
 }
 
 func (s *Service) populateAppRegistrationStatus(
@@ -626,17 +675,17 @@ func (s *Service) populateAppRegistrationStatus(
 
 func (s *Service) populateEffectivePersonalActors(
 	ctx context.Context,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 	status *WorkspaceAuthStatus,
 ) {
 	personalActor, _ := s.resolver.Resolve(ctx, ResolveCredentialRequest{
-		WorkspaceID: workspaceID, UserID: userID, Purpose: CredentialPurposePersonalRead,
+		WorkspaceID: workspaceID, Host: host, UserID: userID, Purpose: CredentialPurposePersonalRead,
 	})
 	if personalActor != nil {
 		status.EffectivePersonalActor = principalPointer(personalActor.Principal)
 	}
 	mutationActor, _ := s.resolver.Resolve(ctx, ResolveCredentialRequest{
-		WorkspaceID: workspaceID, UserID: userID, Purpose: CredentialPurposePersonalWrite,
+		WorkspaceID: workspaceID, Host: host, UserID: userID, Purpose: CredentialPurposePersonalWrite,
 	})
 	if mutationActor != nil {
 		status.EffectiveManualMutationActor = principalPointer(mutationActor.Principal)
@@ -684,14 +733,20 @@ func (s *Service) CompleteAppInstallation(
 	return runtime.appInstallationAuth.Complete(ctx, callback)
 }
 
+// StartPersonalAuth begins the personal identity flow of the App connection
+// on host (empty means github.com).
 func (s *Service) StartPersonalAuth(
 	ctx context.Context,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 ) (PersonalAuthStart, error) {
+	host, err := normalizeGitHubHost(host)
+	if err != nil {
+		return PersonalAuthStart{}, err
+	}
 	if err := s.authorizeWorkspaceAccess(ctx, workspaceID); err != nil {
 		return PersonalAuthStart{}, err
 	}
-	connection, err := s.store.GetWorkspaceConnection(ctx, workspaceID)
+	connection, err := s.store.GetWorkspaceConnection(ctx, workspaceID, host)
 	if err != nil {
 		return PersonalAuthStart{}, err
 	}
@@ -718,12 +773,18 @@ func (s *Service) CompletePersonalAuth(
 	return runtime.personalAuth.Complete(ctx, callback)
 }
 
-func (s *Service) DisconnectPersonalAuth(ctx context.Context, workspaceID, userID string) error {
+// DisconnectPersonalAuth removes the user's personal identity on host (empty
+// means github.com).
+func (s *Service) DisconnectPersonalAuth(ctx context.Context, workspaceID, userID, host string) error {
+	host, err := normalizeGitHubHost(host)
+	if err != nil {
+		return err
+	}
 	if err := s.authorizeWorkspaceAccess(ctx, workspaceID); err != nil {
 		return err
 	}
 	if s == nil || s.personalConnections == nil {
 		return nil
 	}
-	return s.personalConnections.RevokePersonalConnection(ctx, workspaceID, userID)
+	return s.personalConnections.RevokePersonalConnection(ctx, workspaceID, userID, host)
 }

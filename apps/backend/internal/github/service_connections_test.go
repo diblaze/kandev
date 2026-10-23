@@ -80,7 +80,7 @@ func newWorkspaceConnectionService(t *testing.T, login string) (*Service, *fakeC
 		newAppRegistration("registration-test", 101, "Test App", time.Now().UTC())); err != nil {
 		t.Fatalf("seed App registration: %v", err)
 	}
-	service.tokenClientFactory = func(string) Client {
+	service.tokenClientFactory = func(_, _ string) Client {
 		client := NewMockClient()
 		client.SetUser(login)
 		return client
@@ -100,7 +100,7 @@ func TestSetWorkspaceConnectionPATIsScopedAndValidatedBeforeWrite(t *testing.T) 
 	if connection.Login != "octocat" || connection.CredentialGeneration != 1 {
 		t.Fatalf("connection = %+v", connection)
 	}
-	if got := secrets.values[WorkspacePATSecretKey("ws-1")]; got != "ghp_workspace" {
+	if got := secrets.values[WorkspacePATSecretKey("ws-1", defaultGitHubHost)]; got != "ghp_workspace" {
 		t.Fatalf("stored PAT = %q", got)
 	}
 }
@@ -114,7 +114,7 @@ func TestWorkspaceAuthStatusIncludesEffectiveActorsAndCapabilities(t *testing.T)
 		t.Fatalf("SetWorkspaceConnection: %v", err)
 	}
 
-	status, err := service.GetWorkspaceAuthStatus(context.Background(), "ws-1", DefaultUserID)
+	status, err := service.GetWorkspaceAuthStatus(context.Background(), "ws-1", DefaultUserID, "")
 	if err != nil {
 		t.Fatalf("GetWorkspaceAuthStatus: %v", err)
 	}
@@ -199,16 +199,16 @@ func TestSetWorkspaceConnectionValidationFailurePreservesPreviousPAT(t *testing.
 	}); err != nil {
 		t.Fatal(err)
 	}
-	service.tokenClientFactory = func(string) Client { return &NoopClient{} }
+	service.tokenClientFactory = func(_, _ string) Client { return &NoopClient{} }
 	if _, err := service.SetWorkspaceConnection(context.Background(), "ws-1", SetWorkspaceConnectionRequest{
 		Source: ConnectionSourcePAT, Token: "invalid",
 	}); !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("error = %v, want ErrInvalidToken", err)
 	}
-	if got := secrets.values[WorkspacePATSecretKey("ws-1")]; got != "first" {
+	if got := secrets.values[WorkspacePATSecretKey("ws-1", defaultGitHubHost)]; got != "first" {
 		t.Fatalf("previous PAT changed to %q", got)
 	}
-	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1")
+	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost)
 	if err != nil || connection.CredentialGeneration != 1 {
 		t.Fatalf("connection after failure = %+v, err %v", connection, err)
 	}
@@ -221,10 +221,10 @@ func TestDeleteWorkspaceConnectionRemovesOwnedPAT(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.DeleteWorkspaceConnection(context.Background(), "ws-1"); err != nil {
+	if err := service.DeleteWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost); err != nil {
 		t.Fatalf("DeleteWorkspaceConnection: %v", err)
 	}
-	if _, ok := secrets.values[WorkspacePATSecretKey("ws-1")]; ok {
+	if _, ok := secrets.values[WorkspacePATSecretKey("ws-1", defaultGitHubHost)]; ok {
 		t.Fatal("workspace PAT remains after disconnect")
 	}
 }
@@ -237,16 +237,16 @@ func TestDeleteWorkspaceConnectionPreservesPATConnectionWhenSecretDeleteFails(t 
 		t.Fatal(err)
 	}
 	secrets.deleteErr = errors.New("secret store unavailable")
-	secrets.deleteErrKey = WorkspacePATSecretKey("ws-1")
+	secrets.deleteErrKey = WorkspacePATSecretKey("ws-1", defaultGitHubHost)
 
-	if err := service.DeleteWorkspaceConnection(context.Background(), "ws-1"); err == nil {
+	if err := service.DeleteWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost); err == nil {
 		t.Fatal("expected disconnect failure")
 	}
-	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1")
+	connection, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost)
 	if err != nil || connection == nil || connection.Source != ConnectionSourcePAT {
 		t.Fatalf("connection after failed disconnect = %+v, err %v", connection, err)
 	}
-	if got := secrets.values[WorkspacePATSecretKey("ws-1")]; got != "token" {
+	if got := secrets.values[WorkspacePATSecretKey("ws-1", defaultGitHubHost)]; got != "token" {
 		t.Fatalf("PAT after failed disconnect = %q", got)
 	}
 }
@@ -274,14 +274,14 @@ func TestSetWorkspaceConnectionPATRevokesPersonalAppConnections(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	stored, err := service.store.GetUserConnection(context.Background(), "ws-1", "user-1")
+	stored, err := service.store.GetUserConnection(context.Background(), "ws-1", "user-1", defaultGitHubHost)
 	if err != nil || stored != nil {
 		t.Fatalf("personal connection after App replacement = %+v, err %v", stored, err)
 	}
-	if _, ok := secrets.values[UserAccessTokenSecretKey("ws-1", "user-1")]; ok {
+	if _, ok := secrets.values[UserAccessTokenSecretKey("ws-1", "user-1", defaultGitHubHost)]; ok {
 		t.Fatal("personal access secret remains after App replacement")
 	}
-	if _, ok := secrets.values[UserRefreshTokenSecretKey("ws-1", "user-1")]; ok {
+	if _, ok := secrets.values[UserRefreshTokenSecretKey("ws-1", "user-1", defaultGitHubHost)]; ok {
 		t.Fatal("personal refresh secret remains after App replacement")
 	}
 }
@@ -304,10 +304,10 @@ func TestDeleteWorkspaceAppConnectionRevokesPersonalConnections(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := service.DeleteWorkspaceConnection(context.Background(), "ws-1"); err != nil {
+	if err := service.DeleteWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost); err != nil {
 		t.Fatal(err)
 	}
-	stored, err := service.store.GetUserConnection(context.Background(), "ws-1", "user-1")
+	stored, err := service.store.GetUserConnection(context.Background(), "ws-1", "user-1", defaultGitHubHost)
 	if err != nil || stored != nil || len(secrets.values) != 0 {
 		t.Fatalf("personal state after App disconnect = %+v, secrets=%#v, err %v", stored, secrets.values, err)
 	}
@@ -340,16 +340,16 @@ func TestFailedWorkspaceAppTransitionRestoresPersonalConnection(t *testing.T) {
 	if err == nil {
 		t.Fatal("invalid workspace transition unexpectedly succeeded")
 	}
-	workspace, getErr := service.store.GetWorkspaceConnection(ctx, "ws-1")
+	workspace, getErr := service.store.GetWorkspaceConnection(ctx, "ws-1", defaultGitHubHost)
 	if getErr != nil || workspace == nil || workspace.AppRegistrationID != "registration-test" {
 		t.Fatalf("workspace after failed transition = %+v, err %v", workspace, getErr)
 	}
-	stored, getErr := service.store.GetUserConnection(ctx, "ws-1", "user-1")
+	stored, getErr := service.store.GetUserConnection(ctx, "ws-1", "user-1", defaultGitHubHost)
 	if getErr != nil || stored == nil || stored.AppRegistrationID != "registration-test" {
 		t.Fatalf("personal connection after failed transition = %+v, err %v", stored, getErr)
 	}
-	if secrets.values[UserAccessTokenSecretKey("ws-1", "user-1")] != "personal-access" ||
-		secrets.values[UserRefreshTokenSecretKey("ws-1", "user-1")] != "personal-refresh" {
+	if secrets.values[UserAccessTokenSecretKey("ws-1", "user-1", defaultGitHubHost)] != "personal-access" ||
+		secrets.values[UserRefreshTokenSecretKey("ws-1", "user-1", defaultGitHubHost)] != "personal-refresh" {
 		t.Fatalf("personal secrets after failed transition = %#v", secrets.values)
 	}
 }
@@ -372,16 +372,16 @@ func TestDeleteWorkspaceAppConnectionCompensatesPersonalRevokeFailure(t *testing
 		t.Fatal(err)
 	}
 	secrets.deleteErr = errors.New("personal secret delete failed")
-	secrets.deleteErrKey = UserRefreshTokenSecretKey("ws-1", "user-1")
+	secrets.deleteErrKey = UserRefreshTokenSecretKey("ws-1", "user-1", defaultGitHubHost)
 
-	if err := service.DeleteWorkspaceConnection(context.Background(), "ws-1"); err == nil {
+	if err := service.DeleteWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost); err == nil {
 		t.Fatal("expected disconnect failure")
 	}
-	workspace, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1")
+	workspace, err := service.store.GetWorkspaceConnection(context.Background(), "ws-1", defaultGitHubHost)
 	if err != nil || workspace == nil || workspace.InstallationID == nil || *workspace.InstallationID != installationID {
 		t.Fatalf("workspace connection after compensation = %+v, err %v", workspace, err)
 	}
-	stored, err := service.store.GetUserConnection(context.Background(), "ws-1", "user-1")
+	stored, err := service.store.GetUserConnection(context.Background(), "ws-1", "user-1", defaultGitHubHost)
 	if err != nil || stored == nil {
 		t.Fatalf("personal connection after compensation = %+v, err %v", stored, err)
 	}
@@ -409,7 +409,7 @@ func TestDifferentAppInstallationRequiresPersonalConnectionRevocation(t *testing
 	if err := service.revokePersonalForAutomationTransition(context.Background(), existing, replacement); err != nil {
 		t.Fatal(err)
 	}
-	stored, err := service.store.GetUserConnection(context.Background(), "ws-1", "user-1")
+	stored, err := service.store.GetUserConnection(context.Background(), "ws-1", "user-1", defaultGitHubHost)
 	if err != nil || stored != nil {
 		t.Fatalf("personal connection after installation replacement = %+v, err %v", stored, err)
 	}
@@ -419,7 +419,7 @@ func TestSetWorkspaceConnectionRejectsStaleValidatedMutation(t *testing.T) {
 	service, secrets := newWorkspaceConnectionService(t, "octocat")
 	started := make(chan struct{})
 	release := make(chan struct{})
-	service.tokenClientFactory = func(token string) Client {
+	service.tokenClientFactory = func(_, token string) Client {
 		if token == "slow" {
 			close(started)
 			<-release
@@ -445,7 +445,7 @@ func TestSetWorkspaceConnectionRejectsStaleValidatedMutation(t *testing.T) {
 	if err := <-slowResult; !errors.Is(err, ErrWorkspaceConnectionStale) {
 		t.Fatalf("slow mutation error = %v, want stale", err)
 	}
-	if got := secrets.values[WorkspacePATSecretKey("ws-1")]; got != "newer" {
+	if got := secrets.values[WorkspacePATSecretKey("ws-1", defaultGitHubHost)]; got != "newer" {
 		t.Fatalf("PAT after stale mutation = %q", got)
 	}
 }
@@ -474,13 +474,13 @@ func TestCopyWorkspaceConnectionToWorkspace(t *testing.T) {
 
 		require.NoError(t, service.CopyWorkspaceConnectionToWorkspace(ctx, "ws-1", "ws-dst"))
 
-		got, err := service.store.GetWorkspaceConnection(ctx, "ws-dst")
+		got, err := service.store.GetWorkspaceConnection(ctx, "ws-dst", defaultGitHubHost)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		require.Equal(t, ConnectionSourcePAT, got.Source)
 		require.Equal(t, "alice", got.Login)
 		require.Equal(t, ConnectionStatusActive, got.Status)
-		token, err := secrets.Reveal(ctx, WorkspacePATSecretKey("ws-dst"))
+		token, err := secrets.Reveal(ctx, WorkspacePATSecretKey("ws-dst", defaultGitHubHost))
 		require.NoError(t, err)
 		require.Equal(t, "ghp_source_token", token)
 	})
@@ -492,7 +492,7 @@ func TestCopyWorkspaceConnectionToWorkspace(t *testing.T) {
 			t.Fatalf("seed destination workspace: %v", err)
 		}
 		require.NoError(t, service.CopyWorkspaceConnectionToWorkspace(ctx, "ws-1", "ws-dst"))
-		got, err := service.store.GetWorkspaceConnection(ctx, "ws-dst")
+		got, err := service.store.GetWorkspaceConnection(ctx, "ws-dst", defaultGitHubHost)
 		require.NoError(t, err)
 		require.Nil(t, got)
 	})

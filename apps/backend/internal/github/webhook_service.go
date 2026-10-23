@@ -39,7 +39,7 @@ type githubWebhookStore interface {
 }
 
 type personalConnectionRevoker interface {
-	RevokePersonalConnection(context.Context, string, string) error
+	RevokePersonalConnection(ctx context.Context, workspaceID, userID, host string) error
 }
 
 type personalAuthorizationReconciler interface {
@@ -58,6 +58,7 @@ type InstallationRepository struct {
 
 type InstallationRepositoriesChange struct {
 	WorkspaceID          string
+	Host                 string
 	AppRegistrationID    string
 	InstallationID       int64
 	ConnectionSource     ConnectionSource
@@ -139,6 +140,7 @@ type installationTransition struct {
 
 type GitHubWebhookService struct {
 	registrationID     string
+	host               string
 	secret             []byte
 	store              githubWebhookStore
 	repos              installationRepositoryUpdater
@@ -168,8 +170,10 @@ func NewGitHubWebhookService(
 	return service
 }
 
+// NewAppRegistrationWebhookService serves the webhooks of one App
+// registration, applying them only to connections on its GitHub host.
 func NewAppRegistrationWebhookService(
-	registrationID, secret string,
+	registrationID, host, secret string,
 	store githubWebhookStore,
 	repositories installationRepositoryUpdater,
 	personal personalConnectionRevoker,
@@ -178,6 +182,7 @@ func NewAppRegistrationWebhookService(
 ) *GitHubWebhookService {
 	service := NewGitHubWebhookService(secret, store, repositories, personal, publisher, reconciliation...)
 	service.registrationID = strings.TrimSpace(registrationID)
+	service.host = githubHostOrDefault(host)
 	return service
 }
 
@@ -300,7 +305,17 @@ func (s *GitHubWebhookService) listWorkspaceConnections(
 	ctx context.Context,
 	installationID int64,
 ) ([]*WorkspaceConnection, error) {
-	return s.store.ListWorkspaceConnectionsByAppInstallation(ctx, s.registrationID, installationID)
+	connections, err := s.store.ListWorkspaceConnectionsByAppInstallation(ctx, s.registrationID, installationID)
+	if err != nil || s.host == "" {
+		return connections, err
+	}
+	matching := connections[:0]
+	for _, connection := range connections {
+		if githubHostOrDefault(connection.GitHubHost) == s.host {
+			matching = append(matching, connection)
+		}
+	}
+	return matching, nil
 }
 
 func (s *GitHubWebhookService) installationTransition(
@@ -396,6 +411,7 @@ func (s *GitHubWebhookService) processInstallationRepositories(
 		}
 		updated, err := s.repos.ApplyInstallationRepositories(ctx, InstallationRepositoriesChange{
 			WorkspaceID:          connection.WorkspaceID,
+			Host:                 connection.GitHubHost,
 			AppRegistrationID:    s.registrationID,
 			InstallationID:       event.Installation.ID,
 			ConnectionSource:     connection.Source,
@@ -453,7 +469,9 @@ func (s *GitHubWebhookService) processAuthorization(
 		if s.personal == nil {
 			return affected, "", errors.New("personal GitHub revoker is not configured")
 		}
-		if err := s.personal.RevokePersonalConnection(ctx, connection.WorkspaceID, connection.UserID); err != nil {
+		if err := s.personal.RevokePersonalConnection(
+			ctx, connection.WorkspaceID, connection.UserID, connection.GitHubHost,
+		); err != nil {
 			return affected, "", fmt.Errorf("revoke personal GitHub connection: %w", err)
 		}
 		affected++

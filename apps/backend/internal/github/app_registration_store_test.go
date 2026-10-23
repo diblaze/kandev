@@ -115,7 +115,7 @@ func TestAppRegistrationReferencesRoundTrip(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("save workspace registration reference: %v", err)
 	}
-	workspace, err := store.GetWorkspaceConnection(ctx, "ws-1")
+	workspace, err := store.GetWorkspaceConnection(ctx, "ws-1", defaultGitHubHost)
 	if err != nil || workspace == nil || workspace.AppRegistrationID != registration.ID {
 		t.Fatalf("workspace registration reference = %+v, err %v", workspace, err)
 	}
@@ -127,7 +127,7 @@ func TestAppRegistrationReferencesRoundTrip(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("save personal registration reference: %v", err)
 	}
-	personal, err := store.GetUserConnection(ctx, "ws-1", "user-1")
+	personal, err := store.GetUserConnection(ctx, "ws-1", "user-1", defaultGitHubHost)
 	if err != nil || personal == nil || personal.AppRegistrationID != registration.ID {
 		t.Fatalf("personal registration reference = %+v, err %v", personal, err)
 	}
@@ -246,10 +246,10 @@ func TestAppRegistrationDeleteIsRestrictedByWorkspaceAndPersonalReferences(t *te
 	if err := repository.DeleteRegistration(ctx, registration.ID); !errors.Is(err, ErrDeploymentAppInUse) {
 		t.Fatalf("delete referenced registration error = %v, want %v", err, ErrDeploymentAppInUse)
 	}
-	if err := store.DeleteUserConnection(ctx, "ws-1", "user-1"); err != nil {
+	if err := store.DeleteUserConnection(ctx, "ws-1", "user-1", defaultGitHubHost); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.DeleteWorkspaceConnection(ctx, "ws-1"); err != nil {
+	if err := store.DeleteWorkspaceConnection(ctx, "ws-1", defaultGitHubHost); err != nil {
 		t.Fatal(err)
 	}
 	if err := repository.DeleteRegistration(ctx, registration.ID); err != nil {

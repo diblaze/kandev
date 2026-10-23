@@ -120,7 +120,7 @@ func TestWorkspaceAuthStatusSeedsRateLimitOncePerCachedCredential(t *testing.T) 
 	service.resolver.SetAutomationProvider(rateLimitAutomationProvider{client: client, tracker: tracker})
 
 	for i := 0; i < 2; i++ {
-		status, err := service.GetWorkspaceAuthStatus(context.Background(), connection.WorkspaceID, DefaultUserID)
+		status, err := service.GetWorkspaceAuthStatus(context.Background(), connection.WorkspaceID, DefaultUserID, "")
 		if err != nil {
 			t.Fatalf("GetWorkspaceAuthStatus call %d: %v", i+1, err)
 		}
@@ -136,7 +136,7 @@ func TestWorkspaceAuthStatusSeedsRateLimitOncePerCachedCredential(t *testing.T) 
 	}
 
 	status, err := service.RefreshWorkspaceRateLimit(
-		context.Background(), connection.WorkspaceID, DefaultUserID,
+		context.Background(), connection.WorkspaceID, DefaultUserID, "",
 	)
 	if err != nil {
 		t.Fatalf("RefreshWorkspaceRateLimit: %v", err)
@@ -177,7 +177,7 @@ func TestWorkspaceAuthStatusCompletesPartialRateLimitSeed(t *testing.T) {
 	service.resolver.SetAutomationProvider(rateLimitAutomationProvider{client: client, tracker: tracker})
 
 	status, err := service.GetWorkspaceAuthStatus(
-		context.Background(), connection.WorkspaceID, DefaultUserID,
+		context.Background(), connection.WorkspaceID, DefaultUserID, "",
 	)
 	if err != nil {
 		t.Fatalf("GetWorkspaceAuthStatus: %v", err)
@@ -221,14 +221,14 @@ func TestWorkspaceRateLimitSeedSerializesConcurrentRefreshes(t *testing.T) {
 
 	regularDone := make(chan error, 1)
 	go func() {
-		_, err := service.GetWorkspaceAuthStatus(context.Background(), connection.WorkspaceID, DefaultUserID)
+		_, err := service.GetWorkspaceAuthStatus(context.Background(), connection.WorkspaceID, DefaultUserID, "")
 		regularDone <- err
 	}()
 	<-client.firstStarted
 
 	forcedDone := make(chan error, 1)
 	go func() {
-		_, err := service.RefreshWorkspaceRateLimit(context.Background(), connection.WorkspaceID, DefaultUserID)
+		_, err := service.RefreshWorkspaceRateLimit(context.Background(), connection.WorkspaceID, DefaultUserID, "")
 		forcedDone <- err
 	}()
 
@@ -447,7 +447,7 @@ func TestWorkspaceAuthStatusUsesSelectedAppRegistration(t *testing.T) {
 	}
 
 	for workspaceID, registrationID := range map[string]string{"ws-a": "registration-a", "ws-b": "registration-b"} {
-		status, err := service.GetWorkspaceAuthStatus(context.Background(), workspaceID, DefaultUserID)
+		status, err := service.GetWorkspaceAuthStatus(context.Background(), workspaceID, DefaultUserID, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -456,7 +456,7 @@ func TestWorkspaceAuthStatusUsesSelectedAppRegistration(t *testing.T) {
 			t.Fatalf("status for %s = %+v", workspaceID, status)
 		}
 	}
-	status, err := service.GetWorkspaceAuthStatus(context.Background(), "ws-invalid", DefaultUserID)
+	status, err := service.GetWorkspaceAuthStatus(context.Background(), "ws-invalid", DefaultUserID, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,16 +10,23 @@ import (
 )
 
 type fakeConnectionReader struct {
-	workspaces map[string]*WorkspaceConnection
-	users      map[string]*UserConnection
+	workspaces     map[string]*WorkspaceConnection
+	hostWorkspaces map[string]*WorkspaceConnection
+	users          map[string]*UserConnection
 }
 
-func (f *fakeConnectionReader) GetWorkspaceConnection(_ context.Context, workspaceID string) (*WorkspaceConnection, error) {
-	return f.workspaces[workspaceID], nil
+func (f *fakeConnectionReader) GetWorkspaceConnection(_ context.Context, workspaceID, host string) (*WorkspaceConnection, error) {
+	if connection := f.workspaces[workspaceID]; connection != nil && githubHostOrDefault(connection.GitHubHost) == host {
+		return connection, nil
+	}
+	return f.hostWorkspaces[workspaceID+"|"+host], nil
 }
 
-func (f *fakeConnectionReader) GetUserConnection(_ context.Context, workspaceID, userID string) (*UserConnection, error) {
-	return f.users[workspaceID+":"+userID], nil
+func (f *fakeConnectionReader) GetUserConnection(_ context.Context, workspaceID, userID, host string) (*UserConnection, error) {
+	if connection := f.users[workspaceID+":"+userID]; connection != nil && githubHostOrDefault(connection.GitHubHost) == host {
+		return connection, nil
+	}
+	return nil, nil
 }
 
 type fakeAuthSecrets map[string]string
@@ -63,7 +70,7 @@ type synchronizedConnectionReader struct {
 
 func (r *synchronizedConnectionReader) GetWorkspaceConnection(
 	_ context.Context,
-	_ string,
+	_, _ string,
 ) (*WorkspaceConnection, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -77,6 +84,7 @@ func (r *synchronizedConnectionReader) GetWorkspaceConnection(
 
 func (r *synchronizedConnectionReader) GetUserConnection(
 	context.Context,
+	string,
 	string,
 	string,
 ) (*UserConnection, error) {
@@ -164,8 +172,8 @@ func TestCredentialResolverIsolatesWorkspacePATs(t *testing.T) {
 		"work":     {WorkspaceID: "work", Source: ConnectionSourcePAT, Login: "alice-work", Status: ConnectionStatusActive, CredentialGeneration: 1},
 	}}
 	resolver := NewCredentialResolver(connections, fakeAuthSecrets{
-		WorkspacePATSecretKey("personal"): "pat-personal",
-		WorkspacePATSecretKey("work"):     "pat-work",
+		WorkspacePATSecretKey("personal", defaultGitHubHost): "pat-personal",
+		WorkspacePATSecretKey("work", defaultGitHubHost):     "pat-work",
 	})
 
 	personal, err := resolver.Resolve(context.Background(), ResolveCredentialRequest{WorkspaceID: "personal", Purpose: CredentialPurposeAutomation})
@@ -416,7 +424,7 @@ func TestCredentialResolverInvalidPersonalFallsBackToAppOnlyForManualWrites(t *t
 func TestCredentialResolverGenerationSeparatesCachedClients(t *testing.T) {
 	connection := &WorkspaceConnection{WorkspaceID: "work", Source: ConnectionSourcePAT, Login: "first", Status: ConnectionStatusActive, CredentialGeneration: 1}
 	connections := &fakeConnectionReader{workspaces: map[string]*WorkspaceConnection{"work": connection}}
-	resolver := NewCredentialResolver(connections, fakeAuthSecrets{WorkspacePATSecretKey("work"): "pat"})
+	resolver := NewCredentialResolver(connections, fakeAuthSecrets{WorkspacePATSecretKey("work", defaultGitHubHost): "pat"})
 	first, err := resolver.Resolve(context.Background(), ResolveCredentialRequest{WorkspaceID: "work", Purpose: CredentialPurposeAutomation})
 	if err != nil {
 		t.Fatal(err)

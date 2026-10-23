@@ -213,7 +213,8 @@ func wsStatus(svc *Service, _ *logger.Logger) func(ctx context.Context, msg *ws.
 			return ws.NewError(msg.ID, msg.Action, ws.ErrorCodeBadRequest, errMsgInvalidPayload, nil)
 		}
 		workspaceID, _ := payload["workspace_id"].(string)
-		status, err := svc.GetWorkspaceAuthStatus(ctx, workspaceID, githubUserID(ctx))
+		host, _ := payload["host"].(string)
+		status, err := svc.GetWorkspaceAuthStatus(ctx, workspaceID, githubUserID(ctx), host)
 		if err != nil {
 			return ws.NewError(msg.ID, msg.Action, ws.ErrorCodeInternalError, err.Error(), nil)
 		}

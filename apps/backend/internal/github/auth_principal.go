@@ -36,14 +36,18 @@ type AuthPrincipal struct {
 	AppCredentialGeneration int64             `json:"app_credential_generation,omitempty"`
 	WorkspaceID             string            `json:"workspace_id"`
 	UserID                  string            `json:"user_id,omitempty"`
+	GitHubHost              string            `json:"github_host,omitempty"`
 }
 
 type ResolveCredentialRequest struct {
 	WorkspaceID string
-	UserID      string
-	Purpose     CredentialPurpose
-	RepoOwner   string
-	RepoName    string
+	// Host is the GitHub host of the item the credential serves; empty means
+	// github.com.
+	Host      string
+	UserID    string
+	Purpose   CredentialPurpose
+	RepoOwner string
+	RepoName  string
 }
 
 type ResolvedCredential struct {

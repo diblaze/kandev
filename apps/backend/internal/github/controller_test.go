@@ -191,12 +191,14 @@ type controllerTestConnectionReader struct {
 func (r controllerTestConnectionReader) GetWorkspaceConnection(
 	context.Context,
 	string,
+	string,
 ) (*WorkspaceConnection, error) {
 	return r.connection, nil
 }
 
 func (controllerTestConnectionReader) GetUserConnection(
 	context.Context,
+	string,
 	string,
 	string,
 ) (*UserConnection, error) {

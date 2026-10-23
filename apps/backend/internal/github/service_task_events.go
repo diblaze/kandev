@@ -118,22 +118,23 @@ func (s *Service) handleWorkspaceDeleted(ctx context.Context, event *bus.Event) 
 	if s.connectionSecrets == nil {
 		return nil
 	}
-	keys := []string{WorkspacePATSecretKey(workspaceID)}
+	keys := []string{WorkspacePATSecretKey(workspaceID, defaultGitHubHost)}
 	if lister, ok := s.connectionSecrets.(connectionSecretIDLister); ok {
 		ids, err := lister.ListIDs(ctx)
 		if err != nil {
 			return fmt.Errorf("list GitHub connection secrets: %w", err)
 		}
 		userPrefix := "github:user:" + workspaceID + ":"
+		hostPATPrefix := WorkspacePATSecretKeyPrefix(workspaceID) + ":"
 		for _, id := range ids {
-			if strings.HasPrefix(id, userPrefix) {
+			if strings.HasPrefix(id, userPrefix) || strings.HasPrefix(id, hostPATPrefix) {
 				keys = append(keys, id)
 			}
 		}
 	} else {
 		keys = append(keys,
-			UserAccessTokenSecretKey(workspaceID, DefaultUserID),
-			UserRefreshTokenSecretKey(workspaceID, DefaultUserID),
+			UserAccessTokenSecretKey(workspaceID, DefaultUserID, defaultGitHubHost),
+			UserRefreshTokenSecretKey(workspaceID, DefaultUserID, defaultGitHubHost),
 		)
 	}
 	for _, key := range keys {

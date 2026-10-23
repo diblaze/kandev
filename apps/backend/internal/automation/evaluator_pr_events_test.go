@@ -22,7 +22,7 @@ type eventSelectionSecrets struct{}
 
 func (eventSelectionSecrets) List(context.Context) ([]*github.SecretListItem, error) { return nil, nil }
 func (eventSelectionSecrets) Reveal(_ context.Context, key string) (string, error) {
-	if key != github.WorkspacePATSecretKey("ws-1") {
+	if key != github.WorkspacePATSecretKey("ws-1", "github.com") {
 		return "", fmt.Errorf("unexpected fixture credential key: %s", key)
 	}
 	return "event-fixture-token", nil

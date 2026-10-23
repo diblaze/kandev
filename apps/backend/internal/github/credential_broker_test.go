@@ -96,7 +96,7 @@ func newPATCredentialBroker(t *testing.T) (*CredentialBroker, *WorkspaceConnecti
 		connection.WorkspaceID: connection,
 	}}
 	resolver := NewCredentialResolver(connections, fakeAuthSecrets{
-		WorkspacePATSecretKey(connection.WorkspaceID): "workspace-secret",
+		WorkspacePATSecretKey(connection.WorkspaceID, defaultGitHubHost): "workspace-secret",
 	})
 	authorizer := &fakeBrokerAuthorizer{}
 	return NewCredentialBroker(connections, resolver, authorizer), connection, authorizer

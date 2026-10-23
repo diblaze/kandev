@@ -208,7 +208,7 @@ func TestVerifyContributionDestinationForWorkspaceRejectsRecreatedTarget(t *test
 		},
 	}}
 	resolver := NewCredentialResolver(connections, fakeAuthSecrets{
-		WorkspacePATSecretKey("workspace-1"): "workspace-token",
+		WorkspacePATSecretKey("workspace-1", defaultGitHubHost): "workspace-token",
 	})
 	resolver.SetAutomationProvider(testAutomationCredentialProvider{client: client})
 	service := &Service{resolver: resolver}

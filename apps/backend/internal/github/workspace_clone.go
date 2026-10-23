@@ -2,8 +2,6 @@ package github
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -12,40 +10,42 @@ import (
 )
 
 // CopyWorkspaceConfigurationTx copies only workspace-owned settings and
-// automation connections. The caller copies the PAT through the secret owner
-// before committing this same transaction.
-func (s *Store) CopyWorkspaceConfigurationTx(ctx context.Context, tx *sqlx.Tx, sourceID, targetID string) (bool, error) {
-	var connection WorkspaceConnection
-	query := workspaceConnectionSelect + ` WHERE workspace_id = ?`
+// automation connections of every GitHub host. It returns the hosts whose PAT
+// the caller copies through the secret owner before committing this same
+// transaction.
+func (s *Store) CopyWorkspaceConfigurationTx(ctx context.Context, tx *sqlx.Tx, sourceID, targetID string) ([]string, error) {
+	query := workspaceConnectionSelect + ` WHERE workspace_id = ? ORDER BY github_host`
 	if dialect.IsPostgres(tx.DriverName()) {
 		query += ` FOR SHARE`
 	}
-	err := tx.GetContext(ctx, &connection, tx.Rebind(query), sourceID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return false, err
+	var connections []WorkspaceConnection
+	if err := tx.SelectContext(ctx, &connections, tx.Rebind(query), sourceID); err != nil {
+		return nil, err
 	}
-	hasConnection := err == nil
-	if hasConnection {
+	patHosts := []string{}
+	for _, connection := range connections {
 		switch connection.Source {
-		case ConnectionSourcePAT, ConnectionSourceGitHubAppInstallation, ConnectionSourceLegacyShared:
+		case ConnectionSourcePAT:
+			patHosts = append(patHosts, connection.GitHubHost)
+		case ConnectionSourceGitHubAppInstallation, ConnectionSourceLegacyShared:
 		case ConnectionSourceGHCLI:
 			if err := requireGHCLIOperator(ctx); err != nil {
-				return false, err
+				return nil, err
 			}
 		default:
-			return false, repoerrors.ErrWorkspaceCloneConfiguration
+			return nil, repoerrors.ErrWorkspaceCloneConfiguration
 		}
 	}
 	if err := s.copyCloneSettings(ctx, tx, sourceID, targetID); err != nil {
-		return false, err
+		return nil, err
 	}
-	if !hasConnection {
-		return false, nil
+	if len(connections) == 0 {
+		return patHosts, nil
 	}
 	now := time.Now().UTC()
-	_, err = tx.ExecContext(ctx, tx.Rebind(`INSERT INTO github_workspace_connections (workspace_id,source,github_host,login,installation_id,installation_account_login,installation_account_type,app_registration_id,status,credential_generation,last_error,created_at,updated_at)
+	_, err := tx.ExecContext(ctx, tx.Rebind(`INSERT INTO github_workspace_connections (workspace_id,source,github_host,login,installation_id,installation_account_login,installation_account_type,app_registration_id,status,credential_generation,last_error,created_at,updated_at)
  SELECT ?,source,github_host,login,installation_id,installation_account_login,installation_account_type,app_registration_id,status,1,NULL,?,? FROM github_workspace_connections WHERE workspace_id = ?`), targetID, now, now, sourceID)
-	return connection.Source == ConnectionSourcePAT, err
+	return patHosts, err
 }
 
 func (s *Store) copyCloneSettings(ctx context.Context, tx *sqlx.Tx, sourceID, targetID string) error {
@@ -60,9 +60,9 @@ func (s *Store) copyCloneSettings(ctx context.Context, tx *sqlx.Tx, sourceID, ta
 }
 
 // CopyWorkspaceConfigurationTx participates in an already authorized clone.
-func (s *Service) CopyWorkspaceConfigurationTx(ctx context.Context, tx *sqlx.Tx, sourceID, targetID string) (bool, error) {
+func (s *Service) CopyWorkspaceConfigurationTx(ctx context.Context, tx *sqlx.Tx, sourceID, targetID string) ([]string, error) {
 	if s == nil || s.store == nil {
-		return false, errWorkspaceDefaultsUnavailable
+		return nil, errWorkspaceDefaultsUnavailable
 	}
 	return s.store.CopyWorkspaceConfigurationTx(ctx, tx, sourceID, targetID)
 }

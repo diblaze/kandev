@@ -1,7 +1,7 @@
 ---
 id: "02-per-host-connections"
 title: "Per-host workspace connections"
-status: pending
+status: done
 wave: 2
 depends_on:
   - "01-host-aware-workspace-client"
@@ -63,8 +63,8 @@ import accept a host. Existing rows become `github.com` connections.
   replaying the migration is a no-op.
 - A workspace can hold `github.com` and `octo.ghe.com` connections; replacing
   or deleting one leaves the other row and generation unchanged.
-- `Resolve` with host `ghe.example.com` and no row returns
-  `ErrGitHubHostNotConnected` and calls no token source.
+- `Resolve` with host `ghe.example.com` and no row returns a
+  `HostNotConnectedError` and calls no token source.
 - Status for a workspace lists both hosts; status with `host=octo.ghe.com`
   projects that connection.
 
@@ -101,7 +101,7 @@ import accept a host. Existing rows become `github.com` connections.
 **What:** modified.
 **Justified by:** system design, Errors.
 **Governed by:** Go limits.
-**Specifics:** `type HostNotConnectedError struct{ Host string }` with `Error()` `GitHub host "<host>" is not connected for this workspace` and `Unwrap() error { return ErrGitHubNotConfigured }`; `var ErrGitHubHostNotConnected = &HostNotConnectedError{}` for `errors.As`. `writeGitHubAuthError` adds `"host"` to the 503 body when the error is this type.
+**Specifics:** `type HostNotConnectedError struct{ Host string }` with `Error()` `GitHub host "<host>" is not connected for this workspace` and `Unwrap() error { return ErrGitHubNotConfigured }`; callers match it with `errors.As` on a `*HostNotConnectedError` variable. A missing `github.com` connection keeps returning `ErrGitHubNotConfigured`. `writeGitHubAuthError` (in `controller_auth.go`) adds `"host"` to the existing `github_not_configured` body (status 409) when the error is this type.
 
 ### `apps/backend/internal/github/auth_principal.go`
 **What:** modified.
@@ -235,4 +235,84 @@ Task 01.
 
 ## Results
 
-Pending.
+Implemented test-first.
+
+What was done:
+
+- Schema: `github_workspace_connections` keyed by `(workspace_id, github_host)`;
+  `github_user_connections` and `github_user_connection_versions` gained
+  `github_host` and key on `(workspace_id, user_id, github_host)`. The DDL moved
+  into `workspaceConnectionsTableSQL`, `userConnectionsTableSQL`,
+  `connectionTriggersSQL`, and `userConnectionVersionsTableSQL` so the rebuild
+  reuses it. Triggers on both dialects match the host.
+- Migration in the new `store_connection_host_migration.go`, called last from
+  `initSchemaUpgrades`. SQLite: one transaction drops the four triggers,
+  rebuilds the three tables (personal rows get `github.com`), and recreates the
+  triggers, so rename never re-parses a trigger that names a dropped table.
+  PostgreSQL: `ADD COLUMN IF NOT EXISTS` plus primary-key swaps looked up by
+  constraint name, in one transaction. A test-only failpoint runs after each
+  step. `github_app_registration_flows` gained `github_host` through an
+  idempotent `ADD COLUMN`.
+- Store, personal repository, personal auth, App installation, webhook,
+  resolver, broker, status, controller, mock, workspace defaults, clone, and
+  workspace-deletion paths take and match a host as specified.
+- Secret keys: `WorkspacePATSecretKey(workspaceID, host)`,
+  `UserAccessTokenSecretKey(workspaceID, userID, host)`, and
+  `UserRefreshTokenSecretKey(...)`. `github.com` keeps the previous IDs; other
+  hosts append `:<host>`. Workspace deletion and E2E reset remove every host
+  key by prefix (`WorkspacePATSecretKeyPrefix`).
+- `SetHostConnectedObserver` and its call after a committed PAT, CLI, or App
+  installation save, outside the mutation lock, ready for task 04.
+
+Verification (from `apps/backend` unless noted):
+
+- `go test -trimpath -tags fts5 -race ./internal/github -run 'Test(StoreConnectionHostMigration|WorkspaceConnectionHosts|ResolverHosts|WorkspaceDefaultsHosts|CredentialBrokerHosts)' -count=1`: `ok ... 2.505s`.
+- `KANDEV_TEST_POSTGRES_DSN=<postgres:16 container> go test -trimpath -tags fts5 -race ./internal/github -run 'TestStoreConnectionHostMigration|Postgres' -count=1`: `ok ... 16.328s` (migration, rollback matrix, per-host coexistence, clone, and the existing PostgreSQL tests).
+- `go test -trimpath -tags fts5 -race ./internal/github ./internal/backendapp -count=1`: `ok internal/github 112.385s`, `ok internal/backendapp 247.334s`.
+- `go run ./cmd/sqlguard ./internal`: exit 0, no findings.
+- `go test -race ./internal/persistence/storeconformance -count=1`: `ok 175.878s`.
+  With `KANDEV_TEST_POSTGRES_DSN`: `ok 635.412s` with `-timeout 40m`; the same
+  run hit the default 10-minute test timeout once while another race suite
+  shared the machine (`TestPreviousStableUpgrade/pgx` alone takes about 185 s).
+- From the repository root, `bash scripts/lint-go-changed <82 changed Go files>`: `0 issues.`
+- `python3 scripts/list-docs.py validate` and `python3 scripts/lint-spec-files.py --all`: pass.
+
+Deviations:
+
+- `ErrGitHubHostNotConnected` was not added. A package variable used as an
+  `errors.As` target would be overwritten by the first match; callers declare a
+  `*HostNotConnectedError` instead. This order and the system design now say so.
+- The HTTP status for a missing host connection is the existing
+  `github_not_configured` mapping, 409, not 503; the 503 in this order and the
+  system design was wrong and is corrected.
+- A missing `github.com` connection still returns `ErrGitHubNotConfigured`, so
+  `github.com` errors and messages are unchanged; only other hosts return
+  `HostNotConnectedError`.
+- Personal OAuth secret keys are now per host. This order did not list it, but
+  without it a second host's personal connection would overwrite the first
+  one's tokens.
+- `app_credential_provider.go` now binds the installation token client to the
+  connection host; task 01 left App installation clients on `api.github.com`.
+- `deployment_app_manifest.go` (registration URL host) and
+  `deployment_app_store.go` (flow `github_host`) changed, beyond the files
+  listed.
+- `CopyWorkspaceConfigurationTx` returns the PAT hosts (`[]string`) instead of
+  a bool, so `backendapp/workspace_clone.go` copies the PAT of every host.
+- `NewAppRegistrationWebhookService` takes the registration host as its second
+  argument.
+- `StartPersonalAuth` and `DisconnectPersonalAuth` take a host, read from the
+  `host` query parameter; the mock routes take the same parameter.
+- Import with an empty `github_host` now means `github.com` instead of being
+  rejected.
+- PostgreSQL `UPDATE OF` trigger column lists do not include `github_host`:
+  on an upgraded database the triggers are recreated before the column exists.
+  The host is part of every key and never updated in place.
+- The credential cache epoch stays per workspace, as the system design says, so
+  saving one host still drops cached clients of the other hosts; the eviction
+  of older generations now matches the host, so a newer generation on one host
+  no longer evicts another host's entries.
+
+Deferred to later tasks, unchanged here: review watch polling
+(`service_reviews.go`), `DescribeTaskGitCredentialPolicy`, Git transport, and
+`task_change_request_read.go` still resolve `github.com` until tasks 03 and 06
+thread the item host.

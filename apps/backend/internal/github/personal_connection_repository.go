@@ -32,41 +32,41 @@ func NewStorePersonalConnectionRepository(
 
 func (r *StorePersonalConnectionRepository) GetWorkspaceConnection(
 	ctx context.Context,
-	workspaceID string,
+	workspaceID, host string,
 ) (*WorkspaceConnection, error) {
-	return r.store.GetWorkspaceConnection(ctx, workspaceID)
+	return r.store.GetWorkspaceConnection(ctx, workspaceID, host)
 }
 
 func (r *StorePersonalConnectionRepository) GetUserConnection(
 	ctx context.Context,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 ) (*UserConnection, error) {
-	return r.store.GetUserConnection(ctx, workspaceID, userID)
+	return r.store.GetUserConnection(ctx, workspaceID, userID, host)
 }
 
 func (r *StorePersonalConnectionRepository) GetPersonalConnectionGeneration(
 	ctx context.Context,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 ) (int64, error) {
-	return r.store.GetUserConnectionGeneration(ctx, workspaceID, userID)
+	return r.store.GetUserConnectionGeneration(ctx, workspaceID, userID, host)
 }
 
 func (r *StorePersonalConnectionRepository) GetPersonalTokens(
 	ctx context.Context,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 ) (GitHubOAuthTokens, error) {
-	connection, err := r.store.GetUserConnection(ctx, workspaceID, userID)
+	connection, err := r.store.GetUserConnection(ctx, workspaceID, userID, host)
 	if err != nil {
 		return GitHubOAuthTokens{}, err
 	}
 	if connection == nil {
 		return GitHubOAuthTokens{}, ErrGitHubPersonalRequired
 	}
-	access, err := r.secrets.Reveal(ctx, UserAccessTokenSecretKey(workspaceID, userID))
+	access, err := r.secrets.Reveal(ctx, UserAccessTokenSecretKey(workspaceID, userID, host))
 	if err != nil {
 		return GitHubOAuthTokens{}, err
 	}
-	refresh, _, err := revealOptionalSecret(ctx, r.secrets, UserRefreshTokenSecretKey(workspaceID, userID))
+	refresh, _, err := revealOptionalSecret(ctx, r.secrets, UserRefreshTokenSecretKey(workspaceID, userID, host))
 	if err != nil {
 		return GitHubOAuthTokens{}, err
 	}
@@ -101,11 +101,13 @@ func (r *StorePersonalConnectionRepository) replacePersonalConnectionLocked(
 	if strings.TrimSpace(tokens.AccessToken) == "" || strings.TrimSpace(tokens.RefreshToken) == "" {
 		return ErrPersonalTokenInvalid
 	}
-	oldConnection, err := r.store.GetUserConnection(ctx, connection.WorkspaceID, connection.UserID)
+	host := githubHostOrDefault(connection.GitHubHost)
+	connection.GitHubHost = host
+	oldConnection, err := r.store.GetUserConnection(ctx, connection.WorkspaceID, connection.UserID, host)
 	if err != nil {
 		return err
 	}
-	currentGeneration, err := r.store.GetUserConnectionGeneration(ctx, connection.WorkspaceID, connection.UserID)
+	currentGeneration, err := r.store.GetUserConnectionGeneration(ctx, connection.WorkspaceID, connection.UserID, host)
 	if err != nil {
 		return err
 	}
@@ -113,8 +115,8 @@ func (r *StorePersonalConnectionRepository) replacePersonalConnectionLocked(
 		connection.CredentialGeneration != expectedGeneration+1 {
 		return ErrPersonalConnectionStale
 	}
-	accessKey := UserAccessTokenSecretKey(connection.WorkspaceID, connection.UserID)
-	refreshKey := UserRefreshTokenSecretKey(connection.WorkspaceID, connection.UserID)
+	accessKey := UserAccessTokenSecretKey(connection.WorkspaceID, connection.UserID, host)
+	refreshKey := UserRefreshTokenSecretKey(connection.WorkspaceID, connection.UserID, host)
 	oldAccess, hadAccess, err := revealOptionalSecret(ctx, r.secrets, accessKey)
 	if err != nil {
 		return err
@@ -134,7 +136,7 @@ func (r *StorePersonalConnectionRepository) replacePersonalConnectionLocked(
 			err,
 			r.restoreSecret(ctx, accessKey, personalAccessTokenSecretName, oldAccess, hadAccess),
 			r.restoreSecret(ctx, refreshKey, personalRefreshTokenSecretName, oldRefresh, hadRefresh),
-			r.restoreUserConnection(ctx, oldConnection, connection.WorkspaceID, connection.UserID),
+			r.restoreUserConnection(ctx, oldConnection, connection.WorkspaceID, connection.UserID, host),
 		)
 	}
 	return nil
@@ -152,7 +154,9 @@ func (r *StorePersonalConnectionRepository) ReplacePersonalConnectionForFlow(
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	workspace, err := r.store.GetWorkspaceConnection(ctx, connection.WorkspaceID)
+	workspace, err := r.store.GetWorkspaceConnection(
+		ctx, connection.WorkspaceID, githubHostOrDefault(connection.GitHubHost),
+	)
 	if err != nil {
 		return err
 	}
@@ -164,14 +168,14 @@ func (r *StorePersonalConnectionRepository) ReplacePersonalConnectionForFlow(
 
 func (r *StorePersonalConnectionRepository) MarkPersonalConnectionInvalid(
 	ctx context.Context,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 	expectedGeneration int64,
 	reason error,
 ) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	connection, err := r.store.GetUserConnection(ctx, workspaceID, userID)
+	connection, err := r.store.GetUserConnection(ctx, workspaceID, userID, host)
 	if err != nil || connection == nil {
 		return err
 	}
@@ -186,7 +190,7 @@ func (r *StorePersonalConnectionRepository) MarkPersonalConnectionInvalid(
 
 func (r *StorePersonalConnectionRepository) RevokePersonalConnection(
 	ctx context.Context,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 ) error {
 	if r == nil || r.store == nil || r.secrets == nil {
 		return nil
@@ -194,11 +198,11 @@ func (r *StorePersonalConnectionRepository) RevokePersonalConnection(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	connection, err := r.store.GetUserConnection(ctx, workspaceID, userID)
+	connection, err := r.store.GetUserConnection(ctx, workspaceID, userID, host)
 	if err != nil {
 		return err
 	}
-	return r.revokePersonalConnectionLocked(ctx, connection, workspaceID, userID)
+	return r.revokePersonalConnectionLocked(ctx, connection, workspaceID, userID, host)
 }
 
 func (r *StorePersonalConnectionRepository) RevokePersonalConnectionIfUnchanged(
@@ -210,12 +214,13 @@ func (r *StorePersonalConnectionRepository) RevokePersonalConnectionIfUnchanged(
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	current, err := r.store.GetUserConnection(ctx, expected.WorkspaceID, expected.UserID)
+	host := githubHostOrDefault(expected.GitHubHost)
+	current, err := r.store.GetUserConnection(ctx, expected.WorkspaceID, expected.UserID, host)
 	if err != nil || !sameUserConnectionVersion(current, expected) {
 		return false, err
 	}
 	if err := r.revokePersonalConnectionLocked(
-		ctx, current, expected.WorkspaceID, expected.UserID,
+		ctx, current, expected.WorkspaceID, expected.UserID, host,
 	); err != nil {
 		return false, err
 	}
@@ -225,10 +230,10 @@ func (r *StorePersonalConnectionRepository) RevokePersonalConnectionIfUnchanged(
 func (r *StorePersonalConnectionRepository) revokePersonalConnectionLocked(
 	ctx context.Context,
 	connection *UserConnection,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 ) error {
-	accessKey := UserAccessTokenSecretKey(workspaceID, userID)
-	refreshKey := UserRefreshTokenSecretKey(workspaceID, userID)
+	accessKey := UserAccessTokenSecretKey(workspaceID, userID, host)
+	refreshKey := UserRefreshTokenSecretKey(workspaceID, userID, host)
 	oldAccess, hadAccess, err := revealOptionalSecret(ctx, r.secrets, accessKey)
 	if err != nil {
 		return err
@@ -243,12 +248,12 @@ func (r *StorePersonalConnectionRepository) revokePersonalConnectionLocked(
 	if err := deleteOptionalSecret(ctx, r.secrets, refreshKey); err != nil {
 		return errors.Join(err, r.restoreSecret(ctx, accessKey, personalAccessTokenSecretName, oldAccess, hadAccess))
 	}
-	if err := r.store.DeleteUserConnection(ctx, workspaceID, userID); err != nil {
+	if err := r.store.DeleteUserConnection(ctx, workspaceID, userID, host); err != nil {
 		return errors.Join(
 			err,
 			r.restoreSecret(ctx, accessKey, personalAccessTokenSecretName, oldAccess, hadAccess),
 			r.restoreSecret(ctx, refreshKey, personalRefreshTokenSecretName, oldRefresh, hadRefresh),
-			r.restoreUserConnection(ctx, connection, workspaceID, userID),
+			r.restoreUserConnection(ctx, connection, workspaceID, userID, host),
 		)
 	}
 	return nil
@@ -260,22 +265,23 @@ type personalConnectionSnapshot struct {
 	hadAccess, hadRefresh bool
 }
 
-// RevokeWorkspacePersonalConnections removes every App user identity in a
-// workspace. Secret deletion is compensated before metadata is committed so
-// callers never observe a partially revoked set of users.
+// RevokeWorkspacePersonalConnections removes every App user identity a
+// workspace holds for one host. Secret deletion is compensated before metadata
+// is committed so callers never observe a partially revoked set of users.
 func (r *StorePersonalConnectionRepository) RevokeWorkspacePersonalConnections(
 	ctx context.Context,
-	workspaceID string,
+	workspaceID, host string,
 ) error {
-	return r.TransitionWorkspacePersonalConnections(ctx, workspaceID, func() error { return nil })
+	return r.TransitionWorkspacePersonalConnections(ctx, workspaceID, host, func() error { return nil })
 }
 
 // TransitionWorkspacePersonalConnections revokes a workspace's personal App
-// identities and runs the workspace mutation under the same compensation
-// boundary. A failed mutation restores both metadata and encrypted tokens.
+// identities on one host and runs the workspace mutation under the same
+// compensation boundary. A failed mutation restores both metadata and
+// encrypted tokens. Personal identities on other hosts are untouched.
 func (r *StorePersonalConnectionRepository) TransitionWorkspacePersonalConnections(
 	ctx context.Context,
-	workspaceID string,
+	workspaceID, host string,
 	mutation func() error,
 ) error {
 	if r == nil || r.store == nil || r.secrets == nil {
@@ -284,7 +290,7 @@ func (r *StorePersonalConnectionRepository) TransitionWorkspacePersonalConnectio
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	connections, err := r.store.ListUserConnectionsByWorkspace(ctx, workspaceID)
+	connections, err := r.listWorkspaceHostPersonalConnections(ctx, workspaceID, host)
 	if err != nil {
 		return err
 	}
@@ -298,13 +304,30 @@ func (r *StorePersonalConnectionRepository) TransitionWorkspacePersonalConnectio
 	if err := r.deleteWorkspacePersonalSecrets(ctx, snapshots); err != nil {
 		return errors.Join(err, r.restoreWorkspacePersonalSnapshots(ctx, snapshots))
 	}
-	if err := r.store.DeleteUserConnectionsByWorkspace(ctx, workspaceID); err != nil {
+	if err := r.store.DeleteUserConnectionsByWorkspace(ctx, workspaceID, host); err != nil {
 		return errors.Join(err, r.restoreWorkspacePersonalSnapshots(ctx, snapshots))
 	}
 	if err := mutation(); err != nil {
 		return errors.Join(err, r.restoreWorkspacePersonalSnapshots(ctx, snapshots))
 	}
 	return nil
+}
+
+func (r *StorePersonalConnectionRepository) listWorkspaceHostPersonalConnections(
+	ctx context.Context,
+	workspaceID, host string,
+) ([]*UserConnection, error) {
+	connections, err := r.store.ListUserConnectionsByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	matching := connections[:0]
+	for _, connection := range connections {
+		if connection.GitHubHost == host {
+			matching = append(matching, connection)
+		}
+	}
+	return matching, nil
 }
 
 func (r *StorePersonalConnectionRepository) loadWorkspacePersonalSnapshots(
@@ -314,13 +337,13 @@ func (r *StorePersonalConnectionRepository) loadWorkspacePersonalSnapshots(
 	snapshots := make([]personalConnectionSnapshot, 0, len(connections))
 	for _, connection := range connections {
 		access, hadAccess, err := revealOptionalSecret(
-			ctx, r.secrets, UserAccessTokenSecretKey(connection.WorkspaceID, connection.UserID),
+			ctx, r.secrets, UserAccessTokenSecretKey(connection.WorkspaceID, connection.UserID, connection.GitHubHost),
 		)
 		if err != nil {
 			return nil, err
 		}
 		refresh, hadRefresh, err := revealOptionalSecret(
-			ctx, r.secrets, UserRefreshTokenSecretKey(connection.WorkspaceID, connection.UserID),
+			ctx, r.secrets, UserRefreshTokenSecretKey(connection.WorkspaceID, connection.UserID, connection.GitHubHost),
 		)
 		if err != nil {
 			return nil, err
@@ -338,11 +361,11 @@ func (r *StorePersonalConnectionRepository) deleteWorkspacePersonalSecrets(
 	snapshots []personalConnectionSnapshot,
 ) error {
 	for _, snapshot := range snapshots {
-		workspaceID, userID := snapshot.connection.WorkspaceID, snapshot.connection.UserID
-		if err := deleteOptionalSecret(ctx, r.secrets, UserAccessTokenSecretKey(workspaceID, userID)); err != nil {
+		workspaceID, userID, host := snapshot.connection.WorkspaceID, snapshot.connection.UserID, snapshot.connection.GitHubHost
+		if err := deleteOptionalSecret(ctx, r.secrets, UserAccessTokenSecretKey(workspaceID, userID, host)); err != nil {
 			return err
 		}
-		if err := deleteOptionalSecret(ctx, r.secrets, UserRefreshTokenSecretKey(workspaceID, userID)); err != nil {
+		if err := deleteOptionalSecret(ctx, r.secrets, UserRefreshTokenSecretKey(workspaceID, userID, host)); err != nil {
 			return err
 		}
 	}
@@ -355,12 +378,12 @@ func (r *StorePersonalConnectionRepository) restoreWorkspacePersonalSnapshots(
 ) error {
 	var restoreErr error
 	for _, snapshot := range snapshots {
-		workspaceID, userID := snapshot.connection.WorkspaceID, snapshot.connection.UserID
+		workspaceID, userID, host := snapshot.connection.WorkspaceID, snapshot.connection.UserID, snapshot.connection.GitHubHost
 		restoreErr = errors.Join(restoreErr,
 			r.restorePersonalConnectionMetadata(ctx, snapshot.connection),
-			r.restoreSecret(ctx, UserAccessTokenSecretKey(workspaceID, userID),
+			r.restoreSecret(ctx, UserAccessTokenSecretKey(workspaceID, userID, host),
 				personalAccessTokenSecretName, snapshot.access, snapshot.hadAccess),
-			r.restoreSecret(ctx, UserRefreshTokenSecretKey(workspaceID, userID),
+			r.restoreSecret(ctx, UserRefreshTokenSecretKey(workspaceID, userID, host),
 				personalRefreshTokenSecretName, snapshot.refresh, snapshot.hadRefresh),
 		)
 	}
@@ -372,7 +395,7 @@ func (r *StorePersonalConnectionRepository) restorePersonalConnectionMetadata(
 	connection *UserConnection,
 ) error {
 	currentGeneration, err := r.store.GetUserConnectionGeneration(
-		ctx, connection.WorkspaceID, connection.UserID,
+		ctx, connection.WorkspaceID, connection.UserID, connection.GitHubHost,
 	)
 	if err != nil {
 		return err
@@ -398,10 +421,10 @@ func (r *StorePersonalConnectionRepository) restoreSecret(
 func (r *StorePersonalConnectionRepository) restoreUserConnection(
 	ctx context.Context,
 	connection *UserConnection,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 ) error {
 	if connection == nil {
-		return r.store.DeleteUserConnection(ctx, workspaceID, userID)
+		return r.store.DeleteUserConnection(ctx, workspaceID, userID, host)
 	}
 	return r.store.UpsertUserConnection(ctx, connection)
 }
@@ -437,7 +460,7 @@ func (p *personalAuthCredentialProvider) ResolveUser(
 		return nil, fmt.Errorf("%w: personal connection changed during resolution", ErrGitHubConnectionInvalid)
 	}
 	tracker := NewRateTracker(nil, nil)
-	client := NewAppUserTokenClient(defaultGitHubHost, token, current.GitHubUserID, current.Login).WithRateTracker(tracker)
+	client := NewAppUserTokenClient(current.GitHubHost, token, current.GitHubUserID, current.Login).WithRateTracker(tracker)
 	return &ResolvedCredential{
 		Client: client,
 		Principal: AuthPrincipal{

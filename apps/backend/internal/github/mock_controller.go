@@ -91,6 +91,10 @@ func (c *MockController) setWorkspaceConnection(ctx *gin.Context) {
 		return
 	}
 	workspaceID := strings.TrimSpace(ctx.Param("workspaceId"))
+	host, ok := mockConnectionHost(ctx)
+	if !ok {
+		return
+	}
 	var req mockWorkspaceConnectionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		respondInvalidPayload(ctx)
@@ -103,13 +107,13 @@ func (c *MockController) setWorkspaceConnection(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{errKey: err.Error()})
 		return
 	}
-	existing, err := c.store.GetWorkspaceConnection(ctx.Request.Context(), workspaceID)
+	existing, err := c.store.GetWorkspaceConnection(ctx.Request.Context(), workspaceID, host)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{errKey: err.Error()})
 		return
 	}
 	connection := &WorkspaceConnection{
-		WorkspaceID: workspaceID, Source: req.Source, GitHubHost: defaultGitHubHost,
+		WorkspaceID: workspaceID, Source: req.Source, GitHubHost: host,
 		Login: req.Login, InstallationID: req.InstallationID,
 		InstallationAccountLogin: req.InstallationAccountLogin,
 		InstallationAccountType:  req.InstallationAccountType,
@@ -127,6 +131,17 @@ func (c *MockController) setWorkspaceConnection(ctx *gin.Context) {
 	}
 	c.service.invalidateWorkspaceCredential(workspaceID)
 	ctx.JSON(http.StatusOK, gin.H{"connection": connection, "capabilities": c.auth.workspaceCapabilities(workspaceID)})
+}
+
+// mockConnectionHost reads the optional host query parameter, which defaults
+// to github.com, and answers 400 for an invalid host.
+func mockConnectionHost(ctx *gin.Context) (string, bool) {
+	host, err := normalizeGitHubHost(ctx.Query("host"))
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{errKey: err.Error()})
+		return "", false
+	}
+	return host, true
 }
 
 func validateMockWorkspaceConnectionRequest(req *mockWorkspaceConnectionRequest) error {
@@ -180,7 +195,11 @@ func (c *MockController) deleteWorkspaceConnection(ctx *gin.Context) {
 		ctx.JSON(http.StatusConflict, gin.H{errKey: "mock GitHub auth is unavailable"})
 		return
 	}
-	if err := c.service.DeleteWorkspaceConnection(ctx.Request.Context(), workspaceID); err != nil {
+	host, ok := mockConnectionHost(ctx)
+	if !ok {
+		return
+	}
+	if err := c.service.DeleteWorkspaceConnection(ctx.Request.Context(), workspaceID, host); err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{errKey: err.Error()})
 		return
 	}
@@ -197,7 +216,11 @@ func (c *MockController) setWorkspaceConnectionStatus(ctx *gin.Context) {
 		return
 	}
 	workspaceID := strings.TrimSpace(ctx.Param("workspaceId"))
-	connection, err := c.store.GetWorkspaceConnection(ctx.Request.Context(), workspaceID)
+	host, ok := mockConnectionHost(ctx)
+	if !ok {
+		return
+	}
+	connection, err := c.store.GetWorkspaceConnection(ctx.Request.Context(), workspaceID, host)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{errKey: err.Error()})
 		return
@@ -230,7 +253,11 @@ func (c *MockController) setPersonalConnection(ctx *gin.Context) {
 		return
 	}
 	workspaceID := strings.TrimSpace(ctx.Param("workspaceId"))
-	workspace, err := c.store.GetWorkspaceConnection(ctx.Request.Context(), workspaceID)
+	host, ok := mockConnectionHost(ctx)
+	if !ok {
+		return
+	}
+	workspace, err := c.store.GetWorkspaceConnection(ctx.Request.Context(), workspaceID, host)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{errKey: err.Error()})
 		return
@@ -240,7 +267,7 @@ func (c *MockController) setPersonalConnection(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{errKey: "workspace GitHub App connection is required"})
 		return
 	}
-	existing, err := c.store.GetUserConnection(ctx.Request.Context(), workspaceID, DefaultUserID)
+	existing, err := c.store.GetUserConnection(ctx.Request.Context(), workspaceID, DefaultUserID, host)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{errKey: err.Error()})
 		return
@@ -250,7 +277,7 @@ func (c *MockController) setPersonalConnection(ctx *gin.Context) {
 		generation = existing.CredentialGeneration + 1
 	}
 	connection := &UserConnection{
-		WorkspaceID: workspaceID, UserID: DefaultUserID, AppRegistrationID: workspace.AppRegistrationID,
+		WorkspaceID: workspaceID, UserID: DefaultUserID, GitHubHost: host, AppRegistrationID: workspace.AppRegistrationID,
 		Login:        req.Login,
 		GitHubUserID: req.GitHubUserID, Status: req.Status, AccessExpiresAt: req.AccessExpiresAt,
 		CredentialGeneration: generation,
@@ -265,7 +292,11 @@ func (c *MockController) setPersonalConnection(ctx *gin.Context) {
 
 func (c *MockController) deletePersonalConnection(ctx *gin.Context) {
 	workspaceID := strings.TrimSpace(ctx.Param("workspaceId"))
-	if err := c.store.DeleteUserConnection(ctx.Request.Context(), workspaceID, DefaultUserID); err != nil {
+	host, ok := mockConnectionHost(ctx)
+	if !ok {
+		return
+	}
+	if err := c.store.DeleteUserConnection(ctx.Request.Context(), workspaceID, DefaultUserID, host); err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{errKey: err.Error()})
 		return
 	}

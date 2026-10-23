@@ -22,7 +22,7 @@ const workspaceConnectionSelect = `
 	FROM github_workspace_connections`
 
 const userConnectionSelect = `
-	SELECT workspace_id, user_id, app_registration_id, github_user_id, login, status, access_expires_at,
+	SELECT workspace_id, user_id, github_host, app_registration_id, github_user_id, login, status, access_expires_at,
 		refresh_expires_at, credential_generation, COALESCE(last_error, '') AS last_error,
 		created_at, updated_at
 	FROM github_user_connections`
@@ -64,15 +64,25 @@ func (s *Store) GetWorkspaceConnectionHealth(ctx context.Context) (WorkspaceConn
 	return health, err
 }
 
-// GetWorkspaceConnection returns a workspace's automation connection, if any.
-func (s *Store) GetWorkspaceConnection(ctx context.Context, workspaceID string) (*WorkspaceConnection, error) {
+// GetWorkspaceConnection returns a workspace's automation connection for one
+// GitHub host, if any.
+func (s *Store) GetWorkspaceConnection(ctx context.Context, workspaceID, host string) (*WorkspaceConnection, error) {
 	var connection WorkspaceConnection
 	err := s.ro.GetContext(ctx, &connection,
-		s.ro.Rebind(workspaceConnectionSelect+` WHERE workspace_id = ?`), workspaceID)
+		s.ro.Rebind(workspaceConnectionSelect+` WHERE workspace_id = ? AND github_host = ?`), workspaceID, host)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	return &connection, err
+}
+
+// ListWorkspaceConnections returns every host connection of a workspace,
+// ordered by host.
+func (s *Store) ListWorkspaceConnections(ctx context.Context, workspaceID string) ([]*WorkspaceConnection, error) {
+	var connections []*WorkspaceConnection
+	err := s.ro.SelectContext(ctx, &connections,
+		s.ro.Rebind(workspaceConnectionSelect+` WHERE workspace_id = ? ORDER BY github_host`), workspaceID)
+	return connections, err
 }
 
 // ListWorkspaceConnectionsByInstallation returns every workspace bound to an installation.
@@ -118,9 +128,8 @@ func (s *Store) UpsertWorkspaceConnection(ctx context.Context, connection *Works
 			installation_account_login, installation_account_type, app_registration_id, status,
 			credential_generation, last_error, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(workspace_id) DO UPDATE SET
+		ON CONFLICT(workspace_id, github_host) DO UPDATE SET
 			source = excluded.source,
-			github_host = excluded.github_host,
 			login = excluded.login,
 			installation_id = excluded.installation_id,
 			installation_account_login = excluded.installation_account_login,
@@ -153,11 +162,11 @@ func (s *Store) TransitionWorkspaceInstallationConnection(
 		UPDATE github_workspace_connections
 		SET installation_account_login = ?, installation_account_type = ?, status = ?,
 			credential_generation = ?, last_error = ?, updated_at = ?
-		WHERE workspace_id = ? AND source = ? AND installation_id = ?
+		WHERE workspace_id = ? AND github_host = ? AND source = ? AND installation_id = ?
 			AND app_registration_id = ? AND credential_generation = ? AND status = ?`),
 		nullString(next.InstallationAccountLogin), nullString(next.InstallationAccountType), next.Status,
 		next.CredentialGeneration, nullString(next.LastError), now,
-		expected.WorkspaceID, expected.Source, *expected.InstallationID,
+		expected.WorkspaceID, expected.GitHubHost, expected.Source, *expected.InstallationID,
 		expected.AppRegistrationID, expected.CredentialGeneration, expected.Status,
 	)
 	if err != nil {
@@ -170,29 +179,30 @@ func (s *Store) TransitionWorkspaceInstallationConnection(
 	return count == 1, err
 }
 
-// DeleteWorkspaceConnection removes workspace automation metadata.
-func (s *Store) DeleteWorkspaceConnection(ctx context.Context, workspaceID string) error {
+// DeleteWorkspaceConnection removes the automation metadata of one host.
+func (s *Store) DeleteWorkspaceConnection(ctx context.Context, workspaceID, host string) error {
 	_, err := s.db.ExecContext(ctx, s.db.Rebind(
-		`DELETE FROM github_workspace_connections WHERE workspace_id = ?`), workspaceID)
+		`DELETE FROM github_workspace_connections WHERE workspace_id = ? AND github_host = ?`), workspaceID, host)
 	return err
 }
 
-// GetUserConnection returns a user's personal connection in a workspace, if any.
-func (s *Store) GetUserConnection(ctx context.Context, workspaceID, userID string) (*UserConnection, error) {
+// GetUserConnection returns a user's personal connection for one GitHub host
+// in a workspace, if any.
+func (s *Store) GetUserConnection(ctx context.Context, workspaceID, userID, host string) (*UserConnection, error) {
 	var connection UserConnection
-	err := s.ro.GetContext(ctx, &connection,
-		s.ro.Rebind(userConnectionSelect+` WHERE workspace_id = ? AND user_id = ?`), workspaceID, userID)
+	err := s.ro.GetContext(ctx, &connection, s.ro.Rebind(userConnectionSelect+`
+		WHERE workspace_id = ? AND user_id = ? AND github_host = ?`), workspaceID, userID, host)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	return &connection, err
 }
 
-func (s *Store) GetUserConnectionGeneration(ctx context.Context, workspaceID, userID string) (int64, error) {
+func (s *Store) GetUserConnectionGeneration(ctx context.Context, workspaceID, userID, host string) (int64, error) {
 	var generation int64
 	err := s.ro.GetContext(ctx, &generation, s.ro.Rebind(`
 		SELECT credential_generation FROM github_user_connection_versions
-		WHERE workspace_id = ? AND user_id = ?`), workspaceID, userID)
+		WHERE workspace_id = ? AND user_id = ? AND github_host = ?`), workspaceID, userID, host)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
@@ -206,7 +216,7 @@ func (s *Store) ListUserConnectionsByGitHubUser(
 ) ([]*UserConnection, error) {
 	var connections []*UserConnection
 	err := s.ro.SelectContext(ctx, &connections,
-		s.ro.Rebind(userConnectionSelect+` WHERE github_user_id = ? ORDER BY workspace_id, user_id`), githubUserID)
+		s.ro.Rebind(userConnectionSelect+` WHERE github_user_id = ? ORDER BY workspace_id, user_id, github_host`), githubUserID)
 	return connections, err
 }
 
@@ -218,7 +228,7 @@ func (s *Store) ListUserConnectionsByAppGitHubUser(
 	var connections []*UserConnection
 	err := s.ro.SelectContext(ctx, &connections, s.ro.Rebind(
 		userConnectionSelect+`
-		WHERE app_registration_id = ? AND github_user_id = ? ORDER BY workspace_id, user_id`),
+		WHERE app_registration_id = ? AND github_user_id = ? ORDER BY workspace_id, user_id, github_host`),
 		registrationID, githubUserID)
 	return connections, err
 }
@@ -230,7 +240,7 @@ func (s *Store) ListUserConnectionsByWorkspace(
 ) ([]*UserConnection, error) {
 	var connections []*UserConnection
 	err := s.ro.SelectContext(ctx, &connections,
-		s.ro.Rebind(userConnectionSelect+` WHERE workspace_id = ? ORDER BY user_id`), workspaceID)
+		s.ro.Rebind(userConnectionSelect+` WHERE workspace_id = ? ORDER BY user_id, github_host`), workspaceID)
 	return connections, err
 }
 
@@ -239,7 +249,8 @@ func (s *Store) UpsertUserConnection(ctx context.Context, connection *UserConnec
 	if connection == nil {
 		return fmt.Errorf("user connection is required")
 	}
-	workspace, err := s.GetWorkspaceConnection(ctx, connection.WorkspaceID)
+	connection.GitHubHost = githubHostOrDefault(connection.GitHubHost)
+	workspace, err := s.GetWorkspaceConnection(ctx, connection.WorkspaceID, connection.GitHubHost)
 	if err != nil {
 		return err
 	}
@@ -262,10 +273,10 @@ func (s *Store) UpsertUserConnection(ctx context.Context, connection *UserConnec
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, tx.Rebind(`
 		INSERT INTO github_user_connections (
-			workspace_id, user_id, app_registration_id, github_user_id, login, status, access_expires_at,
-			refresh_expires_at, credential_generation, last_error, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(workspace_id, user_id) DO UPDATE SET
+			workspace_id, user_id, github_host, app_registration_id, github_user_id, login, status,
+			access_expires_at, refresh_expires_at, credential_generation, last_error, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(workspace_id, user_id, github_host) DO UPDATE SET
 			app_registration_id = excluded.app_registration_id,
 			github_user_id = excluded.github_user_id,
 			login = excluded.login,
@@ -275,76 +286,84 @@ func (s *Store) UpsertUserConnection(ctx context.Context, connection *UserConnec
 			credential_generation = excluded.credential_generation,
 			last_error = excluded.last_error,
 			updated_at = excluded.updated_at`),
-		connection.WorkspaceID, connection.UserID, connection.AppRegistrationID,
+		connection.WorkspaceID, connection.UserID, connection.GitHubHost, connection.AppRegistrationID,
 		connection.GitHubUserID, connection.Login,
 		connection.Status, connection.AccessExpiresAt, connection.RefreshExpiresAt,
 		connection.CredentialGeneration, nullString(connection.LastError), connection.CreatedAt, connection.UpdatedAt); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, tx.Rebind(`
-		INSERT INTO github_user_connection_versions (workspace_id, user_id, credential_generation, updated_at)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT(workspace_id, user_id) DO UPDATE SET
+		INSERT INTO github_user_connection_versions (
+			workspace_id, user_id, github_host, credential_generation, updated_at
+		) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(workspace_id, user_id, github_host) DO UPDATE SET
 			credential_generation = CASE
 				WHEN github_user_connection_versions.credential_generation > excluded.credential_generation
 				THEN github_user_connection_versions.credential_generation
 				ELSE excluded.credential_generation
 			END,
 			updated_at = excluded.updated_at`),
-		connection.WorkspaceID, connection.UserID, connection.CredentialGeneration, connection.UpdatedAt); err != nil {
+		connection.WorkspaceID, connection.UserID, connection.GitHubHost,
+		connection.CredentialGeneration, connection.UpdatedAt); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// DeleteUserConnection removes one user's personal workspace connection.
-func (s *Store) DeleteUserConnection(ctx context.Context, workspaceID, userID string) error {
+// DeleteUserConnection removes one user's personal connection for one host.
+func (s *Store) DeleteUserConnection(ctx context.Context, workspaceID, userID, host string) error {
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, tx.Rebind(`
-		INSERT INTO github_user_connection_versions (workspace_id, user_id, credential_generation, updated_at)
-		VALUES (?, ?, COALESCE((SELECT credential_generation + 1 FROM github_user_connections
-			WHERE workspace_id = ? AND user_id = ?), 1), ?)
-		ON CONFLICT(workspace_id, user_id) DO UPDATE SET
+		INSERT INTO github_user_connection_versions (
+			workspace_id, user_id, github_host, credential_generation, updated_at
+		)
+		VALUES (?, ?, ?, COALESCE((SELECT credential_generation + 1 FROM github_user_connections
+			WHERE workspace_id = ? AND user_id = ? AND github_host = ?), 1), ?)
+		ON CONFLICT(workspace_id, user_id, github_host) DO UPDATE SET
 			credential_generation = CASE
 				WHEN github_user_connection_versions.credential_generation + 1 > excluded.credential_generation
 				THEN github_user_connection_versions.credential_generation + 1
 				ELSE excluded.credential_generation
 			END, updated_at = excluded.updated_at`),
-		workspaceID, userID, workspaceID, userID, time.Now().UTC()); err != nil {
+		workspaceID, userID, host, workspaceID, userID, host, time.Now().UTC()); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, tx.Rebind(
-		`DELETE FROM github_user_connections WHERE workspace_id = ? AND user_id = ?`), workspaceID, userID); err != nil {
+	if _, err := tx.ExecContext(ctx, tx.Rebind(`
+		DELETE FROM github_user_connections WHERE workspace_id = ? AND user_id = ? AND github_host = ?`),
+		workspaceID, userID, host); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// DeleteUserConnectionsByWorkspace removes all personal identities owned by a workspace.
-func (s *Store) DeleteUserConnectionsByWorkspace(ctx context.Context, workspaceID string) error {
+// DeleteUserConnectionsByWorkspace removes every personal identity a
+// workspace holds for one GitHub host.
+func (s *Store) DeleteUserConnectionsByWorkspace(ctx context.Context, workspaceID, host string) error {
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, tx.Rebind(`
-		INSERT INTO github_user_connection_versions (workspace_id, user_id, credential_generation, updated_at)
-		SELECT workspace_id, user_id, credential_generation + 1, ?
-		FROM github_user_connections WHERE workspace_id = ?
-		ON CONFLICT(workspace_id, user_id) DO UPDATE SET
+		INSERT INTO github_user_connection_versions (
+			workspace_id, user_id, github_host, credential_generation, updated_at
+		)
+		SELECT workspace_id, user_id, github_host, credential_generation + 1, ?
+		FROM github_user_connections WHERE workspace_id = ? AND github_host = ?
+		ON CONFLICT(workspace_id, user_id, github_host) DO UPDATE SET
 			credential_generation = CASE
 				WHEN github_user_connection_versions.credential_generation + 1 > excluded.credential_generation
 				THEN github_user_connection_versions.credential_generation + 1
 				ELSE excluded.credential_generation
-			END, updated_at = excluded.updated_at`), time.Now().UTC(), workspaceID); err != nil {
+			END, updated_at = excluded.updated_at`), time.Now().UTC(), workspaceID, host); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, tx.Rebind(
-		`DELETE FROM github_user_connections WHERE workspace_id = ?`), workspaceID); err != nil {
+		`DELETE FROM github_user_connections WHERE workspace_id = ? AND github_host = ?`), workspaceID, host); err != nil {
 		return err
 	}
 	return tx.Commit()

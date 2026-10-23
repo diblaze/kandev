@@ -118,10 +118,13 @@ type DeploymentAppManifestSubmission struct {
 
 type AppRegistrationManifestRequest struct {
 	RegistrationID string
-	OwnerType      ManifestOwnerType
-	OwnerLogin     string
-	PublicBaseURL  string
-	Visibility     AppRegistrationVisibility
+	// GitHubHost is the normalized host the App is registered on; empty means
+	// github.com.
+	GitHubHost    string
+	OwnerType     ManifestOwnerType
+	OwnerLogin    string
+	PublicBaseURL string
+	Visibility    AppRegistrationVisibility
 }
 
 func BuildAppRegistrationManifest(
@@ -152,6 +155,7 @@ func BuildAppRegistrationManifest(
 	}
 	submission.Manifest.SetupURL = ""
 	submission.Manifest.Public = public
+	submission.RegistrationURL = manifestRegistrationURL(request.GitHubHost, request.OwnerType, request.OwnerLogin)
 	return submission, nil
 }
 

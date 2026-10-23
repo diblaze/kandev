@@ -70,7 +70,7 @@ func TestGitHubIssueMutationRegisteredRoutes(t *testing.T) {
 			require.Equal(t, events.TaskUpdated, event.Type)
 		}
 	}
-	connection, err := store.GetWorkspaceConnection(ctx, "issue-ws")
+	connection, err := store.GetWorkspaceConnection(ctx, "issue-ws", "github.com")
 	require.NoError(t, err)
 	require.Equal(t, "fixture", connection.Login)
 }

@@ -40,7 +40,7 @@ type taskChangeRequestProviderAdapter interface {
 type githubTaskChangeRequestService interface {
 	ListTaskPRs(context.Context, []string) (map[string][]*github.TaskPR, error)
 	GetTaskCIOptionsResponse(context.Context, string) (*github.TaskCIOptionsResponse, error)
-	GetWorkspaceAuthStatus(context.Context, string, string) (*github.WorkspaceAuthStatus, error)
+	GetWorkspaceAuthStatus(context.Context, string, string, string) (*github.WorkspaceAuthStatus, error)
 }
 
 type gitlabTaskChangeRequestService interface {
@@ -333,7 +333,7 @@ func (a githubTaskChangeRequestAdapter) readGitHubTaskChangeRequests(
 func (a githubTaskChangeRequestAdapter) readGitHubStatus(
 	ctx context.Context, task *models.Task, result *taskChangeRequestProviderResult,
 ) {
-	authStatus, err := a.service.GetWorkspaceAuthStatus(ctx, task.WorkspaceID, "")
+	authStatus, err := a.service.GetWorkspaceAuthStatus(ctx, task.WorkspaceID, "", "")
 	if err != nil {
 		result.Errors = append(result.Errors, err)
 		return

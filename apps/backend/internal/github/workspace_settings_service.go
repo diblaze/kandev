@@ -34,7 +34,7 @@ func (s *Service) DescribeTaskGitCredentialPolicy(ctx context.Context, workspace
 	if s.store == nil {
 		return policy, nil
 	}
-	connection, err := s.store.GetWorkspaceConnection(ctx, workspaceID)
+	connection, err := s.store.GetWorkspaceConnection(ctx, workspaceID, defaultGitHubHost)
 	if err != nil || connection == nil {
 		return policy, nil
 	}

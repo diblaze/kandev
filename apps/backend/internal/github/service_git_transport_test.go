@@ -16,7 +16,7 @@ func TestResolveGitCredentialUsesWorkspacePAT(t *testing.T) {
 		},
 	}}
 	resolver := NewCredentialResolver(connections, fakeAuthSecrets{
-		WorkspacePATSecretKey("workspace-a"): "workspace-a-token",
+		WorkspacePATSecretKey("workspace-a", defaultGitHubHost): "workspace-a-token",
 	})
 	service := &Service{resolver: resolver}
 

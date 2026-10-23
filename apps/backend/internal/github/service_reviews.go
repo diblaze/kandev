@@ -280,7 +280,7 @@ func (s *Service) CheckReviewWatch(ctx context.Context, watch *ReviewWatch) ([]*
 		return nil, admissionErr
 	}
 
-	connection, err := s.store.GetWorkspaceConnection(ctx, watch.WorkspaceID)
+	connection, err := s.store.GetWorkspaceConnection(ctx, watch.WorkspaceID, defaultGitHubHost)
 	if err != nil {
 		return nil, fmt.Errorf("load review watch workspace connection: %w", err)
 	}

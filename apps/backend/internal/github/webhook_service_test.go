@@ -170,7 +170,7 @@ func (r *webhookPersonalReconciler) ReconcileAuthorizationRevocation(
 	return r.revoked, nil
 }
 
-func (r *webhookPersonalRevoker) RevokePersonalConnection(_ context.Context, workspaceID, userID string) error {
+func (r *webhookPersonalRevoker) RevokePersonalConnection(_ context.Context, workspaceID, userID, _ string) error {
 	r.revoked = append(r.revoked, workspaceID+":"+userID)
 	return nil
 }
@@ -188,7 +188,7 @@ func newRegistrationWebhookService(
 	reconciliation ...GitHubWebhookReconciliation,
 ) *GitHubWebhookService {
 	return NewAppRegistrationWebhookService(
-		registrationID, secret, store, repositories, personal, nil, reconciliation...,
+		registrationID, "", secret, store, repositories, personal, nil, reconciliation...,
 	)
 }
 
@@ -342,7 +342,7 @@ func TestGitHubWebhookConcurrentDeliveryIsProcessedOncePerRegistration(t *testin
 		t.Fatal(err)
 	}
 	service := NewAppRegistrationWebhookService(
-		"registration-work", "work-secret", store, nil, nil, nil,
+		"registration-work", "", "work-secret", store, nil, nil, nil,
 	)
 	request := signedWebhookRequest(
 		"work-secret", "delivery-concurrent", "installation",

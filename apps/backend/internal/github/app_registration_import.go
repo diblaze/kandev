@@ -142,6 +142,11 @@ func (s *AppRegistrationImporter) validateRequest(
 	if s == nil || s.repository == nil || s.repository.store == nil || s.repository.secrets == nil {
 		return request, DeploymentAppManifestSubmission{}, importError(AppRegistrationImportPersistenceFailed)
 	}
+	host, err := normalizeGitHubHost(request.GitHubHost)
+	if err != nil {
+		return request, DeploymentAppManifestSubmission{}, importError(AppRegistrationImportInvalidRequest)
+	}
+	request.GitHubHost = host
 	if !validImportScalarFields(request) {
 		return request, DeploymentAppManifestSubmission{}, importError(AppRegistrationImportInvalidRequest)
 	}
@@ -154,8 +159,8 @@ func (s *AppRegistrationImporter) validateRequest(
 		return request, DeploymentAppManifestSubmission{}, importError(AppRegistrationImportInvalidRequest)
 	}
 	manifest, err := BuildAppRegistrationManifest(AppRegistrationManifestRequest{
-		RegistrationID: request.RegistrationID,
-		OwnerType:      importManifestOwnerType(request.OwnerType), OwnerLogin: request.OwnerLogin,
+		RegistrationID: request.RegistrationID, GitHubHost: request.GitHubHost,
+		OwnerType: importManifestOwnerType(request.OwnerType), OwnerLogin: request.OwnerLogin,
 		PublicBaseURL: request.PublicBaseURL, Visibility: request.Visibility,
 	})
 	if err != nil {
@@ -165,7 +170,7 @@ func (s *AppRegistrationImporter) validateRequest(
 }
 
 func validImportScalarFields(request AppRegistrationImportRequest) bool {
-	return request.GitHubHost == defaultGitHubAppHost && request.AppID > 0 &&
+	return request.AppID > 0 &&
 		boundedTrimmed(request.WorkspaceID, maxAppRegistrationWorkspaceID) &&
 		boundedTrimmed(request.DisplayName, maxAppRegistrationDisplayName) &&
 		boundedTrimmed(request.ClientID, maxAppRegistrationClientID) &&

@@ -8,7 +8,7 @@ import (
 )
 
 type workspaceIntegrationCopier interface {
-	CopyWorkspaceConfigurationTx(context.Context, *sqlx.Tx, string, string) (bool, error)
+	CopyWorkspaceConfigurationTx(context.Context, *sqlx.Tx, string, string) ([]string, error)
 }
 
 func TestWorkspaceCloneGitHubSources(t *testing.T) {
@@ -45,23 +45,23 @@ func TestWorkspaceCloneGitHubSources(t *testing.T) {
 			tx, err := store.db.BeginTxx(ctx, nil)
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = tx.Rollback() })
-			needsPAT, err := copier.CopyWorkspaceConfigurationTx(ctx, tx, "source", "target")
+			patHosts, err := copier.CopyWorkspaceConfigurationTx(ctx, tx, "source", "target")
 			if source == ConnectionSourceGitHubAppUser || source == "unknown" {
 				require.Error(t, err)
 				require.NoError(t, tx.Rollback())
-				connection, readErr := store.GetWorkspaceConnection(ctx, "target")
+				connection, readErr := store.GetWorkspaceConnection(ctx, "target", defaultGitHubHost)
 				require.NoError(t, readErr)
 				require.Nil(t, connection)
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, source == ConnectionSourcePAT, needsPAT)
+			require.Equal(t, source == ConnectionSourcePAT, len(patHosts) == 1)
 			require.NoError(t, tx.Commit())
 			settings, err := store.GetWorkspaceSettings(ctx, "target")
 			require.NoError(t, err)
 			require.JSONEq(t, `[{"id":"mine","default":true}]`, string(settings.SavedPresets))
 			require.JSONEq(t, `{"pr":[],"issue":[]}`, string(settings.DefaultQueryPresets))
-			connection, err := store.GetWorkspaceConnection(ctx, "target")
+			connection, err := store.GetWorkspaceConnection(ctx, "target", defaultGitHubHost)
 			require.NoError(t, err)
 			if source == "" {
 				require.Nil(t, connection)

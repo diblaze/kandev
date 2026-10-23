@@ -40,7 +40,7 @@ func (p *CachedInstallationCredentialProvider) ResolveInstallation(
 		return nil, err
 	}
 	tracker := NewRateTracker(nil, nil)
-	client := NewTokenClient(token.Token, token.Principal).WithRateTracker(tracker)
+	client := NewTokenClient(token.Token, token.Principal).WithHost(connection.GitHubHost).WithRateTracker(tracker)
 	return &ResolvedCredential{
 		Client: client,
 		Principal: AuthPrincipal{

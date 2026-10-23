@@ -805,10 +805,12 @@ func deleteGitHubAuthForReset(ctx context.Context, database *sql.DB, workspaceID
 		}
 	}
 	userSecretPrefix := "github:user:" + workspaceID + ":"
+	patSecretKey := github.WorkspacePATSecretKeyPrefix(workspaceID)
+	hostPATSecretPrefix := patSecretKey + ":"
 	if _, err := tx.ExecContext(ctx, `
 		DELETE FROM secrets
-		WHERE id = ? OR substr(id, 1, length(?)) = ?`,
-		github.WorkspacePATSecretKey(workspaceID), userSecretPrefix, userSecretPrefix); err != nil {
+		WHERE id = ? OR substr(id, 1, length(?)) = ? OR substr(id, 1, length(?)) = ?`,
+		patSecretKey, hostPATSecretPrefix, hostPATSecretPrefix, userSecretPrefix, userSecretPrefix); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -248,10 +248,11 @@ func (*gitHubCredentialProvider) Supports(providerID string) bool {
 }
 
 func (p *gitHubCredentialProvider) Binding(ctx context.Context, scope gitcredentials.Scope) (string, error) {
-	if !strings.EqualFold(scope.Host, defaultGitHubHost) {
-		return "", fmt.Errorf("%w: unsupported host", ErrCredentialScopeDenied)
+	host, err := scopeGitHubHost(scope)
+	if err != nil {
+		return "", err
 	}
-	connection, appGeneration, err := p.issueConnection(ctx, scope.WorkspaceID)
+	connection, appGeneration, err := p.issueConnection(ctx, scope.WorkspaceID, host)
 	if err != nil {
 		return "", err
 	}
@@ -279,7 +280,11 @@ func (p *gitHubCredentialProvider) RefreshScope(ctx context.Context, scope gitcr
 	if err := binding.Validate(); err != nil {
 		return gitcredentials.Scope{}, fmt.Errorf("%w: invalid destination credential binding", ErrCredentialScopeDenied)
 	}
-	connection, appGeneration, err := p.issueConnection(ctx, scope.WorkspaceID)
+	host, err := scopeGitHubHost(scope)
+	if err != nil {
+		return gitcredentials.Scope{}, err
+	}
+	connection, appGeneration, err := p.issueConnection(ctx, scope.WorkspaceID, host)
 	if err != nil {
 		return gitcredentials.Scope{}, err
 	}
@@ -309,8 +314,13 @@ func (p *gitHubCredentialProvider) Resolve(ctx context.Context, scope gitcredent
 	if err != nil {
 		return gitcredentials.Credential{}, err
 	}
+	host, err := scopeGitHubHost(scope)
+	if err != nil {
+		return gitcredentials.Credential{}, err
+	}
 	resolved, err := p.resolver.Resolve(ctx, ResolveCredentialRequest{
-		WorkspaceID: scope.WorkspaceID, Purpose: CredentialPurposeGitTransport, RepoOwner: owner, RepoName: repo,
+		WorkspaceID: scope.WorkspaceID, Host: host, Purpose: CredentialPurposeGitTransport,
+		RepoOwner: owner, RepoName: repo,
 	})
 	if err != nil {
 		return gitcredentials.Credential{}, err
@@ -326,16 +336,32 @@ func (p *gitHubCredentialProvider) Resolve(ctx context.Context, scope gitcredent
 	}, nil
 }
 
-func (p *gitHubCredentialProvider) issueConnection(ctx context.Context, workspaceID string) (*WorkspaceConnection, int64, error) {
+// scopeGitHubHost is the normalized GitHub host a credential scope names. A
+// scope without a host has no known identity and is denied.
+func scopeGitHubHost(scope gitcredentials.Scope) (string, error) {
+	if strings.TrimSpace(scope.Host) == "" {
+		return "", fmt.Errorf("%w: missing host", ErrCredentialScopeDenied)
+	}
+	host, err := normalizeGitHubHost(scope.Host)
+	if err != nil {
+		return "", fmt.Errorf("%w: unsupported host", ErrCredentialScopeDenied)
+	}
+	return host, nil
+}
+
+func (p *gitHubCredentialProvider) issueConnection(
+	ctx context.Context,
+	workspaceID, host string,
+) (*WorkspaceConnection, int64, error) {
 	if p == nil || p.connections == nil || p.resolver == nil {
 		return nil, 0, ErrGitHubNotConfigured
 	}
-	connection, err := p.connections.GetWorkspaceConnection(ctx, workspaceID)
+	connection, err := p.connections.GetWorkspaceConnection(ctx, workspaceID, host)
 	if err != nil {
 		return nil, 0, fmt.Errorf("load GitHub workspace connection: %w", err)
 	}
 	if connection == nil {
-		return nil, 0, ErrGitHubNotConfigured
+		return nil, 0, hostNotConfiguredError(host)
 	}
 	if connection.Status != ConnectionStatusActive {
 		return nil, 0, ErrGitHubConnectionInvalid

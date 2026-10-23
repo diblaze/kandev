@@ -37,7 +37,7 @@ func TestGitHubWebhookPushPublishesPushReceived(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	service := NewAppRegistrationWebhookService("registration-work", "work-secret", store, nil, nil, eventBus)
+	service := NewAppRegistrationWebhookService("registration-work", "", "work-secret", store, nil, nil, eventBus)
 	payload := []byte(`{
 		"ref":"refs/heads/main","after":"abc1234",
 		"repository":{"name":"repo","owner":{"login":"acme"}},
@@ -89,7 +89,7 @@ func TestGitHubWebhookResolvesDistinctActiveWorkspaces(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	service := NewAppRegistrationWebhookService("registration-work", "work-secret", store, nil, nil, eventBus)
+	service := NewAppRegistrationWebhookService("registration-work", "", "work-secret", store, nil, nil, eventBus)
 	payload := []byte(`{
 		"ref":"refs/heads/main","after":"abc1234",
 		"repository":{"name":"repo","owner":{"login":"acme"}},
@@ -134,7 +134,7 @@ func TestGitHubWebhookPushIgnoresBranchDelete(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	service := NewAppRegistrationWebhookService("registration-work", "work-secret", store, nil, nil, eventBus)
+	service := NewAppRegistrationWebhookService("registration-work", "", "work-secret", store, nil, nil, eventBus)
 	payload := []byte(`{
 		"ref":"refs/heads/main","after":"0000000000000000000000000000000000000000","deleted":true,
 		"repository":{"name":"repo","owner":{"login":"acme"}},
@@ -171,7 +171,7 @@ func TestGitHubWebhookPushIgnoresNonBranchRef(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	service := NewAppRegistrationWebhookService("registration-work", "work-secret", store, nil, nil, eventBus)
+	service := NewAppRegistrationWebhookService("registration-work", "", "work-secret", store, nil, nil, eventBus)
 	payload := []byte(`{
 		"ref":"refs/tags/v1.0.0","after":"abc1234",
 		"repository":{"name":"repo","owner":{"login":"acme"}},
@@ -204,7 +204,7 @@ func TestGitHubWebhookCheckRunPublishesCompletedEvent(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	service := NewAppRegistrationWebhookService("registration-work", "work-secret", store, nil, nil, eventBus)
+	service := NewAppRegistrationWebhookService("registration-work", "", "work-secret", store, nil, nil, eventBus)
 	payload := []byte(`{
 		"action":"completed",
 		"check_run":{
@@ -252,7 +252,7 @@ func TestGitHubWebhookCheckRunIgnoresNonCompletedAction(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	service := NewAppRegistrationWebhookService("registration-work", "work-secret", store, nil, nil, eventBus)
+	service := NewAppRegistrationWebhookService("registration-work", "", "work-secret", store, nil, nil, eventBus)
 	payload := []byte(`{
 		"action":"in_progress",
 		"check_run":{
@@ -285,7 +285,7 @@ func TestGitHubWebhookPublishNilPublisherIsNoOp(t *testing.T) {
 			Status: ConnectionStatusActive,
 		}},
 	}}
-	service := NewAppRegistrationWebhookService("registration-work", "work-secret", store, nil, nil, nil)
+	service := NewAppRegistrationWebhookService("registration-work", "", "work-secret", store, nil, nil, nil)
 	payload := []byte(`{
 		"ref":"refs/heads/main","after":"abc1234",
 		"repository":{"name":"repo","owner":{"login":"acme"}},

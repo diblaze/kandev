@@ -15,8 +15,8 @@ const credentialCacheRefreshMargin = 5 * time.Minute
 var errCredentialResolutionInvalidated = errors.New("GitHub credential resolution invalidated")
 
 type workspaceConnectionReader interface {
-	GetWorkspaceConnection(ctx context.Context, workspaceID string) (*WorkspaceConnection, error)
-	GetUserConnection(ctx context.Context, workspaceID, userID string) (*UserConnection, error)
+	GetWorkspaceConnection(ctx context.Context, workspaceID, host string) (*WorkspaceConnection, error)
+	GetUserConnection(ctx context.Context, workspaceID, userID, host string) (*UserConnection, error)
 }
 
 type authSecretReader interface {
@@ -57,6 +57,7 @@ type ghAccountTokenResolver func(ctx context.Context, host, login string) (strin
 
 type credentialCacheKey struct {
 	workspaceID             string
+	host                    string
 	source                  ConnectionSource
 	generation              int64
 	appRegistrationID       string
@@ -149,6 +150,11 @@ func (r *CredentialResolver) Resolve(ctx context.Context, req ResolveCredentialR
 	if !validCredentialPurpose(req.Purpose) {
 		return nil, fmt.Errorf("invalid GitHub credential purpose %q", req.Purpose)
 	}
+	host, err := normalizeGitHubHost(req.Host)
+	if err != nil {
+		return nil, err
+	}
+	req.Host = host
 	for {
 		epoch := r.epoch(req.WorkspaceID)
 		resolved, err := r.resolveAtEpoch(ctx, req, epoch)
@@ -168,12 +174,12 @@ func (r *CredentialResolver) resolveAtEpoch(
 	req ResolveCredentialRequest,
 	epoch credentialCacheEpoch,
 ) (*ResolvedCredential, error) {
-	connection, err := r.connections.GetWorkspaceConnection(ctx, req.WorkspaceID)
+	connection, err := r.connections.GetWorkspaceConnection(ctx, req.WorkspaceID, req.Host)
 	if err != nil {
 		return nil, fmt.Errorf("load GitHub workspace connection: %w", err)
 	}
 	if connection == nil {
-		return nil, ErrGitHubNotConfigured
+		return nil, hostNotConfiguredError(req.Host)
 	}
 
 	if req.Purpose == CredentialPurposePersonalRead || req.Purpose == CredentialPurposePersonalWrite {
@@ -227,7 +233,7 @@ func (r *CredentialResolver) resolveConfiguredPersonal(
 	if req.UserID == "" || r.users == nil {
 		return nil, nil
 	}
-	connection, err := r.connections.GetUserConnection(ctx, req.WorkspaceID, req.UserID)
+	connection, err := r.connections.GetUserConnection(ctx, req.WorkspaceID, req.UserID, req.Host)
 	if err != nil {
 		return nil, fmt.Errorf("load personal GitHub connection: %w", err)
 	}
@@ -243,6 +249,7 @@ func (r *CredentialResolver) resolveConfiguredPersonal(
 	}
 	resolved.Principal.WorkspaceID = req.WorkspaceID
 	resolved.Principal.UserID = req.UserID
+	resolved.Principal.GitHubHost = req.Host
 	resolved.CredentialGeneration = connection.CredentialGeneration
 	return resolved, nil
 }
@@ -276,6 +283,7 @@ func (r *CredentialResolver) resolveAutomation(
 		return nil, ErrGitHubNotConfigured
 	}
 	resolved.Principal.WorkspaceID = req.WorkspaceID
+	resolved.Principal.GitHubHost = connection.GitHubHost
 	resolved.CredentialGeneration = connection.CredentialGeneration
 	if err := applyAppCredentialMetadata(connection, resolved, &key); err != nil {
 		return nil, err
@@ -294,7 +302,7 @@ func (r *CredentialResolver) automationCacheKey(
 	req ResolveCredentialRequest,
 ) (credentialCacheKey, error) {
 	key := credentialCacheKey{
-		workspaceID: req.WorkspaceID, source: connection.Source,
+		workspaceID: req.WorkspaceID, host: connection.GitHubHost, source: connection.Source,
 		generation: connection.CredentialGeneration, appRegistrationID: connection.AppRegistrationID,
 		purpose: req.Purpose, repoOwner: strings.ToLower(strings.TrimSpace(req.RepoOwner)),
 		repoName: strings.ToLower(strings.TrimSpace(req.RepoName)),
@@ -366,7 +374,7 @@ func (r *CredentialResolver) resolvePAT(ctx context.Context, connection *Workspa
 	if r.secrets == nil {
 		return nil, ErrGitHubNotConfigured
 	}
-	token, err := r.secrets.Reveal(ctx, WorkspacePATSecretKey(connection.WorkspaceID))
+	token, err := r.secrets.Reveal(ctx, WorkspacePATSecretKey(connection.WorkspaceID, connection.GitHubHost))
 	if err != nil {
 		return nil, fmt.Errorf("reveal workspace GitHub PAT: %w", err)
 	}
@@ -375,7 +383,7 @@ func (r *CredentialResolver) resolvePAT(ctx context.Context, connection *Workspa
 		Kind:        TokenCredentialPAT,
 		PrincipalID: "login:" + connection.Login,
 		Login:       connection.Login,
-	}).WithRateTracker(tracker)
+	}).WithHost(connection.GitHubHost).WithRateTracker(tracker)
 	return &ResolvedCredential{
 		Client:       client,
 		Capabilities: allTokenCapabilities(),
@@ -399,7 +407,7 @@ func (r *CredentialResolver) resolveGHCLI(ctx context.Context, connection *Works
 		Kind:        TokenCredentialCLI,
 		PrincipalID: "login:" + connection.Login,
 		Login:       connection.Login,
-	}).WithRateTracker(tracker)
+	}).WithHost(connection.GitHubHost).WithRateTracker(tracker)
 	return &ResolvedCredential{
 		Client:       client,
 		Capabilities: allTokenCapabilities(),
@@ -485,7 +493,7 @@ func (r *CredentialResolver) storeCached(
 		return false
 	}
 	for existing := range r.cache {
-		if existing.workspaceID == key.workspaceID && existing.generation < key.generation {
+		if existing.workspaceID == key.workspaceID && existing.host == key.host && existing.generation < key.generation {
 			delete(r.cache, existing)
 		}
 	}

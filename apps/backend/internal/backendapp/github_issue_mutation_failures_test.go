@@ -31,7 +31,7 @@ func TestGitHubIssueMutationFailures(t *testing.T) {
 		response := issueMutationHTTP(ctx, router, http.MethodPut, "/api/v1/github/tasks/"+tt.path+"/issue", tt.body)
 		require.Equal(t, tt.status, response.Code, response.Body.String())
 	}
-	require.NoError(t, store.DeleteWorkspaceConnection(ctx, "issue-ws"))
+	require.NoError(t, store.DeleteWorkspaceConnection(ctx, "issue-ws", "github.com"))
 	response := issueMutationHTTP(ctx, router, http.MethodPut, "/api/v1/github/tasks/issue-task/issue", `{"owner":"acme","repo":"api","number":42}`)
 	require.Equal(t, 503, response.Code, response.Body.String())
 	gh.SetTaskIssueStore(nil)

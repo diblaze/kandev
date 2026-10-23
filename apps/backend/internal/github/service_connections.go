@@ -50,14 +50,32 @@ func (s *Service) WorkspaceConnectionFingerprint(ctx context.Context, workspaceI
 	if s == nil || s.store == nil {
 		return "", nil
 	}
-	connection, err := s.store.GetWorkspaceConnection(ctx, workspaceID)
+	connections, err := s.store.ListWorkspaceConnections(ctx, workspaceID)
 	if err != nil {
 		return "", err
 	}
-	if connection == nil {
-		return "", nil
+	parts := make([]string, 0, len(connections))
+	for _, connection := range connections {
+		parts = append(parts, fmt.Sprintf("%s:%s:%d", connection.GitHubHost, connection.Status, connection.CredentialGeneration))
 	}
-	return fmt.Sprintf("%s:%d", connection.Status, connection.CredentialGeneration), nil
+	return strings.Join(parts, ","), nil
+}
+
+// WorkspaceGitHubHosts returns the GitHub hosts the workspace has a
+// connection for, ordered by host.
+func (s *Service) WorkspaceGitHubHosts(ctx context.Context, workspaceID string) ([]string, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrGitHubNotConfigured
+	}
+	connections, err := s.store.ListWorkspaceConnections(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	hosts := make([]string, 0, len(connections))
+	for _, connection := range connections {
+		hosts = append(hosts, connection.GitHubHost)
+	}
+	return hosts, nil
 }
 
 func (s *Service) SetWorkspaceConnection(
@@ -72,32 +90,66 @@ func (s *Service) SetWorkspaceConnection(
 	if err := s.authorizeWorkspaceAccess(ctx, workspaceID); err != nil {
 		return nil, err
 	}
+	host, err := normalizeGitHubHost(req.Host)
+	if err != nil {
+		return nil, err
+	}
 	if s.store == nil || s.connectionSecrets == nil {
 		return nil, ErrGitHubNotConfigured
 	}
-	observed, err := s.store.GetWorkspaceConnection(ctx, workspaceID)
+	observed, err := s.store.GetWorkspaceConnection(ctx, workspaceID, host)
 	if err != nil {
 		return nil, fmt.Errorf("load workspace connection: %w", err)
 	}
-	expectedGeneration := workspaceConnectionGeneration(observed)
+	connection, err := s.validateAndCommitWorkspaceConnection(
+		ctx, workspaceID, host, req, workspaceConnectionGeneration(observed),
+	)
+	if err == nil {
+		s.notifyHostConnected(ctx, workspaceID, host)
+	}
+	return connection, err
+}
 
+// SetHostConnectedObserver registers a callback run after a host connection
+// of a workspace is committed, outside the connection mutation lock.
+func (s *Service) SetHostConnectedObserver(observer func(ctx context.Context, workspaceID, host string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hostConnectedObserver = observer
+}
+
+func (s *Service) notifyHostConnected(ctx context.Context, workspaceID, host string) {
+	s.mu.Lock()
+	observer := s.hostConnectedObserver
+	s.mu.Unlock()
+	if observer != nil {
+		observer(ctx, workspaceID, host)
+	}
+}
+
+func (s *Service) validateAndCommitWorkspaceConnection(
+	ctx context.Context,
+	workspaceID, host string,
+	req SetWorkspaceConnectionRequest,
+	expectedGeneration int64,
+) (*WorkspaceConnection, error) {
 	switch req.Source {
 	case ConnectionSourcePAT:
 		token := strings.TrimSpace(req.Token)
 		if token == "" {
 			return nil, fmt.Errorf("GitHub token is required")
 		}
-		login, err := s.validateWorkspaceToken(ctx, token)
+		login, err := s.validateWorkspaceToken(ctx, host, token)
 		if err != nil {
 			return nil, err
 		}
-		return s.commitWorkspacePAT(ctx, workspaceID, login, token, expectedGeneration)
+		return s.commitWorkspacePAT(ctx, workspaceID, host, login, token, expectedGeneration)
 	case ConnectionSourceGHCLI:
 		if err := requireGHCLIOperator(ctx); err != nil {
 			return nil, err
 		}
 		return s.validateAndCommitWorkspaceGHCLI(
-			ctx, workspaceID, req.Host, req.Login, expectedGeneration,
+			ctx, workspaceID, host, req.Login, expectedGeneration,
 		)
 	case ConnectionSourceLegacyShared:
 		return nil, fmt.Errorf("legacy shared GitHub auth is migration-only")
@@ -122,13 +174,13 @@ func requireGHCLIOperator(ctx context.Context) error {
 }
 
 func (s *Service) newWorkspaceConnection(
-	workspaceID string,
+	workspaceID, host string,
 	source ConnectionSource,
 	existing *WorkspaceConnection,
 ) *WorkspaceConnection {
 	now := time.Now().UTC()
 	connection := &WorkspaceConnection{
-		WorkspaceID: workspaceID, Source: source, GitHubHost: defaultGitHubHost,
+		WorkspaceID: workspaceID, Source: source, GitHubHost: host,
 		Status: ConnectionStatusActive, CredentialGeneration: nextCredentialGeneration(existing),
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -154,22 +206,22 @@ func workspaceConnectionGeneration(connection *WorkspaceConnection) int64 {
 
 func (s *Service) commitWorkspacePAT(
 	ctx context.Context,
-	workspaceID, login, token string,
+	workspaceID, host, login, token string,
 	expectedGeneration int64,
 ) (*WorkspaceConnection, error) {
-	lock := s.workspaceConnectionMutationLock(workspaceID)
+	lock := s.workspaceConnectionMutationLock(workspaceID, host)
 	lock.Lock()
 	defer lock.Unlock()
-	existing, err := s.store.GetWorkspaceConnection(ctx, workspaceID)
+	existing, err := s.store.GetWorkspaceConnection(ctx, workspaceID, host)
 	if err != nil {
 		return nil, fmt.Errorf("load workspace connection: %w", err)
 	}
 	if workspaceConnectionGeneration(existing) != expectedGeneration {
 		return nil, ErrWorkspaceConnectionStale
 	}
-	connection := s.newWorkspaceConnection(workspaceID, ConnectionSourcePAT, existing)
+	connection := s.newWorkspaceConnection(workspaceID, host, ConnectionSourcePAT, existing)
 	connection.Login = login
-	secretKey := WorkspacePATSecretKey(connection.WorkspaceID)
+	secretKey := WorkspacePATSecretKey(connection.WorkspaceID, host)
 	previous, hadPrevious, err := revealOptionalSecret(ctx, s.connectionSecrets, secretKey)
 	if err != nil {
 		return nil, fmt.Errorf("load previous workspace PAT: %w", err)
@@ -195,10 +247,6 @@ func (s *Service) validateAndCommitWorkspaceGHCLI(
 	workspaceID, host, login string,
 	expectedGeneration int64,
 ) (*WorkspaceConnection, error) {
-	host = strings.TrimSpace(host)
-	if host == "" {
-		host = defaultGitHubHost
-	}
 	login = strings.TrimSpace(login)
 	if login == "" {
 		return nil, fmt.Errorf("GitHub login is required")
@@ -211,7 +259,7 @@ func (s *Service) validateAndCommitWorkspaceGHCLI(
 	if err != nil {
 		return nil, err
 	}
-	validatedLogin, err := s.validateWorkspaceToken(ctx, token)
+	validatedLogin, err := s.validateWorkspaceToken(ctx, host, token)
 	if err != nil {
 		return nil, err
 	}
@@ -226,18 +274,17 @@ func (s *Service) commitWorkspaceGHCLI(
 	workspaceID, host, login string,
 	expectedGeneration int64,
 ) (*WorkspaceConnection, error) {
-	lock := s.workspaceConnectionMutationLock(workspaceID)
+	lock := s.workspaceConnectionMutationLock(workspaceID, host)
 	lock.Lock()
 	defer lock.Unlock()
-	existing, err := s.store.GetWorkspaceConnection(ctx, workspaceID)
+	existing, err := s.store.GetWorkspaceConnection(ctx, workspaceID, host)
 	if err != nil {
 		return nil, fmt.Errorf("load workspace connection: %w", err)
 	}
 	if workspaceConnectionGeneration(existing) != expectedGeneration {
 		return nil, ErrWorkspaceConnectionStale
 	}
-	connection := s.newWorkspaceConnection(workspaceID, ConnectionSourceGHCLI, existing)
-	connection.GitHubHost = host
+	connection := s.newWorkspaceConnection(workspaceID, host, ConnectionSourceGHCLI, existing)
 	connection.Login = login
 	if err := s.applyAutomationTransition(ctx, existing, connection, func() error {
 		return s.store.UpsertWorkspaceConnection(ctx, connection)
@@ -245,8 +292,8 @@ func (s *Service) commitWorkspaceGHCLI(
 		return nil, fmt.Errorf("replace workspace GitHub connection: %w", err)
 	}
 	if existing != nil && existing.Source == ConnectionSourcePAT {
-		if err := deleteOptionalSecret(ctx, s.connectionSecrets, WorkspacePATSecretKey(workspaceID)); err != nil {
-			return nil, errors.Join(err, restoreWorkspaceConnection(ctx, s.store, existing, workspaceID))
+		if err := deleteOptionalSecret(ctx, s.connectionSecrets, WorkspacePATSecretKey(workspaceID, host)); err != nil {
+			return nil, errors.Join(err, restoreWorkspaceConnection(ctx, s.store, existing, workspaceID, host))
 		}
 	}
 	if existing != nil && existing.InstallationID != nil {
@@ -271,7 +318,7 @@ func (s *Service) revokePersonalForAutomationTransition(
 	if s.personalConnections == nil {
 		return errors.New("personal GitHub connection repository is not configured")
 	}
-	return s.personalConnections.RevokeWorkspacePersonalConnections(ctx, existing.WorkspaceID)
+	return s.personalConnections.RevokeWorkspacePersonalConnections(ctx, existing.WorkspaceID, existing.GitHubHost)
 }
 
 func (s *Service) applyAutomationTransition(
@@ -288,27 +335,33 @@ func (s *Service) applyAutomationTransition(
 	if s.personalConnections == nil {
 		return errors.New("personal GitHub connection repository is not configured")
 	}
-	return s.personalConnections.TransitionWorkspacePersonalConnections(ctx, existing.WorkspaceID, mutation)
+	return s.personalConnections.TransitionWorkspacePersonalConnections(
+		ctx, existing.WorkspaceID, existing.GitHubHost, mutation,
+	)
 }
 
 func equalInstallationID(left, right *int64) bool {
 	return left != nil && right != nil && *left == *right
 }
 
-func (s *Service) validateWorkspaceToken(ctx context.Context, token string) (string, error) {
+func (s *Service) validateWorkspaceToken(ctx context.Context, host, token string) (string, error) {
 	factory := s.tokenClientFactory
 	if factory == nil {
-		factory = func(value string) Client { return NewPATClient(value) }
+		factory = newHostPATClient
 	}
-	login, err := factory(token).GetAuthenticatedUser(ctx)
+	login, err := factory(host, token).GetAuthenticatedUser(ctx)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrInvalidToken, err)
+		return "", fmt.Errorf("%w: GitHub host %q: %w", ErrInvalidToken, host, err)
 	}
 	login = strings.TrimSpace(login)
 	if login == "" {
-		return "", fmt.Errorf("%w: GitHub returned an empty login", ErrInvalidToken)
+		return "", fmt.Errorf("%w: GitHub host %q returned an empty login", ErrInvalidToken, host)
 	}
 	return login, nil
+}
+
+func newHostPATClient(host, token string) Client {
+	return NewPATClient(token).WithHost(host)
 }
 
 func revealOptionalSecret(ctx context.Context, secrets ConnectionSecretStore, key string) (string, bool, error) {
@@ -328,10 +381,16 @@ func (s *Service) compensatePATWrite(ctx context.Context, key, previous string, 
 	_ = s.connectionSecrets.Delete(ctx, key)
 }
 
-func (s *Service) DeleteWorkspaceConnection(ctx context.Context, workspaceID string) error {
+// DeleteWorkspaceConnection removes the connection of one host; connections
+// on other hosts are untouched.
+func (s *Service) DeleteWorkspaceConnection(ctx context.Context, workspaceID, host string) error {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return ErrGitHubWorkspaceRequired
+	}
+	host, err := normalizeGitHubHost(host)
+	if err != nil {
+		return err
 	}
 	if err := s.authorizeWorkspaceAccess(ctx, workspaceID); err != nil {
 		return err
@@ -339,17 +398,17 @@ func (s *Service) DeleteWorkspaceConnection(ctx context.Context, workspaceID str
 	if s.store == nil {
 		return ErrGitHubNotConfigured
 	}
-	lock := s.workspaceConnectionMutationLock(workspaceID)
+	lock := s.workspaceConnectionMutationLock(workspaceID, host)
 	lock.Lock()
 	defer lock.Unlock()
-	connection, err := s.store.GetWorkspaceConnection(ctx, workspaceID)
+	connection, err := s.store.GetWorkspaceConnection(ctx, workspaceID, host)
 	if err != nil {
 		return err
 	}
 	if connection != nil && connection.Source == ConnectionSourcePAT && s.connectionSecrets != nil {
-		err = s.deleteWorkspacePATConnection(ctx, workspaceID)
+		err = s.deleteWorkspacePATConnection(ctx, workspaceID, host)
 	} else {
-		err = s.deleteWorkspaceConnectionMetadata(ctx, workspaceID, connection)
+		err = s.deleteWorkspaceConnectionMetadata(ctx, workspaceID, host, connection)
 	}
 	if err != nil {
 		return err
@@ -361,8 +420,8 @@ func (s *Service) DeleteWorkspaceConnection(ctx context.Context, workspaceID str
 	return nil
 }
 
-func (s *Service) deleteWorkspacePATConnection(ctx context.Context, workspaceID string) error {
-	secretKey := WorkspacePATSecretKey(workspaceID)
+func (s *Service) deleteWorkspacePATConnection(ctx context.Context, workspaceID, host string) error {
+	secretKey := WorkspacePATSecretKey(workspaceID, host)
 	previous, hadPrevious, err := revealOptionalSecret(ctx, s.connectionSecrets, secretKey)
 	if err != nil {
 		return fmt.Errorf("load workspace PAT: %w", err)
@@ -370,7 +429,7 @@ func (s *Service) deleteWorkspacePATConnection(ctx context.Context, workspaceID 
 	if err := deleteOptionalSecret(ctx, s.connectionSecrets, secretKey); err != nil {
 		return fmt.Errorf("delete workspace PAT: %w", err)
 	}
-	if err := s.store.DeleteWorkspaceConnection(ctx, workspaceID); err != nil {
+	if err := s.store.DeleteWorkspaceConnection(ctx, workspaceID, host); err != nil {
 		return errors.Join(err, restoreOptionalSecret(
 			ctx, s.connectionSecrets, secretKey, workspacePATSecretName, previous, hadPrevious,
 		))
@@ -379,17 +438,18 @@ func (s *Service) deleteWorkspacePATConnection(ctx context.Context, workspaceID 
 }
 
 func (s *Service) deleteWorkspaceConnectionMetadata(
-	ctx context.Context, workspaceID string, connection *WorkspaceConnection,
+	ctx context.Context, workspaceID, host string, connection *WorkspaceConnection,
 ) error {
 	return s.applyAutomationTransition(ctx, connection, nil, func() error {
-		return s.store.DeleteWorkspaceConnection(ctx, workspaceID)
+		return s.store.DeleteWorkspaceConnection(ctx, workspaceID, host)
 	})
 }
 
-func (s *Service) workspaceConnectionMutationLock(workspaceID string) *sync.Mutex {
+func (s *Service) workspaceConnectionMutationLock(workspaceID, host string) *sync.Mutex {
+	key := workspaceID + "\x00" + host
 	var hash uint32
-	for index := range len(workspaceID) {
-		hash = hash*33 + uint32(workspaceID[index])
+	for index := range len(key) {
+		hash = hash*33 + uint32(key[index])
 	}
 	return &s.connectionMutationLocks[hash%uint32(len(s.connectionMutationLocks))]
 }
@@ -432,23 +492,33 @@ func (s *Service) clearAuthCaches() {
 	}
 }
 
-// CopyWorkspaceConnectionToWorkspace duplicates the source workspace's GitHub
-// connection onto the destination workspace, including the PAT secret for
-// `pat` sources. No-op when the source workspace has no connection or the two
-// workspaces are the same. Used by the improve-kandev bootstrap when it
+// CopyWorkspaceConnectionToWorkspace duplicates every host connection of the
+// source workspace onto the destination workspace, including the PAT secret
+// for `pat` sources. No-op when the source workspace has no connection or the
+// two workspaces are the same. Used by the improve-kandev bootstrap when it
 // creates the dedicated workspace so improve tasks inherit the user's GitHub
 // access without re-authenticating.
 func (s *Service) CopyWorkspaceConnectionToWorkspace(ctx context.Context, srcWorkspaceID, dstWorkspaceID string) error {
 	if srcWorkspaceID == "" || dstWorkspaceID == "" || srcWorkspaceID == dstWorkspaceID {
 		return nil
 	}
-	src, err := s.store.GetWorkspaceConnection(ctx, srcWorkspaceID)
+	sources, err := s.store.ListWorkspaceConnections(ctx, srcWorkspaceID)
 	if err != nil {
-		return fmt.Errorf("load source workspace connection: %w", err)
+		return fmt.Errorf("load source workspace connections: %w", err)
 	}
-	if src == nil {
-		return nil
+	for _, src := range sources {
+		if err := s.copyWorkspaceConnection(ctx, src, dstWorkspaceID); err != nil {
+			return err
+		}
 	}
+	if len(sources) > 0 {
+		s.invalidateWorkspaceCredential(dstWorkspaceID)
+	}
+	return nil
+}
+
+func (s *Service) copyWorkspaceConnection(ctx context.Context, src *WorkspaceConnection, dstWorkspaceID string) error {
+	now := time.Now().UTC()
 	connection := &WorkspaceConnection{
 		WorkspaceID:              dstWorkspaceID,
 		Source:                   src.Source,
@@ -460,21 +530,23 @@ func (s *Service) CopyWorkspaceConnectionToWorkspace(ctx context.Context, srcWor
 		AppRegistrationID:        src.AppRegistrationID,
 		Status:                   src.Status,
 		CredentialGeneration:     nextCredentialGeneration(nil),
-		CreatedAt:                time.Now().UTC(),
-		UpdatedAt:                time.Now().UTC(),
+		CreatedAt:                now,
+		UpdatedAt:                now,
 	}
 	if err := s.store.UpsertWorkspaceConnection(ctx, connection); err != nil {
 		return fmt.Errorf("store destination workspace connection: %w", err)
 	}
-	if src.Source == ConnectionSourcePAT {
-		token, err := s.connectionSecrets.Reveal(ctx, WorkspacePATSecretKey(srcWorkspaceID))
-		if err != nil {
-			return fmt.Errorf("reveal source workspace PAT: %w", err)
-		}
-		if err := s.connectionSecrets.Set(ctx, WorkspacePATSecretKey(dstWorkspaceID), workspacePATSecretName, token); err != nil {
-			return fmt.Errorf("store destination workspace PAT: %w", err)
-		}
+	if src.Source != ConnectionSourcePAT {
+		return nil
 	}
-	s.invalidateWorkspaceCredential(dstWorkspaceID)
+	token, err := s.connectionSecrets.Reveal(ctx, WorkspacePATSecretKey(src.WorkspaceID, src.GitHubHost))
+	if err != nil {
+		return fmt.Errorf("reveal source workspace PAT: %w", err)
+	}
+	if err := s.connectionSecrets.Set(
+		ctx, WorkspacePATSecretKey(dstWorkspaceID, src.GitHubHost), workspacePATSecretName, token,
+	); err != nil {
+		return fmt.Errorf("store destination workspace PAT: %w", err)
+	}
 	return nil
 }

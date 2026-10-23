@@ -51,7 +51,7 @@ func issueMutationAuthenticatedGitHub(t *testing.T, h *issueMutationHarness, tra
 	secretStore, cleanup, err := secrets.Provide(database, database, crypto)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, cleanup()) })
-	require.NoError(t, secretStore.Create(ctx, &secrets.SecretWithValue{Secret: secrets.Secret{ID: github.WorkspacePATSecretKey("issue-ws"), Name: "GitHub fixture", Scope: secrets.ScopeWorkspace, WorkspaceID: "issue-ws"}, Value: "issue-fixture-token"}))
+	require.NoError(t, secretStore.Create(ctx, &secrets.SecretWithValue{Secret: secrets.Secret{ID: github.WorkspacePATSecretKey("issue-ws", "github.com"), Name: "GitHub fixture", Scope: secrets.ScopeWorkspace, WorkspaceID: "issue-ws"}, Value: "issue-fixture-token"}))
 	store, err := github.NewStore(database, database)
 	require.NoError(t, err)
 	require.NoError(t, store.UpsertWorkspaceConnection(ctx, &github.WorkspaceConnection{WorkspaceID: "issue-ws", Source: github.ConnectionSourcePAT, GitHubHost: "github.com", Login: "fixture", Status: github.ConnectionStatusActive, CredentialGeneration: 1}))

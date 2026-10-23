@@ -19,7 +19,8 @@ const (
 
 // InitializeWorkspaceDefaults persists the task Git policy for a newly
 // created workspace and, when the caller is allowed to use the deployment
-// host identity, snapshots the active gh CLI account as a named connection.
+// host identity, snapshots the active gh CLI account of every host that has
+// no connection yet as a named connection.
 // Account discovery and validation are deliberately best-effort: a fresh
 // install without an authenticated gh CLI still gets executor credential
 // inheritance and can be configured later from workspace settings.
@@ -37,12 +38,9 @@ func (s *Service) InitializeWorkspaceDefaults(ctx context.Context, workspaceID s
 	if err := s.store.EnsureWorkspaceExecutorDefaults(ctx, workspaceID); err != nil {
 		return fmt.Errorf("persist workspace GitHub defaults: %w", err)
 	}
-	connection, err := s.store.GetWorkspaceConnection(ctx, workspaceID)
+	connections, err := s.store.ListWorkspaceConnections(ctx, workspaceID)
 	if err != nil {
-		return fmt.Errorf("load existing workspace GitHub connection: %w", err)
-	}
-	if connection != nil {
-		return nil
+		return fmt.Errorf("load existing workspace GitHub connections: %w", err)
 	}
 
 	// An authenticated member may create a workspace, but must not receive the
@@ -60,14 +58,24 @@ func (s *Service) InitializeWorkspaceDefaults(ctx context.Context, workspaceID s
 		s.logWorkspaceDefaultsFallback("unable to discover host gh account", workspaceID, err)
 		return nil
 	}
-	account, ok := activeGHAccount(accounts)
-	if !ok {
-		return nil
+	connected := make(map[string]bool, len(connections))
+	for _, connection := range connections {
+		connected[connection.GitHubHost] = true
 	}
-	if s.connectionSecrets == nil {
-		s.logWorkspaceDefaultsFallback("connection secret store is unavailable", workspaceID, errWorkspaceDefaultsUnavailable)
-		return nil
+	for _, account := range activeGHAccountsByHost(accounts) {
+		if connected[account.Host] {
+			continue
+		}
+		if s.connectionSecrets == nil {
+			s.logWorkspaceDefaultsFallback("connection secret store is unavailable", workspaceID, errWorkspaceDefaultsUnavailable)
+			return nil
+		}
+		s.bindWorkspaceDefaultCLIAccount(ctx, workspaceID, account)
 	}
+	return nil
+}
+
+func (s *Service) bindWorkspaceDefaultCLIAccount(ctx context.Context, workspaceID string, account GHAccount) {
 	bindCtx, cancel := context.WithTimeout(ctx, workspaceDefaultsCLIValidationTimeout)
 	defer cancel()
 	if _, err := s.SetWorkspaceConnection(bindCtx, workspaceID, SetWorkspaceConnectionRequest{
@@ -77,7 +85,6 @@ func (s *Service) InitializeWorkspaceDefaults(ctx context.Context, workspaceID s
 	}); err != nil {
 		s.logWorkspaceDefaultsFallback("unable to bind host gh account", workspaceID, err)
 	}
-	return nil
 }
 
 // InitializeFreshWorkspaceDefaults handles the repository-seeded initial
@@ -112,25 +119,25 @@ func (s *Service) InitializeFreshWorkspaceDefaults(ctx context.Context) error {
 	return nil
 }
 
-func activeGHAccount(accounts []GHAccount) (GHAccount, bool) {
-	// Prefer the canonical GitHub.com account when gh reports multiple active
-	// hosts. Other active hosts are passed through the existing connection
-	// validation path, where unsupported hosts degrade to disconnected access.
+// activeGHAccountsByHost returns the valid active gh account of each host, in
+// the order gh lists the hosts.
+func activeGHAccountsByHost(accounts []GHAccount) []GHAccount {
+	seen := make(map[string]bool, len(accounts))
+	active := make([]GHAccount, 0, len(accounts))
 	for _, account := range accounts {
-		if validActiveGHAccount(account) && strings.EqualFold(strings.TrimSpace(account.Host), defaultGitHubHost) {
-			account.Host = strings.TrimSpace(account.Host)
-			account.Login = strings.TrimSpace(account.Login)
-			return account, true
+		if !validActiveGHAccount(account) {
+			continue
 		}
-	}
-	for _, account := range accounts {
-		if validActiveGHAccount(account) {
-			account.Host = strings.TrimSpace(account.Host)
-			account.Login = strings.TrimSpace(account.Login)
-			return account, true
+		host, err := normalizeGitHubHost(account.Host)
+		if err != nil || seen[host] {
+			continue
 		}
+		seen[host] = true
+		account.Host = host
+		account.Login = strings.TrimSpace(account.Login)
+		active = append(active, account)
 	}
-	return GHAccount{}, false
+	return active
 }
 
 func validActiveGHAccount(account GHAccount) bool {

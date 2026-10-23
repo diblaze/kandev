@@ -108,17 +108,19 @@ trigger repositories carry an optional `host` in their JSON config.
 
 ### Errors
 
-`ErrGitHubHostNotConnected` wraps `ErrGitHubNotConfigured` and carries the
-host. HTTP responses keep status 503 and code `github_not_configured` and add
-`host`, so existing clients keep their "Connect GitHub" handling and new
-clients can name the host.
+`HostNotConnectedError` wraps `ErrGitHubNotConfigured` and carries the host;
+callers match it with `errors.As`. A missing `github.com` connection keeps
+returning `ErrGitHubNotConfigured` unchanged. HTTP responses keep the existing
+`github_not_configured` status (409) and code and add `host`, so existing
+clients keep their "Connect GitHub" handling and new clients can name the
+host.
 
 ## Control flow
 
 ### Credential resolution
 
 `ResolveCredentialRequest` gains `Host`. The resolver normalizes it, loads the
-connection for `(workspace, host)`, and fails with `ErrGitHubHostNotConnected`
+connection for `(workspace, host)`, and fails with `HostNotConnectedError`
 when none exists. Its cache key gains the host. Workspace cache epochs stay
 per workspace, so replacing one host connection invalidates cached clients for
 the workspace, and the next resolution rebuilds only what it needs.

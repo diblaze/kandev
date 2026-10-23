@@ -15,7 +15,7 @@ import (
 )
 
 type workspaceIntegrationCloner interface {
-	CopyWorkspaceConfigurationTx(context.Context, *sqlx.Tx, string, string) (bool, error)
+	CopyWorkspaceConfigurationTx(context.Context, *sqlx.Tx, string, string) ([]string, error)
 }
 
 type workspaceClonePersistence struct {
@@ -60,15 +60,15 @@ func (c *workspaceClonePersistence) CloneWorkspace(ctx context.Context, source, 
 }
 
 func (c *workspaceClonePersistence) copyGitHub(ctx context.Context, tx *sqlx.Tx, sourceID, targetID string) error {
-	needsPAT, err := c.github.CopyWorkspaceConfigurationTx(ctx, tx, sourceID, targetID)
+	patHosts, err := c.github.CopyWorkspaceConfigurationTx(ctx, tx, sourceID, targetID)
 	if err != nil {
 		return err
 	}
-	if needsPAT {
-		if c.secrets == nil {
-			return repoerrors.ErrWorkspaceCloneConfiguration
-		}
-		if err := c.secrets.CopyCredentialTx(ctx, tx, github.WorkspacePATSecretKey(sourceID), github.WorkspacePATSecretKey(targetID)); err != nil {
+	if len(patHosts) > 0 && c.secrets == nil {
+		return repoerrors.ErrWorkspaceCloneConfiguration
+	}
+	for _, host := range patHosts {
+		if err := c.secrets.CopyCredentialTx(ctx, tx, github.WorkspacePATSecretKey(sourceID, host), github.WorkspacePATSecretKey(targetID, host)); err != nil {
 			if errors.Is(err, secrets.ErrNotFound) {
 				return repoerrors.ErrWorkspaceCloneConfiguration
 			}

@@ -175,10 +175,10 @@ func TestHandleWorkspaceDeletedRemovesOnlyOwnedConnectionSecrets(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed workspace settings: %v", err)
 	}
-	secrets.values[WorkspacePATSecretKey("ws-1")] = "pat"
-	secrets.values[UserAccessTokenSecretKey("ws-1", "user-1")] = "access"
-	secrets.values[UserRefreshTokenSecretKey("ws-1", "user-1")] = "refresh"
-	secrets.values[WorkspacePATSecretKey("ws-2")] = "other"
+	secrets.values[WorkspacePATSecretKey("ws-1", defaultGitHubHost)] = "pat"
+	secrets.values[UserAccessTokenSecretKey("ws-1", "user-1", defaultGitHubHost)] = "access"
+	secrets.values[UserRefreshTokenSecretKey("ws-1", "user-1", defaultGitHubHost)] = "refresh"
+	secrets.values[WorkspacePATSecretKey("ws-2", defaultGitHubHost)] = "other"
 
 	event := bus.NewEvent(events.WorkspaceDeleted, "task-service", map[string]interface{}{"id": "ws-1"})
 	if err := svc.handleWorkspaceDeleted(ctx, event); err != nil {
@@ -193,15 +193,15 @@ func TestHandleWorkspaceDeletedRemovesOnlyOwnedConnectionSecrets(t *testing.T) {
 		t.Fatalf("workspace settings rows = %d, want 0", settingsCount)
 	}
 	for _, id := range []string{
-		WorkspacePATSecretKey("ws-1"),
-		UserAccessTokenSecretKey("ws-1", "user-1"),
-		UserRefreshTokenSecretKey("ws-1", "user-1"),
+		WorkspacePATSecretKey("ws-1", defaultGitHubHost),
+		UserAccessTokenSecretKey("ws-1", "user-1", defaultGitHubHost),
+		UserRefreshTokenSecretKey("ws-1", "user-1", defaultGitHubHost),
 	} {
 		if _, ok := secrets.values[id]; ok {
 			t.Fatalf("workspace-owned secret %q was not deleted", id)
 		}
 	}
-	if got := secrets.values[WorkspacePATSecretKey("ws-2")]; got != "other" {
+	if got := secrets.values[WorkspacePATSecretKey("ws-2", defaultGitHubHost)]; got != "other" {
 		t.Fatalf("unrelated workspace secret changed: %q", got)
 	}
 }
@@ -286,7 +286,7 @@ func revocationTestBroker(workspaceID, taskID, sessionID string) *CredentialBrok
 	}
 	connections := &fakeConnectionReader{workspaces: map[string]*WorkspaceConnection{workspaceID: connection}}
 	broker := NewCredentialBroker(connections, NewCredentialResolver(connections, fakeAuthSecrets{
-		WorkspacePATSecretKey(workspaceID): "transient",
+		WorkspacePATSecretKey(workspaceID, defaultGitHubHost): "transient",
 	}), &fakeBrokerAuthorizer{})
 	if _, err := broker.Issue(context.Background(), CredentialLeaseRequest{
 		WorkspaceID: workspaceID, TaskID: taskID, SessionID: sessionID, RepositoryID: "repository-1",

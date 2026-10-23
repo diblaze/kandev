@@ -134,6 +134,7 @@ type Service struct {
 	appRegistrationRuntimes     map[string]*githubAppRuntime
 	appRegistrationLifecycle    *AppRegistrationLifecycleService
 	credentialBroker            *CredentialBroker
+	hostConnectedObserver       func(ctx context.Context, workspaceID, host string)
 	store                       *Store
 	eventBus                    bus.EventBus
 	logger                      *logger.Logger
@@ -169,7 +170,7 @@ type Service struct {
 	prDiscoveryAttemptsMu sync.Mutex
 	prDiscoveryAttempts   map[string]*prDiscoveryAttemptResult
 	promptResolver        PromptResolver
-	tokenClientFactory    func(string) Client
+	tokenClientFactory    func(host, token string) Client
 	ghAccountLister       func(context.Context) ([]GHAccount, error)
 	mockAuth              *MockAuthState
 	workspaceAuthorizer   func(context.Context, string) error
@@ -257,7 +258,7 @@ func NewService(client Client, authMethod string, secrets SecretProvider, store 
 		rateTracker:                  NewRateTracker(eventBus, log),
 		prDiscoveryHealth:            newPRDiscoveryHealth(eventBus, log),
 		prDiscoveryAttempts:          make(map[string]*prDiscoveryAttemptResult),
-		tokenClientFactory:           func(token string) Client { return NewPATClient(token) },
+		tokenClientFactory:           newHostPATClient,
 		ghAccountLister:              ListGHAccounts,
 		cleanupFailureCounts:         make(map[string]int),
 		passiveFallbackTargetCursors: make(map[string]int),

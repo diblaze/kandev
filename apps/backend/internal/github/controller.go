@@ -149,11 +149,11 @@ func (c *Controller) httpGetStatus(ctx *gin.Context) {
 	)
 	if ctx.Query("refresh_rate_limit") == "true" {
 		status, err = c.service.RefreshWorkspaceRateLimit(
-			ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx),
+			ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), ctx.Query("host"),
 		)
 	} else {
 		status, err = c.service.GetWorkspaceAuthStatus(
-			ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx),
+			ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), ctx.Query("host"),
 		)
 	}
 	if err != nil {
@@ -198,7 +198,7 @@ func (c *Controller) httpClearToken(ctx *gin.Context) {
 		writeGitHubAuthError(ctx, ErrGitHubWorkspaceRequired)
 		return
 	}
-	if err := c.service.DeleteWorkspaceConnection(ctx.Request.Context(), workspaceID); err != nil {
+	if err := c.service.DeleteWorkspaceConnection(ctx.Request.Context(), workspaceID, defaultGitHubHost); err != nil {
 		writeGitHubAuthError(ctx, err)
 		return
 	}

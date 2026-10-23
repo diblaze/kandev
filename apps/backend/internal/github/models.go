@@ -80,6 +80,7 @@ type DeploymentAppRegistration = AppRegistration
 type DeploymentAppRegistrationFlow struct {
 	StateHash        string                    `json:"-" db:"state_hash"`
 	RegistrationID   string                    `json:"registration_id" db:"registration_id"`
+	GitHubHost       string                    `json:"github_host" db:"github_host"`
 	WorkspaceID      string                    `json:"workspace_id" db:"workspace_id"`
 	UserID           string                    `json:"-" db:"user_id"`
 	OperatorUserID   string                    `json:"-" db:"operator_user_id"`
@@ -155,6 +156,7 @@ type WorkspaceConnection struct {
 type UserConnection struct {
 	WorkspaceID          string           `json:"workspace_id" db:"workspace_id"`
 	UserID               string           `json:"user_id" db:"user_id"`
+	GitHubHost           string           `json:"github_host" db:"github_host"`
 	AppRegistrationID    string           `json:"app_registration_id" db:"app_registration_id"`
 	GitHubUserID         int64            `json:"github_user_id" db:"github_user_id"`
 	Login                string           `json:"login" db:"login"`
@@ -226,19 +228,33 @@ type WebhookDeliveryClaim struct {
 	Status   WebhookDeliveryStatus
 }
 
-// WorkspacePATSecretKey returns the encrypted-secret ID for workspace PAT auth.
-func WorkspacePATSecretKey(workspaceID string) string {
+// WorkspacePATSecretKeyPrefix prefixes the PAT secret ID of every host of a
+// workspace.
+func WorkspacePATSecretKeyPrefix(workspaceID string) string {
 	return "github:workspace:" + workspaceID + ":pat"
 }
 
+// WorkspacePATSecretKey returns the encrypted-secret ID for a workspace PAT on
+// host. github.com keeps the ID used before connections were keyed by host.
+func WorkspacePATSecretKey(workspaceID, host string) string {
+	return WorkspacePATSecretKeyPrefix(workspaceID) + hostSecretKeySuffix(host)
+}
+
 // UserAccessTokenSecretKey returns the encrypted-secret ID for personal access.
-func UserAccessTokenSecretKey(workspaceID, userID string) string {
-	return "github:user:" + workspaceID + ":" + userID + ":access"
+func UserAccessTokenSecretKey(workspaceID, userID, host string) string {
+	return "github:user:" + workspaceID + ":" + userID + ":access" + hostSecretKeySuffix(host)
 }
 
 // UserRefreshTokenSecretKey returns the encrypted-secret ID for personal refresh.
-func UserRefreshTokenSecretKey(workspaceID, userID string) string {
-	return "github:user:" + workspaceID + ":" + userID + ":refresh"
+func UserRefreshTokenSecretKey(workspaceID, userID, host string) string {
+	return "github:user:" + workspaceID + ":" + userID + ":refresh" + hostSecretKeySuffix(host)
+}
+
+func hostSecretKeySuffix(host string) string {
+	if host == "" || host == defaultGitHubHost {
+		return ""
+	}
+	return ":" + host
 }
 
 // TaskCIAutoFixMaxRounds is the server-enforced CI auto-fix loop guard.

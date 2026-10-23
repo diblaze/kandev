@@ -633,10 +633,10 @@ func (s *Store) CreateDeploymentAppRegistrationFlow(
 	}
 	_, err = tx.ExecContext(ctx, tx.Rebind(`
 		INSERT INTO github_app_registration_flows (
-			state_hash, registration_id, workspace_id, user_id, owner_type, owner_login,
+			state_hash, registration_id, github_host, workspace_id, user_id, owner_type, owner_login,
 			display_name, visibility, public_base_url, manifest_revision, expires_at, consumed_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		flow.StateHash, flow.RegistrationID, flow.WorkspaceID, flow.UserID, flow.OwnerType,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		flow.StateHash, flow.RegistrationID, githubHostOrDefault(flow.GitHubHost), flow.WorkspaceID, flow.UserID, flow.OwnerType,
 		flow.OwnerLogin, flow.DisplayName, flow.Visibility, flow.PublicBaseURL,
 		flow.ManifestRevision, flow.ExpiresAt, flow.ConsumedAt, flow.CreatedAt)
 	if err != nil {
@@ -651,7 +651,7 @@ func (s *Store) GetDeploymentAppRegistrationFlow(
 ) (*DeploymentAppRegistrationFlow, error) {
 	var flow DeploymentAppRegistrationFlow
 	err := s.ro.GetContext(ctx, &flow, s.ro.Rebind(`
-		SELECT state_hash, registration_id, workspace_id, user_id, owner_type, owner_login,
+		SELECT state_hash, registration_id, github_host, workspace_id, user_id, owner_type, owner_login,
 			display_name, visibility, public_base_url, manifest_revision, expires_at, consumed_at, created_at
 		FROM github_app_registration_flows WHERE state_hash = ?`), stateHash)
 	if errors.Is(err, sql.ErrNoRows) {
