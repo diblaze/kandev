@@ -30,6 +30,10 @@ type repositoryAccessChecker interface {
 
 const automationVisibilityConcurrency = 8
 
+// repoRef names the GitHub item a credential serves. An empty host means
+// github.com; owner and name may be empty for host-wide operations.
+type repoRef struct{ host, owner, name string }
+
 func requireGitHubCapability(resolved *resolvedServiceClient, capability GitHubAppCapability) error {
 	if resolved == nil {
 		return ErrGitHubNotConfigured
@@ -48,8 +52,7 @@ func (s *Service) resolveServiceClient(
 	workspaceID string,
 	userID string,
 	purpose CredentialPurpose,
-	owner string,
-	repo string,
+	ref repoRef,
 ) (*resolvedServiceClient, error) {
 	if strings.TrimSpace(workspaceID) == "" {
 		return nil, ErrGitHubWorkspaceRequired
@@ -64,8 +67,9 @@ func (s *Service) resolveServiceClient(
 		WorkspaceID: workspaceID,
 		UserID:      userID,
 		Purpose:     purpose,
-		RepoOwner:   owner,
-		RepoName:    repo,
+		Host:        ref.host,
+		RepoOwner:   ref.owner,
+		RepoName:    ref.name,
 	})
 	if err != nil {
 		return nil, err
@@ -96,8 +100,9 @@ func (r *resolvedServiceClient) cacheScopeForPurpose(purpose CredentialPurpose) 
 func credentialCacheScope(resolved *ResolvedCredential, purpose CredentialPurpose) string {
 	principal := resolved.Principal
 	return fmt.Sprintf(
-		"%d:%s|%d:%s|%d:%s|%d:%s|%d:%s|%d|%d|%d:%s|%d|%d:%s",
+		"%d:%s|%d:%s|%d:%s|%d:%s|%d:%s|%d:%s|%d|%d|%d:%s|%d|%d:%s",
 		len(principal.WorkspaceID), principal.WorkspaceID,
+		len(principal.GitHubHost), principal.GitHubHost,
 		len(principal.UserID), principal.UserID,
 		len(principal.Source), principal.Source,
 		len(principal.Kind), principal.Kind,
@@ -139,49 +144,48 @@ func (s *Service) markRepoAsMissingForScope(scope, owner, repo string, gen uint6
 func (s *Service) resolveAutomationClient(
 	ctx context.Context,
 	workspaceID string,
-	owner string,
-	repo string,
+	ref repoRef,
 ) (*resolvedServiceClient, error) {
-	return s.resolveServiceClient(ctx, workspaceID, "", CredentialPurposeAutomation, owner, repo)
+	return s.resolveServiceClient(ctx, workspaceID, "", CredentialPurposeAutomation, ref)
 }
 
 func (s *Service) resolvePersonalReadClient(
 	ctx context.Context,
 	workspaceID string,
 	userID string,
-	owner string,
-	repo string,
+	ref repoRef,
 ) (*resolvedServiceClient, error) {
-	if err := s.ensurePersonalRepositoryBoundary(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensurePersonalRepositoryBoundary(ctx, workspaceID, ref); err != nil {
 		return nil, err
 	}
-	return s.resolveServiceClient(ctx, workspaceID, userID, CredentialPurposePersonalRead, owner, repo)
+	return s.resolveServiceClient(ctx, workspaceID, userID, CredentialPurposePersonalRead, ref)
 }
 
 func (s *Service) resolvePersonalWriteClient(
 	ctx context.Context,
 	workspaceID string,
 	userID string,
-	owner string,
-	repo string,
+	ref repoRef,
 ) (*resolvedServiceClient, error) {
-	if err := s.ensurePersonalRepositoryBoundary(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensurePersonalRepositoryBoundary(ctx, workspaceID, ref); err != nil {
 		return nil, err
 	}
-	return s.resolveServiceClient(ctx, workspaceID, userID, CredentialPurposePersonalWrite, owner, repo)
+	return s.resolveServiceClient(ctx, workspaceID, userID, CredentialPurposePersonalWrite, ref)
 }
 
 func (s *Service) ensurePersonalRepositoryBoundary(
 	ctx context.Context,
-	workspaceID, owner, repo string,
+	workspaceID string,
+	ref repoRef,
 ) error {
+	owner, repo := ref.owner, ref.name
 	if strings.TrimSpace(owner) == "" || strings.TrimSpace(repo) == "" {
 		return nil
 	}
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, ref.host, owner, repo); err != nil {
 		return err
 	}
-	automation, err := s.resolveAutomationClient(ctx, workspaceID, owner, repo)
+	automation, err := s.resolveAutomationClient(ctx, workspaceID, ref)
 	if err != nil {
 		return err
 	}
@@ -207,9 +211,10 @@ func (s *Service) ensurePersonalRepositoryBoundary(
 func (s *Service) automationRepositoryVisibility(
 	ctx context.Context,
 	workspaceID string,
+	host string,
 	repositories []RepoFilter,
 ) (map[string]bool, error) {
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, "", "")
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host: host})
 	if err != nil {
 		return nil, err
 	}
@@ -278,11 +283,11 @@ func repositoryIdentityKey(owner, repo string) string {
 // ensureRepositoryInWorkspaceScope enforces Kandev's configured repository
 // boundary before a provider call. GitHub App installation visibility is
 // enforced by GitHub itself, so the two checks form an intersection.
-func (s *Service) ensureRepositoryInWorkspaceScope(ctx context.Context, workspaceID, owner, repo string) error {
+func (s *Service) ensureRepositoryInWorkspaceScope(ctx context.Context, workspaceID, host, owner, repo string) error {
 	if strings.TrimSpace(owner) == "" || strings.TrimSpace(repo) == "" {
 		return nil
 	}
-	settings, err := s.GetWorkspaceSettings(ctx, workspaceID)
+	settings, err := s.workspaceSettingsForHost(ctx, workspaceID, host)
 	if err != nil {
 		return err
 	}
@@ -311,4 +316,21 @@ func repositoryInWorkspaceScope(settings *WorkspaceSettings, owner, repo string)
 		}
 	}
 	return false
+}
+
+// workspaceScopeForHost narrows a repository-list scope to the repositories on
+// host, an empty RepoFilter host meaning github.com. Organization scopes name
+// owners only and apply to every host.
+func workspaceScopeForHost(settings *WorkspaceSettings, host string) *WorkspaceSettings {
+	if settings == nil || settings.RepoScopeMode != RepoScopeModeRepos {
+		return settings
+	}
+	scoped := *settings
+	scoped.RepoScopeRepos = make([]RepoFilter, 0, len(settings.RepoScopeRepos))
+	for _, candidate := range settings.RepoScopeRepos {
+		if candidate.MatchesHost(host) {
+			scoped.RepoScopeRepos = append(scoped.RepoScopeRepos, candidate)
+		}
+	}
+	return &scoped
 }

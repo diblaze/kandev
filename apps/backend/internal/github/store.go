@@ -115,6 +115,7 @@ const createTablesSQL = `
 		session_id TEXT NOT NULL DEFAULT '',
 		task_id TEXT NOT NULL,
 		repository_id TEXT NOT NULL DEFAULT '',
+		github_host TEXT NOT NULL DEFAULT 'github.com',
 		owner TEXT NOT NULL,
 		repo TEXT NOT NULL,
 		pr_number INTEGER NOT NULL,
@@ -132,6 +133,7 @@ const createTablesSQL = `
 		workspace_id TEXT NOT NULL DEFAULT '',
 		task_id TEXT NOT NULL,
 		repository_id TEXT NOT NULL DEFAULT '',
+		github_host TEXT NOT NULL DEFAULT 'github.com',
 		owner TEXT NOT NULL,
 		repo TEXT NOT NULL,
 		pr_number INTEGER NOT NULL,
@@ -185,6 +187,7 @@ const createTablesSQL = `
 		workspace_id TEXT NOT NULL,
 		workflow_id TEXT NOT NULL,
 		workflow_step_id TEXT NOT NULL,
+		github_host TEXT NOT NULL DEFAULT 'github.com',
 		repos TEXT NOT NULL DEFAULT '[]',
 		agent_profile_id TEXT NOT NULL,
 		executor_profile_id TEXT NOT NULL,
@@ -219,6 +222,7 @@ const createTablesSQL = `
 		workspace_id TEXT NOT NULL,
 		workflow_id TEXT NOT NULL,
 		workflow_step_id TEXT NOT NULL,
+		github_host TEXT NOT NULL DEFAULT 'github.com',
 		repos TEXT NOT NULL DEFAULT '[]',
 		agent_profile_id TEXT NOT NULL,
 		executor_profile_id TEXT NOT NULL,
@@ -666,6 +670,11 @@ func (s *Store) applyIdempotentSchemaColumns() error {
 	}
 	if err := exec("github_issue_watches.cleanup_policy", `ALTER TABLE github_issue_watches ADD COLUMN cleanup_policy TEXT NOT NULL DEFAULT 'auto'`); err != nil {
 		return err
+	}
+	for _, table := range []string{"github_pr_watches", "github_task_prs", "github_review_watches", "github_issue_watches"} {
+		if err := exec(table+".github_host", `ALTER TABLE `+table+` ADD COLUMN github_host TEXT NOT NULL DEFAULT 'github.com'`); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -1680,6 +1689,7 @@ func (s *Store) migratePRTablesForMultiRepo() error {
 				session_id TEXT NOT NULL,
 				task_id TEXT NOT NULL,
 				repository_id TEXT NOT NULL DEFAULT '',
+				github_host TEXT NOT NULL DEFAULT 'github.com',
 				owner TEXT NOT NULL,
 				repo TEXT NOT NULL,
 				pr_number INTEGER NOT NULL,
@@ -1693,11 +1703,11 @@ func (s *Store) migratePRTablesForMultiRepo() error {
 				UNIQUE(session_id, repository_id, branch)
 			)`,
 			`INSERT INTO github_pr_watches_new (
-				id, workspace_id, session_id, task_id, repository_id, owner, repo, pr_number, branch,
+				id, workspace_id, session_id, task_id, repository_id, github_host, owner, repo, pr_number, branch,
 				last_checked_at, last_comment_at, last_check_status, last_review_state,
 				created_at, updated_at
 			) SELECT
-				id, COALESCE(workspace_id, ''), session_id, task_id, COALESCE(repository_id, ''), owner, repo, pr_number, branch,
+				id, COALESCE(workspace_id, ''), session_id, task_id, COALESCE(repository_id, ''), github_host, owner, repo, pr_number, branch,
 				last_checked_at, last_comment_at, last_check_status, last_review_state,
 				created_at, updated_at
 			FROM github_pr_watches`,
@@ -1713,6 +1723,7 @@ func (s *Store) migratePRTablesForMultiRepo() error {
 			workspace_id TEXT NOT NULL DEFAULT '',
 			task_id TEXT NOT NULL,
 			repository_id TEXT NOT NULL DEFAULT '',
+			github_host TEXT NOT NULL DEFAULT 'github.com',
 			owner TEXT NOT NULL,
 			repo TEXT NOT NULL,
 			pr_number INTEGER NOT NULL,
@@ -1767,7 +1778,7 @@ func (s *Store) migratePRTablesForMultiRepo() error {
 		// here already has them (fail-loud — startup would have aborted
 		// otherwise).
 		`INSERT INTO github_task_prs_new (
-			id, workspace_id, task_id, repository_id, owner, repo, pr_number, pr_url, pr_title,
+			id, workspace_id, task_id, repository_id, github_host, owner, repo, pr_number, pr_url, pr_title,
 			head_branch, base_branch, head_sha, author_login, state, review_state, checks_state,
 			mergeable_state, has_merge_conflicts, merge_queue_state, merge_queue_position, merge_queue_entry_id, merge_queue_entry_head_sha,
 			merge_queue_estimated_time_to_merge_seconds, merge_queue_last_removal_id, merge_queue_last_removed_at,
@@ -1776,7 +1787,7 @@ func (s *Store) migratePRTablesForMultiRepo() error {
 			additions, deletions, created_at, merged_at, closed_at, last_synced_at, detached_at, updated_at,
 			is_draft, changed_files, merged_by_login, closed_by_login, auto_merge_observed_at, source, workflow_attention
 		) SELECT
-			id, COALESCE(workspace_id, ''), task_id, COALESCE(repository_id, ''), owner, repo, pr_number, pr_url, pr_title,
+			id, COALESCE(workspace_id, ''), task_id, COALESCE(repository_id, ''), github_host, owner, repo, pr_number, pr_url, pr_title,
 			head_branch, base_branch, COALESCE(head_sha, ''), author_login, state, review_state, checks_state,
 			mergeable_state, has_merge_conflicts, merge_queue_state, merge_queue_position, COALESCE(merge_queue_entry_id, ''), COALESCE(merge_queue_entry_head_sha, ''),
 			merge_queue_estimated_time_to_merge_seconds, COALESCE(merge_queue_last_removal_id, ''), merge_queue_last_removed_at,
@@ -2135,6 +2146,7 @@ func rebuildPRWatchesTableForTaskOwnership(tx *sqlx.Tx) error {
 			session_id TEXT NOT NULL DEFAULT '',
 			task_id TEXT NOT NULL,
 			repository_id TEXT NOT NULL DEFAULT '',
+			github_host TEXT NOT NULL DEFAULT 'github.com',
 			owner TEXT NOT NULL,
 			repo TEXT NOT NULL,
 			pr_number INTEGER NOT NULL,
@@ -2147,11 +2159,11 @@ func rebuildPRWatchesTableForTaskOwnership(tx *sqlx.Tx) error {
 			updated_at DATETIME NOT NULL
 		)`,
 		`INSERT INTO github_pr_watches_new (
-			id, workspace_id, session_id, task_id, repository_id, owner, repo, pr_number, branch,
+			id, workspace_id, session_id, task_id, repository_id, github_host, owner, repo, pr_number, branch,
 			last_checked_at, last_comment_at, last_check_status, last_review_state, created_at, updated_at
 		) SELECT
 			id, COALESCE(workspace_id, ''), COALESCE(session_id, ''), task_id, COALESCE(repository_id, ''),
-			owner, repo, pr_number, branch,
+			github_host, owner, repo, pr_number, branch,
 			last_checked_at, last_comment_at, last_check_status, last_review_state, created_at, updated_at
 		FROM github_pr_watches`,
 		`DROP TABLE github_pr_watches`,
@@ -2231,10 +2243,11 @@ func (s *Store) CreatePRWatch(ctx context.Context, w *PRWatch) error {
 	now := time.Now().UTC()
 	w.CreatedAt = now
 	w.UpdatedAt = now
+	w.GitHubHost = githubHostOrDefault(w.GitHubHost)
 	_, err := s.db.ExecContext(ctx, s.db.Rebind(`
-		INSERT INTO github_pr_watches (id, workspace_id, session_id, task_id, repository_id, owner, repo, pr_number, branch, last_check_status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		w.ID, w.WorkspaceID, w.SessionID, w.TaskID, w.RepositoryID, w.Owner, w.Repo, w.PRNumber, w.Branch, w.LastCheckStatus, w.CreatedAt, w.UpdatedAt)
+		INSERT INTO github_pr_watches (id, workspace_id, session_id, task_id, repository_id, github_host, owner, repo, pr_number, branch, last_check_status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		w.ID, w.WorkspaceID, w.SessionID, w.TaskID, w.RepositoryID, w.GitHubHost, w.Owner, w.Repo, w.PRNumber, w.Branch, w.LastCheckStatus, w.CreatedAt, w.UpdatedAt)
 	return err
 }
 
@@ -2815,7 +2828,7 @@ func (s *Store) CreateTaskPR(ctx context.Context, tp *TaskPR) error {
 // leaves exactly this mismatch permanently on disk, since SQLite migrations
 // are additive and never reverted. Projecting the known columns keeps every
 // read working regardless of what the table has picked up beyond them.
-const taskPRColumns = `id, workspace_id, task_id, repository_id, owner, repo, pr_number, pr_url,
+const taskPRColumns = `id, workspace_id, task_id, repository_id, github_host, owner, repo, pr_number, pr_url,
 	pr_title, head_branch, base_branch, author_login, state, review_state, checks_state,
 	mergeable_state, has_merge_conflicts, merge_queue_state, merge_queue_position, merge_queue_estimated_time_to_merge_seconds, review_count, pending_review_count, required_reviews, comment_count,
 	unresolved_review_threads, checks_total, checks_passing, additions, deletions,
@@ -2827,7 +2840,7 @@ const taskPRColumns = `id, workspace_id, task_id, repository_id, owner, repo, pr
 
 // taskPRColumnsQualified is taskPRColumns with each column qualified by the
 // `gtp` alias, for queries that join github_task_prs against another table.
-const taskPRColumnsQualified = `gtp.id, gtp.workspace_id, gtp.task_id, gtp.repository_id, gtp.owner, gtp.repo,
+const taskPRColumnsQualified = `gtp.id, gtp.workspace_id, gtp.task_id, gtp.repository_id, gtp.github_host, gtp.owner, gtp.repo,
 	gtp.pr_number, gtp.pr_url, gtp.pr_title, gtp.head_branch, gtp.base_branch, gtp.author_login,
 	gtp.state, gtp.review_state, gtp.checks_state, gtp.mergeable_state, gtp.has_merge_conflicts, gtp.merge_queue_state, gtp.merge_queue_position, gtp.merge_queue_estimated_time_to_merge_seconds, gtp.review_count,
 	gtp.pending_review_count, gtp.required_reviews, gtp.comment_count, gtp.unresolved_review_threads,
@@ -2869,7 +2882,7 @@ func taskPRColumnCount() int {
 
 func taskPRValues(tp *TaskPR) []any {
 	return []any{
-		tp.ID, tp.WorkspaceID, tp.TaskID, tp.RepositoryID, tp.Owner, tp.Repo, tp.PRNumber, tp.PRURL,
+		tp.ID, tp.WorkspaceID, tp.TaskID, tp.RepositoryID, githubHostOrDefault(tp.GitHubHost), tp.Owner, tp.Repo, tp.PRNumber, tp.PRURL,
 		tp.PRTitle, tp.HeadBranch, tp.BaseBranch, tp.AuthorLogin, tp.State, tp.ReviewState,
 		tp.ChecksState, tp.MergeableState, tp.HasMergeConflicts, tp.MergeQueueState, tp.MergeQueuePosition,
 		tp.MergeQueueEstimatedTimeToMergeSeconds, tp.ReviewCount, tp.PendingReviewCount,
@@ -3242,21 +3255,22 @@ func (s *Store) ListTaskIDsByPRNumber(ctx context.Context, workspaceID string, p
 }
 
 // ListTaskPRsByPRNumber returns the non-detached PR associations in a workspace
-// that point at one exact (owner, repo, pr_number). Workspace-scoped via the
+// that point at one exact (host, owner, repo, pr_number); an empty host means
+// github.com. Workspace-scoped via the
 // JOIN on tasks — the same guard ListTaskIDsByPRNumber uses — so a PR number
 // shared across workspaces never reaches a caller holding only one workspace's
 // credentials. More than one row is normal: several tasks in a workspace can
 // legitimately link the same PR.
 func (s *Store) ListTaskPRsByPRNumber(
-	ctx context.Context, workspaceID, owner, repo string, prNumber int,
+	ctx context.Context, workspaceID, host, owner, repo string, prNumber int,
 ) ([]*TaskPR, error) {
 	var prs []TaskPR
 	if err := s.ro.SelectContext(ctx, &prs,
 		s.ro.Rebind(`SELECT `+taskPRColumnsQualified+` FROM github_task_prs gtp
 		 INNER JOIN tasks t ON gtp.task_id = t.id
-		 WHERE t.workspace_id = ? AND gtp.owner = ? AND gtp.repo = ? AND gtp.pr_number = ?
+		 WHERE t.workspace_id = ? AND gtp.github_host = ? AND gtp.owner = ? AND gtp.repo = ? AND gtp.pr_number = ?
 			 AND gtp.detached_at IS NULL
-			ORDER BY gtp.created_at ASC`), workspaceID, owner, repo, prNumber); err != nil {
+			ORDER BY gtp.created_at ASC`), workspaceID, githubHostOrDefault(host), owner, repo, prNumber); err != nil {
 		return nil, err
 	}
 	if err := hydrateTaskPRsWorkflowAttention(prs); err != nil {
@@ -4748,17 +4762,18 @@ func (s *Store) CreateReviewWatch(ctx context.Context, rw *ReviewWatch) error {
 	rw.CreatedAt = now
 	rw.UpdatedAt = now
 	rw.CleanupPolicy = NormalizeCleanupPolicy(rw.CleanupPolicy)
+	rw.GitHubHost = githubHostOrDefault(rw.GitHubHost)
 	reposJSON, err := json.Marshal(rw.Repos)
 	if err != nil {
 		return fmt.Errorf("marshal repos: %w", err)
 	}
 	rw.ReposJSON = string(reposJSON)
 	_, err = s.db.ExecContext(ctx, s.db.Rebind(`
-		INSERT INTO github_review_watches (created_by_user_id, id, workspace_id, workflow_id, workflow_step_id, repos,
+		INSERT INTO github_review_watches (created_by_user_id, id, workspace_id, workflow_id, workflow_step_id, github_host, repos,
 			agent_profile_id, executor_profile_id, prompt, review_scope, custom_query, target_login,
 			enabled, poll_interval_seconds, cleanup_policy, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`), rw.CreatedByUserID,
-		rw.ID, rw.WorkspaceID, rw.WorkflowID, rw.WorkflowStepID, rw.ReposJSON,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`), rw.CreatedByUserID,
+		rw.ID, rw.WorkspaceID, rw.WorkflowID, rw.WorkflowStepID, rw.GitHubHost, rw.ReposJSON,
 		rw.AgentProfileID, rw.ExecutorProfileID, rw.Prompt, rw.ReviewScope, rw.CustomQuery, rw.TargetLogin,
 		rw.Enabled, rw.PollIntervalSeconds, rw.CleanupPolicy, rw.CreatedAt, rw.UpdatedAt)
 	return err
@@ -4841,18 +4856,19 @@ func (s *Store) ListEnabledReviewWatches(ctx context.Context) ([]*ReviewWatch, e
 func (s *Store) UpdateReviewWatch(ctx context.Context, rw *ReviewWatch) error {
 	rw.UpdatedAt = time.Now().UTC()
 	rw.CleanupPolicy = NormalizeCleanupPolicy(rw.CleanupPolicy)
+	rw.GitHubHost = githubHostOrDefault(rw.GitHubHost)
 	reposJSON, err := json.Marshal(rw.Repos)
 	if err != nil {
 		return fmt.Errorf("marshal repos: %w", err)
 	}
 	rw.ReposJSON = string(reposJSON)
 	_, err = s.db.ExecContext(ctx, s.db.Rebind(`
-		UPDATE github_review_watches SET workflow_id = ?, workflow_step_id = ?, repos = ?,
+		UPDATE github_review_watches SET workflow_id = ?, workflow_step_id = ?, github_host = ?, repos = ?,
 			agent_profile_id = ?, executor_profile_id = ?,
 			prompt = ?, review_scope = ?, custom_query = ?, target_login = ?,
 			enabled = ?, poll_interval_seconds = ?, cleanup_policy = ?, last_polled_at = ?, updated_at = ?
 		WHERE id = ?`),
-		rw.WorkflowID, rw.WorkflowStepID, rw.ReposJSON,
+		rw.WorkflowID, rw.WorkflowStepID, rw.GitHubHost, rw.ReposJSON,
 		rw.AgentProfileID, rw.ExecutorProfileID,
 		rw.Prompt, rw.ReviewScope, rw.CustomQuery, rw.TargetLogin,
 		rw.Enabled, rw.PollIntervalSeconds, rw.CleanupPolicy, rw.LastPolledAt, rw.UpdatedAt, rw.ID)
@@ -4890,6 +4906,28 @@ func (s *Store) DisableReviewWatchWithError(ctx context.Context, id, cause strin
 		   SET enabled = FALSE, last_error = ?, last_error_at = ?, updated_at = ?
 		 WHERE id = ?`),
 		cause, now, now, id)
+	return err
+}
+
+// SetReviewWatchLastError records why the last poll failed without changing
+// the watch configuration; an empty cause clears it.
+func (s *Store) SetReviewWatchLastError(ctx context.Context, id, cause string) error {
+	return s.setWatchLastError(ctx, "github_review_watches", id, cause)
+}
+
+// SetIssueWatchLastError is SetReviewWatchLastError for issue watches.
+func (s *Store) SetIssueWatchLastError(ctx context.Context, id, cause string) error {
+	return s.setWatchLastError(ctx, "github_issue_watches", id, cause)
+}
+
+func (s *Store) setWatchLastError(ctx context.Context, table, id, cause string) error {
+	var at *time.Time
+	if cause != "" {
+		now := time.Now().UTC()
+		at = &now
+	}
+	_, err := s.db.ExecContext(ctx, s.db.Rebind(
+		`UPDATE `+table+` SET last_error = ?, last_error_at = ? WHERE id = ?`), cause, at, id)
 	return err
 }
 
@@ -5207,6 +5245,7 @@ func (s *Store) CreateIssueWatch(ctx context.Context, iw *IssueWatch) error {
 	iw.CreatedAt = now
 	iw.UpdatedAt = now
 	iw.CleanupPolicy = NormalizeCleanupPolicy(iw.CleanupPolicy)
+	iw.GitHubHost = githubHostOrDefault(iw.GitHubHost)
 	reposJSON, err := json.Marshal(iw.Repos)
 	if err != nil {
 		return fmt.Errorf("marshal repos: %w", err)
@@ -5218,11 +5257,11 @@ func (s *Store) CreateIssueWatch(ctx context.Context, iw *IssueWatch) error {
 	}
 	iw.LabelsJSON = string(labelsJSON)
 	_, err = s.db.ExecContext(ctx, s.db.Rebind(`
-		INSERT INTO github_issue_watches (created_by_user_id, id, workspace_id, workflow_id, workflow_step_id, repos,
+		INSERT INTO github_issue_watches (created_by_user_id, id, workspace_id, workflow_id, workflow_step_id, github_host, repos,
 			agent_profile_id, executor_profile_id, prompt, labels, custom_query,
 			enabled, poll_interval_seconds, cleanup_policy, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`), iw.CreatedByUserID,
-		iw.ID, iw.WorkspaceID, iw.WorkflowID, iw.WorkflowStepID, iw.ReposJSON,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`), iw.CreatedByUserID,
+		iw.ID, iw.WorkspaceID, iw.WorkflowID, iw.WorkflowStepID, iw.GitHubHost, iw.ReposJSON,
 		iw.AgentProfileID, iw.ExecutorProfileID, iw.Prompt, iw.LabelsJSON, iw.CustomQuery,
 		iw.Enabled, iw.PollIntervalSeconds, iw.CleanupPolicy, iw.CreatedAt, iw.UpdatedAt)
 	return err
@@ -5288,6 +5327,7 @@ func (s *Store) ListEnabledIssueWatches(ctx context.Context) ([]*IssueWatch, err
 func (s *Store) UpdateIssueWatch(ctx context.Context, iw *IssueWatch) error {
 	iw.UpdatedAt = time.Now().UTC()
 	iw.CleanupPolicy = NormalizeCleanupPolicy(iw.CleanupPolicy)
+	iw.GitHubHost = githubHostOrDefault(iw.GitHubHost)
 	reposJSON, err := json.Marshal(iw.Repos)
 	if err != nil {
 		return fmt.Errorf("marshal repos: %w", err)
@@ -5299,12 +5339,12 @@ func (s *Store) UpdateIssueWatch(ctx context.Context, iw *IssueWatch) error {
 	}
 	iw.LabelsJSON = string(labelsJSON)
 	_, err = s.db.ExecContext(ctx, s.db.Rebind(`
-		UPDATE github_issue_watches SET workflow_id = ?, workflow_step_id = ?, repos = ?,
+		UPDATE github_issue_watches SET workflow_id = ?, workflow_step_id = ?, github_host = ?, repos = ?,
 			agent_profile_id = ?, executor_profile_id = ?,
 			prompt = ?, labels = ?, custom_query = ?,
 			enabled = ?, poll_interval_seconds = ?, cleanup_policy = ?, last_polled_at = ?, updated_at = ?
 		WHERE id = ?`),
-		iw.WorkflowID, iw.WorkflowStepID, iw.ReposJSON,
+		iw.WorkflowID, iw.WorkflowStepID, iw.GitHubHost, iw.ReposJSON,
 		iw.AgentProfileID, iw.ExecutorProfileID,
 		iw.Prompt, iw.LabelsJSON, iw.CustomQuery,
 		iw.Enabled, iw.PollIntervalSeconds, iw.CleanupPolicy, iw.LastPolledAt, iw.UpdatedAt, iw.ID)
@@ -5551,15 +5591,16 @@ func normalizeWorkspaceSettings(settings *WorkspaceSettings) *WorkspaceSettings 
 	for _, repo := range out.RepoScopeRepos {
 		owner := strings.TrimSpace(repo.Owner)
 		name := strings.TrimSpace(repo.Name)
-		if owner == "" || name == "" {
+		host, hostErr := scopeRepoHost(repo.Host)
+		if owner == "" || name == "" || hostErr != nil {
 			continue
 		}
-		key := strings.ToLower(owner + "/" + name)
+		key := strings.ToLower(host + "/" + owner + "/" + name)
 		if _, ok := seenRepos[key]; ok {
 			continue
 		}
 		seenRepos[key] = struct{}{}
-		repos = append(repos, RepoFilter{Owner: owner, Name: name})
+		repos = append(repos, RepoFilter{Host: host, Owner: owner, Name: name})
 	}
 	out.RepoScopeRepos = repos
 	if len(out.SavedPresets) == 0 {
@@ -5569,6 +5610,16 @@ func normalizeWorkspaceSettings(settings *WorkspaceSettings) *WorkspaceSettings 
 	}
 	out.DefaultQueryPresets = cloneRawMessage(out.DefaultQueryPresets)
 	return &out
+}
+
+// scopeRepoHost stores github.com as an empty host, so scope entries saved
+// before hosts existed stay unchanged.
+func scopeRepoHost(raw string) (string, error) {
+	host, err := normalizeGitHubHost(raw)
+	if err != nil || host == defaultGitHubHost {
+		return "", err
+	}
+	return host, nil
 }
 
 // GetWorkspaceSettings returns per-workspace GitHub settings. Missing rows

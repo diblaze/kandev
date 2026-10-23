@@ -210,7 +210,7 @@ func (s *GitHubPRMergedSubscriber) checkMergedTrigger(
 	}
 
 	// Gate 9: repository filter.
-	if !matchesMergedRepo(pr.Owner, pr.Repo, cfg) {
+	if !matchesMergedRepo(pr.GitHubHost, pr.Owner, pr.Repo, cfg) {
 		return
 	}
 
@@ -258,15 +258,16 @@ func (s *GitHubPRMergedSubscriber) checkMergedTrigger(
 // matchesMergedRepo implements the repository-matching semantics for
 // github_pr_merged, which differ from the shared matchesRepo helper:
 //   - all_repos=true: every repository matches.
-//   - all_repos=false + non-empty list: match by owner (case-insensitive) and
-//     name (case-insensitive, empty name = org wildcard).
+//   - all_repos=false + non-empty list: match by host (empty = github.com),
+//     owner (case-insensitive) and name (case-insensitive, empty name = org
+//     wildcard).
 //   - all_repos=false + empty list: never matches.
-func matchesMergedRepo(owner, name string, cfg GitHubPRMergedTriggerConfig) bool {
+func matchesMergedRepo(host, owner, name string, cfg GitHubPRMergedTriggerConfig) bool {
 	if cfg.AllRepos {
 		return true
 	}
 	for _, r := range cfg.Repos {
-		if r.Owner == "" {
+		if r.Owner == "" || !r.MatchesHost(host) {
 			// No owner → matches nothing.
 			continue
 		}

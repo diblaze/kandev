@@ -65,13 +65,13 @@ func (s *Service) ListAccessibleRepos(ctx context.Context, query string, limit i
 // ListAccessibleReposForWorkspace returns the personal identity's repositories
 // intersected with both the workspace boundary and automation visibility.
 func (s *Service) ListAccessibleReposForWorkspace(
-	ctx context.Context, workspaceID, userID, query string, limit int,
+	ctx context.Context, workspaceID, userID, host, query string, limit int,
 ) ([]GitHubRepo, error) {
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, "", "")
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host: host})
 	if err != nil {
 		return nil, err
 	}
-	settings, err := s.GetWorkspaceSettings(ctx, workspaceID)
+	settings, err := s.workspaceSettingsForHost(ctx, workspaceID, host)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (s *Service) ListAccessibleReposForWorkspace(
 	if err != nil {
 		return nil, err
 	}
-	automationRepos, err := s.listAutomationAccessibleRepos(ctx, workspaceID, query)
+	automationRepos, err := s.listAutomationAccessibleRepos(ctx, workspaceID, host, query)
 	if err != nil {
 		return nil, err
 	}
@@ -100,9 +100,9 @@ func (s *Service) ListAccessibleReposForWorkspace(
 
 func (s *Service) listAutomationAccessibleRepos(
 	ctx context.Context,
-	workspaceID, query string,
+	workspaceID, host, query string,
 ) ([]GitHubRepo, error) {
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, "", "")
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host: host})
 	if err != nil {
 		return nil, err
 	}

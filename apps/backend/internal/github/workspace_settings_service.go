@@ -109,12 +109,13 @@ func isValidTaskGitCredentialsMode(mode string) bool {
 func (s *Service) SearchUserPRsPagedForWorkspace(
 	ctx context.Context,
 	workspaceID string,
+	host string,
 	filter string,
 	customQuery string,
 	page int,
 	perPage int,
 ) (*PRSearchPage, error) {
-	return s.SearchUserPRsPagedForWorkspaceUser(ctx, workspaceID, "", filter, customQuery, page, perPage)
+	return s.SearchUserPRsPagedForWorkspaceUser(ctx, workspaceID, "", host, filter, customQuery, page, perPage)
 }
 
 //nolint:dupl // The PR and issue adapters preserve their strongly typed public response contracts.
@@ -122,13 +123,14 @@ func (s *Service) SearchUserPRsPagedForWorkspaceUser(
 	ctx context.Context,
 	workspaceID string,
 	userID string,
+	host string,
 	filter string,
 	customQuery string,
 	page int,
 	perPage int,
 ) (*PRSearchPage, error) {
 	return searchPersonalWorkspacePageResult(
-		ctx, s, workspaceID, userID, page, perPage,
+		ctx, s, workspaceID, userID, host, page, perPage,
 		func(resolved *resolvedServiceClient, settings *WorkspaceSettings, providerPage, providerPerPage int) ([]*PR, int, error) {
 			result, fetchErr := s.searchPersonalPRPage(ctx, resolved, settings, filter, customQuery, providerPage, providerPerPage)
 			if fetchErr != nil || result == nil {
@@ -136,7 +138,9 @@ func (s *Service) SearchUserPRsPagedForWorkspaceUser(
 			}
 			return result.PRs, result.TotalCount, nil
 		},
-		func(items []*PR) ([]*PR, error) { return s.filterPersonalPRsByAutomation(ctx, workspaceID, items) },
+		func(items []*PR) ([]*PR, error) {
+			return s.filterPersonalPRsByAutomation(ctx, workspaceID, host, items)
+		},
 		func(result filteredPersonalSearchPage[*PR], page, perPage int) *PRSearchPage {
 			return &PRSearchPage{PRs: result.items, TotalCount: result.total, Page: page, PerPage: perPage}
 		},
@@ -146,12 +150,13 @@ func (s *Service) SearchUserPRsPagedForWorkspaceUser(
 func (s *Service) SearchUserIssuesPagedForWorkspace(
 	ctx context.Context,
 	workspaceID string,
+	host string,
 	filter string,
 	customQuery string,
 	page int,
 	perPage int,
 ) (*IssueSearchPage, error) {
-	return s.SearchUserIssuesPagedForWorkspaceUser(ctx, workspaceID, "", filter, customQuery, page, perPage)
+	return s.SearchUserIssuesPagedForWorkspaceUser(ctx, workspaceID, "", host, filter, customQuery, page, perPage)
 }
 
 //nolint:dupl // The PR and issue adapters preserve their strongly typed public response contracts.
@@ -159,13 +164,14 @@ func (s *Service) SearchUserIssuesPagedForWorkspaceUser(
 	ctx context.Context,
 	workspaceID string,
 	userID string,
+	host string,
 	filter string,
 	customQuery string,
 	page int,
 	perPage int,
 ) (*IssueSearchPage, error) {
 	return searchPersonalWorkspacePageResult(
-		ctx, s, workspaceID, userID, page, perPage,
+		ctx, s, workspaceID, userID, host, page, perPage,
 		func(resolved *resolvedServiceClient, settings *WorkspaceSettings, providerPage, providerPerPage int) ([]*Issue, int, error) {
 			result, fetchErr := s.searchPersonalIssuePage(ctx, resolved, settings, filter, customQuery, providerPage, providerPerPage)
 			if fetchErr != nil || result == nil {
@@ -174,7 +180,7 @@ func (s *Service) SearchUserIssuesPagedForWorkspaceUser(
 			return result.Issues, result.TotalCount, nil
 		},
 		func(items []*Issue) ([]*Issue, error) {
-			return s.filterPersonalIssuesByAutomation(ctx, workspaceID, items)
+			return s.filterPersonalIssuesByAutomation(ctx, workspaceID, host, items)
 		},
 		func(result filteredPersonalSearchPage[*Issue], page, perPage int) *IssueSearchPage {
 			return &IssueSearchPage{
@@ -184,14 +190,24 @@ func (s *Service) SearchUserIssuesPagedForWorkspaceUser(
 	)
 }
 
+// workspaceSettingsForHost returns the workspace settings with the repository
+// scope narrowed to host.
+func (s *Service) workspaceSettingsForHost(ctx context.Context, workspaceID, host string) (*WorkspaceSettings, error) {
+	settings, err := s.GetWorkspaceSettings(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return workspaceScopeForHost(settings, host), nil
+}
+
 func (s *Service) resolvePersonalSearchContext(
-	ctx context.Context, workspaceID, userID string,
+	ctx context.Context, workspaceID, userID, host string,
 ) (*resolvedServiceClient, *WorkspaceSettings, error) {
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, "", "")
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host: host})
 	if err != nil {
 		return nil, nil, err
 	}
-	settings, err := s.GetWorkspaceSettings(ctx, workspaceID)
+	settings, err := s.workspaceSettingsForHost(ctx, workspaceID, host)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -240,14 +256,14 @@ type filteredPersonalSearchPage[T any] struct {
 func searchPersonalWorkspacePageResult[T any, R any](
 	ctx context.Context,
 	service *Service,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 	page, perPage int,
 	fetch func(*resolvedServiceClient, *WorkspaceSettings, int, int) ([]T, int, error),
 	filter func([]T) ([]T, error),
 	build func(filteredPersonalSearchPage[T], int, int) R,
 ) (R, error) {
 	result, page, perPage, err := searchPersonalWorkspacePage(
-		ctx, service, workspaceID, userID, page, perPage, fetch, filter,
+		ctx, service, workspaceID, userID, host, page, perPage, fetch, filter,
 	)
 	if err != nil {
 		var zero R
@@ -259,12 +275,12 @@ func searchPersonalWorkspacePageResult[T any, R any](
 func searchPersonalWorkspacePage[T any](
 	ctx context.Context,
 	service *Service,
-	workspaceID, userID string,
+	workspaceID, userID, host string,
 	page, perPage int,
 	fetch func(*resolvedServiceClient, *WorkspaceSettings, int, int) ([]T, int, error),
 	filter func([]T) ([]T, error),
 ) (filteredPersonalSearchPage[T], int, int, error) {
-	resolved, settings, err := service.resolvePersonalSearchContext(ctx, workspaceID, userID)
+	resolved, settings, err := service.resolvePersonalSearchContext(ctx, workspaceID, userID, host)
 	if err != nil {
 		return filteredPersonalSearchPage[T]{}, page, perPage, err
 	}
@@ -314,7 +330,7 @@ func searchFilteredPersonalPage[T any](
 }
 
 func (s *Service) filterPersonalPRsByAutomation(
-	ctx context.Context, workspaceID string, prs []*PR,
+	ctx context.Context, workspaceID, host string, prs []*PR,
 ) ([]*PR, error) {
 	repositories := make([]RepoFilter, 0, len(prs))
 	for _, pr := range prs {
@@ -322,7 +338,7 @@ func (s *Service) filterPersonalPRsByAutomation(
 			repositories = append(repositories, RepoFilter{Owner: pr.RepoOwner, Name: pr.RepoName})
 		}
 	}
-	visible, err := s.automationRepositoryVisibility(ctx, workspaceID, repositories)
+	visible, err := s.automationRepositoryVisibility(ctx, workspaceID, host, repositories)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +352,7 @@ func (s *Service) filterPersonalPRsByAutomation(
 }
 
 func (s *Service) filterPersonalIssuesByAutomation(
-	ctx context.Context, workspaceID string, issues []*Issue,
+	ctx context.Context, workspaceID, host string, issues []*Issue,
 ) ([]*Issue, error) {
 	repositories := make([]RepoFilter, 0, len(issues))
 	for _, issue := range issues {
@@ -344,7 +360,7 @@ func (s *Service) filterPersonalIssuesByAutomation(
 			repositories = append(repositories, RepoFilter{Owner: issue.RepoOwner, Name: issue.RepoName})
 		}
 	}
-	visible, err := s.automationRepositoryVisibility(ctx, workspaceID, repositories)
+	visible, err := s.automationRepositoryVisibility(ctx, workspaceID, host, repositories)
 	if err != nil {
 		return nil, err
 	}

@@ -35,6 +35,7 @@ type taskChangeRequestAutomationGitHubFake struct {
 	updateErr error
 	updates   []github.TaskCIOptionsPatch
 	callOrder *[]string
+	hosts     []string
 }
 
 func (f *taskChangeRequestAutomationGitHubFake) ListTaskPRs(context.Context, []string) (map[string][]*github.TaskPR, error) {
@@ -48,7 +49,10 @@ func (f *taskChangeRequestAutomationGitHubFake) GetTaskCIOptionsResponse(context
 	return f.options, nil
 }
 
-func (f *taskChangeRequestAutomationGitHubFake) GetWorkspaceAuthStatus(context.Context, string, string, string) (*github.WorkspaceAuthStatus, error) {
+func (f *taskChangeRequestAutomationGitHubFake) GetWorkspaceAuthStatus(
+	_ context.Context, _, _, host string,
+) (*github.WorkspaceAuthStatus, error) {
+	f.hosts = append(f.hosts, host)
 	return &github.WorkspaceAuthStatus{
 		Automation:    &github.WorkspaceAutomationStatus{},
 		Authenticated: true,

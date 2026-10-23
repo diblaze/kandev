@@ -32,6 +32,7 @@ type remoteResolver func(localPath string) (provider, owner, name string)
 // template loaded from apps/backend/config/workflows/improve-kandev.yml.
 const (
 	repoCloneURL  = "https://github.com/kdlbs/kandev"
+	repoHost      = "github.com"
 	repoOwner     = "kdlbs"
 	repoName      = "kandev"
 	repoProvider  = "github"
@@ -76,7 +77,7 @@ type ManagedGitHubForkProber interface {
 	DescribeTaskGitCredentialPolicy(ctx context.Context, workspaceID string) (github.TaskGitCredentialPolicy, error)
 	ProbeContributionForkCapabilityForWorkspace(
 		ctx context.Context,
-		workspaceID, owner, repo string,
+		workspaceID, host, owner, repo string,
 	) (github.ContributionForkResolution, error)
 }
 
@@ -593,7 +594,7 @@ func (h *Handler) resolveGitHubAccessForWorkspace(ctx context.Context, workspace
 		return h.resolveGitHubAccess(ctx)
 	}
 	result, err := h.managedGitHub.ProbeContributionForkCapabilityForWorkspace(
-		ctx, workspaceID, repoOwner, repoName,
+		ctx, workspaceID, repoHost, repoOwner, repoName,
 	)
 	out := githubAccess{
 		login:          result.ActorLogin,

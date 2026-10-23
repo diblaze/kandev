@@ -951,7 +951,7 @@ func (p *githubContributionDestinationPreparer) prepareRepository(
 		return nil
 	}
 	resolution, err := p.service.ResolveContributionForkForWorkspace(
-		ctx, req.WorkspaceID, canonicalKandevOwner, canonicalKandevName, true,
+		ctx, req.WorkspaceID, gitCredentialGitHubHost, canonicalKandevOwner, canonicalKandevName, true,
 	)
 	if err != nil {
 		return fmt.Errorf("prepare Improve Kandev contribution destination: %w", err)
@@ -1038,7 +1038,7 @@ type githubBrokerScopeAuthorizer struct {
 	}
 	provider interface {
 		VerifyContributionDestinationForWorkspace(
-			context.Context, string, string, string, string, string, string, string,
+			context.Context, string, string, string, string, string, string, string, string,
 		) error
 	}
 }
@@ -1182,7 +1182,7 @@ func (a *githubBrokerScopeAuthorizer) verifyContributionDestination(
 		return fmt.Errorf("contribution destination provider identity does not match lease scope")
 	}
 	if err := a.provider.VerifyContributionDestinationForWorkspace(
-		ctx, workspaceID, sourceParts[0], sourceParts[1], destination.SourceRepository.ProviderID,
+		ctx, workspaceID, destination.TargetRepository.Host, sourceParts[0], sourceParts[1], destination.SourceRepository.ProviderID,
 		owner, repoName, destination.TargetRepository.ProviderID,
 	); err != nil {
 		return fmt.Errorf("contribution destination provider identity does not match lease scope")
@@ -2613,7 +2613,11 @@ func (a codeHostBranchListerAdapter) ListRepoBranches(
 		if a.github == nil {
 			return nil, fmt.Errorf("GitHub branch provider is unavailable")
 		}
-		remote, err := a.github.ListRepoBranchesForWorkspace(ctx, source.WorkspaceID, source.Owner, source.Name)
+		host, err := github.RepositoryGitHubHost(source.ProviderHost)
+		if err != nil {
+			return nil, err
+		}
+		remote, err := a.github.ListRepoBranchesForWorkspace(ctx, source.WorkspaceID, host, source.Owner, source.Name)
 		if err != nil {
 			return nil, err
 		}

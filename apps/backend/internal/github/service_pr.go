@@ -30,16 +30,17 @@ func (s *Service) SubmitReviewForWorkspace(
 	ctx context.Context,
 	workspaceID string,
 	userID string,
+	host string,
 	owner string,
 	repo string,
 	number int,
 	event string,
 	body string,
 ) (AuthPrincipal, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return AuthPrincipal{}, err
 	}
-	resolved, err := s.resolvePersonalWriteClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalWriteClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return AuthPrincipal{}, err
 	}
@@ -78,15 +79,16 @@ func (s *Service) RequestReviewersForWorkspace(
 	ctx context.Context,
 	workspaceID string,
 	userID string,
+	host string,
 	owner string,
 	repo string,
 	number int,
 	reviewers []string,
 ) (AuthPrincipal, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return AuthPrincipal{}, err
 	}
-	resolved, err := s.resolvePersonalWriteClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalWriteClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return AuthPrincipal{}, err
 	}
@@ -138,15 +140,16 @@ func (s *Service) MergePRForWorkspace(
 	ctx context.Context,
 	workspaceID string,
 	userID string,
+	host string,
 	owner string,
 	repo string,
 	number int,
 	mergeMethod string,
 ) (AuthPrincipal, MergeOutcome, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return AuthPrincipal{}, "", err
 	}
-	resolved, err := s.resolvePersonalWriteClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalWriteClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return AuthPrincipal{}, "", err
 	}
@@ -194,12 +197,12 @@ func (s *Service) GetRepoMergeMethods(ctx context.Context, owner, repo string) (
 }
 
 func (s *Service) GetRepoMergeMethodsForWorkspace(
-	ctx context.Context, workspaceID, userID, owner, repo string,
+	ctx context.Context, workspaceID, userID, host, owner, repo string,
 ) (RepoMergeMethods, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return RepoMergeMethods{}, err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return RepoMergeMethods{}, err
 	}
@@ -261,14 +264,14 @@ func (s *Service) GetPR(ctx context.Context, owner, repo string, number int) (*P
 }
 
 func (s *Service) GetPRForWorkspace(
-	ctx context.Context, workspaceID, userID, owner, repo string, number int,
+	ctx context.Context, workspaceID, userID, host, owner, repo string, number int,
 ) (*PR, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return nil, err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
-		if errors.Is(err, ErrGitHubNotConfigured) {
+		if errors.Is(err, ErrGitHubNotConfigured) && githubHostOrDefault(host) == defaultGitHubHost {
 			return getPRAnonymous(ctx, owner, repo, number)
 		}
 		return nil, err
@@ -280,12 +283,12 @@ func (s *Service) GetPRForWorkspace(
 // automation credential. It is used by background launch paths that have a
 // repository workspace but no interactive user identity.
 func (s *Service) GetPRForAutomation(
-	ctx context.Context, workspaceID, owner, repo string, number int,
+	ctx context.Context, workspaceID, host, owner, repo string, number int,
 ) (*PR, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return nil, err
 	}
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, owner, repo)
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host, owner, repo})
 	if err != nil {
 		return nil, err
 	}
@@ -305,12 +308,12 @@ func (s *Service) GetIssue(ctx context.Context, owner, repo string, number int) 
 }
 
 func (s *Service) GetIssueForWorkspace(
-	ctx context.Context, workspaceID, userID, owner, repo string, number int,
+	ctx context.Context, workspaceID, userID, host, owner, repo string, number int,
 ) (*Issue, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return nil, err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return nil, err
 	}
@@ -328,24 +331,24 @@ func (s *Service) GetPRFeedback(ctx context.Context, owner, repo string, number 
 		return nil, fmt.Errorf("github client not available")
 	}
 	// No workspace to scope a persist to; this legacy entry point reads only.
-	return s.getPRFeedback(ctx, s.client, "legacy", "", owner, repo, number)
+	return s.getPRFeedback(ctx, s.client, "legacy", "", "", owner, repo, number)
 }
 
 func (s *Service) GetPRFeedbackForWorkspace(
-	ctx context.Context, workspaceID, userID, owner, repo string, number int,
+	ctx context.Context, workspaceID, userID, host, owner, repo string, number int,
 ) (*PRFeedback, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return nil, err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return nil, err
 	}
-	return s.getPRFeedback(ctx, resolved.Client, resolved.CacheScope, workspaceID, owner, repo, number)
+	return s.getPRFeedback(ctx, resolved.Client, resolved.CacheScope, workspaceID, host, owner, repo, number)
 }
 
 func (s *Service) getPRFeedback(
-	ctx context.Context, client Client, cacheScope, workspaceID, owner, repo string, number int,
+	ctx context.Context, client Client, cacheScope, workspaceID, host, owner, repo string, number int,
 ) (*PRFeedback, error) {
 	// Detach the upstream call's context from the singleflight leader: a
 	// cancelled leader (user closes the tab) would otherwise return its
@@ -375,7 +378,7 @@ func (s *Service) getPRFeedback(
 		// than on every panel render served from cache, and it inherits
 		// fetchCtx so a client disconnecting mid-flight can't abort the write
 		// that its own fetch just earned.
-		s.persistPRFeedbackState(fetchCtx, workspaceID, feedback)
+		s.persistPRFeedbackState(fetchCtx, workspaceID, host, feedback)
 		return feedback, nil
 	})
 	if err != nil {
@@ -396,12 +399,12 @@ func (s *Service) GetPRStatus(ctx context.Context, owner, repo string, number in
 }
 
 func (s *Service) GetPRStatusForWorkspace(
-	ctx context.Context, workspaceID, userID, owner, repo string, number int,
+	ctx context.Context, workspaceID, userID, host, owner, repo string, number int,
 ) (*PRStatus, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return nil, err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return nil, err
 	}
@@ -473,13 +476,13 @@ func (s *Service) GetPRStatusesBatch(ctx context.Context, refs []PRRef) (map[str
 }
 
 func (s *Service) GetPRStatusesBatchForWorkspace(
-	ctx context.Context, workspaceID, userID string, refs []PRRef,
+	ctx context.Context, workspaceID, userID, host string, refs []PRRef,
 ) (map[string]*PRStatus, error) {
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, "", "")
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host: host})
 	if err != nil {
 		return nil, err
 	}
-	settings, err := s.GetWorkspaceSettings(ctx, workspaceID)
+	settings, err := s.workspaceSettingsForHost(ctx, workspaceID, host)
 	if err != nil {
 		return nil, err
 	}
@@ -493,7 +496,7 @@ func (s *Service) GetPRStatusesBatchForWorkspace(
 	for _, ref := range filtered {
 		visibilityInput = append(visibilityInput, RepoFilter{Owner: ref.Owner, Name: ref.Repo})
 	}
-	visible, err := s.automationRepositoryVisibility(ctx, workspaceID, visibilityInput)
+	visible, err := s.automationRepositoryVisibility(ctx, workspaceID, host, visibilityInput)
 	if err != nil {
 		return nil, err
 	}
@@ -558,12 +561,12 @@ func (s *Service) GetPRFiles(ctx context.Context, owner, repo string, number int
 }
 
 func (s *Service) GetPRFilesForWorkspace(
-	ctx context.Context, workspaceID, userID, owner, repo string, number int,
+	ctx context.Context, workspaceID, userID, host, owner, repo string, number int,
 ) ([]PRFile, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return nil, err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return nil, err
 	}
@@ -597,12 +600,12 @@ func completePRCommitHistory(headSHA string, commits []PRCommitInfo) bool {
 }
 
 func (s *Service) GetPRCommitsForWorkspace(
-	ctx context.Context, workspaceID, userID, owner, repo string, number int,
+	ctx context.Context, workspaceID, userID, host, owner, repo string, number int,
 ) (PRCommitsResult, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return PRCommitsResult{}, err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return PRCommitsResult{}, err
 	}
@@ -627,15 +630,15 @@ func (s *Service) GetPRCommitsForWorkspace(
 // GetPRCommitDetailForWorkspace fetches one commit through the workspace's
 // authorized personal read client. It never consults a task worktree.
 func (s *Service) GetPRCommitDetailForWorkspace(
-	ctx context.Context, workspaceID, userID, owner, repo, sha string,
+	ctx context.Context, workspaceID, userID, host, owner, repo, sha string,
 ) (PRCommitDetail, error) {
 	if err := validateGitHubCommitSHA(sha); err != nil {
 		return PRCommitDetail{}, err
 	}
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return PRCommitDetail{}, err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return PRCommitDetail{}, err
 	}

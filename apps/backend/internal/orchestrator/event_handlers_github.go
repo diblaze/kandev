@@ -41,9 +41,9 @@ const (
 // constraints. Empty repository_id preserves single-repo legacy behavior.
 type GitHubService interface {
 	CreatePRWatch(ctx context.Context, sessionID, taskID, repositoryID, owner, repo string, prNumber int, branch string) (*github.PRWatch, error)
-	CreatePRWatchForWorkspace(ctx context.Context, workspaceID, sessionID, taskID, repositoryID, owner, repo string, prNumber int, branch string) (*github.PRWatch, error)
-	EnsurePRWatchForWorkspace(ctx context.Context, workspaceID, sessionID, taskID, repositoryID, owner, repo, branch string) (*github.PRWatch, error)
-	FindPRByBranchForWorkspace(ctx context.Context, workspaceID, owner, repo, branch string) (*github.PR, error)
+	CreatePRWatchForWorkspace(ctx context.Context, workspaceID, host, sessionID, taskID, repositoryID, owner, repo string, prNumber int, branch string) (*github.PRWatch, error)
+	EnsurePRWatchForWorkspace(ctx context.Context, workspaceID, host, sessionID, taskID, repositoryID, owner, repo, branch string) (*github.PRWatch, error)
+	FindPRByBranchForWorkspace(ctx context.Context, workspaceID, host, owner, repo, branch string) (*github.PR, error)
 	GetPRWatchBySessionAndRepo(ctx context.Context, sessionID, repositoryID string) (*github.PRWatch, error)
 	GetPRWatchBySessionRepoAndBranch(ctx context.Context, sessionID, repositoryID, branch string) (*github.PRWatch, error)
 	ListPRWatchesBySession(ctx context.Context, sessionID string) ([]*github.PRWatch, error)
@@ -52,7 +52,7 @@ type GitHubService interface {
 	UpdatePRWatchRepository(ctx context.Context, id, owner, repo string) error
 	ResetPRWatch(ctx context.Context, id, branch string) error
 	AssociatePRWithTask(ctx context.Context, taskID, repositoryID string, pr *github.PR) (*github.TaskPR, error)
-	AssociatePRWithTaskForWorkspace(ctx context.Context, workspaceID, taskID, repositoryID string, pr *github.PR) (*github.TaskPR, error)
+	AssociatePRWithTaskForWorkspace(ctx context.Context, workspaceID, host, taskID, repositoryID string, pr *github.PR) (*github.TaskPR, error)
 	GetTaskPR(ctx context.Context, taskID string) (*github.TaskPR, error)
 	ListTaskPRs(ctx context.Context, taskIDs []string) (map[string][]*github.TaskPR, error)
 	TriggerPRSyncAll(ctx context.Context, taskID string) ([]*github.TaskPR, error)
@@ -68,9 +68,9 @@ type GitHubService interface {
 	RecordTaskCIAutoMergeError(ctx context.Context, taskID, repositoryID string, prNumber int, message string) error
 	MarkTaskCIAutoFixExhausted(ctx context.Context, taskID, repositoryID string, prNumber int, message string) error
 	ClearTaskCIError(ctx context.Context, taskID, repositoryID string, prNumber int) error
-	GetPRFeedbackForAutomation(ctx context.Context, workspaceID, owner, repo string, number int) (*github.PRFeedback, error)
-	InvalidatePRFeedbackForAutomation(ctx context.Context, workspaceID, owner, repo string, number int) error
-	MergePRForAutomation(ctx context.Context, workspaceID, owner, repo string, number int, mergeMethod, expectedHeadSHA string) error
+	GetPRFeedbackForAutomation(ctx context.Context, workspaceID, host, owner, repo string, number int) (*github.PRFeedback, error)
+	InvalidatePRFeedbackForAutomation(ctx context.Context, workspaceID, host, owner, repo string, number int) error
+	MergePRForAutomation(ctx context.Context, workspaceID, host, owner, repo string, number int, mergeMethod, expectedHeadSHA string) error
 	ListActivePRWatches(ctx context.Context) ([]*github.PRWatch, error)
 	ReserveReviewPRTask(ctx context.Context, watchID, repoOwner, repoName string, prNumber int, prURL string) (bool, error)
 	AssignReviewPRTaskID(ctx context.Context, watchID, repoOwner, repoName string, prNumber int, taskID string) error
@@ -200,7 +200,7 @@ func (s *Service) handlePRFeedback(ctx context.Context, event *bus.Event) error 
 			return nil
 		}
 		if pr != nil {
-			if err := s.githubService.InvalidatePRFeedbackForAutomation(ctx, pr.WorkspaceID, pr.Owner, pr.Repo, pr.PRNumber); err != nil {
+			if err := s.githubService.InvalidatePRFeedbackForAutomation(ctx, pr.WorkspaceID, pr.GitHubHost, pr.Owner, pr.Repo, pr.PRNumber); err != nil {
 				s.logger.Debug("failed to invalidate PR feedback for CI automation", zap.String("task_id", pr.TaskID), zap.Error(err))
 				return nil
 			}
@@ -847,7 +847,7 @@ func (s *Service) detectPushAndAssociatePRWithIdentity(
 		zap.String("repository_name", repositoryName),
 		zap.Int("pr_number", foundPR.Number),
 		zap.String("branch", branch))
-	s.associatePRFromPushScoped(ctx, workspaceID, sessionID, taskID, identity.owner, identity.name, identity.repositoryID, branch, foundPR)
+	s.associatePRFromPushScoped(ctx, workspaceID, sessionID, taskID, identity.host, identity.owner, identity.name, identity.repositoryID, branch, foundPR)
 }
 
 func (s *Service) discoverPRAfterPush(
@@ -879,7 +879,7 @@ func (s *Service) discoverPRAfterPush(
 		}
 		attemptCount++
 		foundPR, findErr := s.githubService.FindPRByBranchForWorkspace(
-			ctx, workspaceID, identity.owner, identity.name, branch,
+			ctx, workspaceID, identity.host, identity.owner, identity.name, branch,
 		)
 		if prDiscoveryContextCanceled(ctx) {
 			return nil
@@ -1071,7 +1071,7 @@ func (s *Service) searchPRForExistingWatch(
 	// We must not call associatePRFromPush here because it calls CreatePRWatch,
 	// which would fail with a UNIQUE constraint since the watch already exists.
 	foundPR, findErr := s.githubService.FindPRByBranchForWorkspace(
-		ctx, workspaceID, watch.Owner, watch.Repo, branch,
+		ctx, workspaceID, watch.GitHubHost, watch.Owner, watch.Repo, branch,
 	)
 	if prDiscoveryContextCanceled(ctx) {
 		return
@@ -1125,7 +1125,7 @@ func (s *Service) searchPRForExistingWatch(
 	// for legacy single-repo watches this is empty and matches the old
 	// "delete all" behavior).
 	if _, err := s.githubService.AssociatePRWithTaskForWorkspace(
-		ctx, workspaceID, taskID, watch.RepositoryID, foundPR,
+		ctx, workspaceID, watch.GitHubHost, taskID, watch.RepositoryID, foundPR,
 	); err != nil {
 		s.logger.Error("failed to associate PR with task",
 			zap.String("task_id", taskID),
@@ -1211,7 +1211,7 @@ func (s *Service) ensureSessionPRWatch(ctx context.Context, taskID, sessionID, f
 	for _, t := range targets {
 		effectiveTaskID := s.resolveEffectivePushTaskIDForSession(ctx, sessionID, taskID, t.RepositoryID)
 		if _, err := s.githubService.EnsurePRWatchForWorkspace(
-			ctx, workspaceID, sessionID, effectiveTaskID, t.RepositoryID, t.Owner, t.Repo, t.Branch,
+			ctx, workspaceID, t.Host, sessionID, effectiveTaskID, t.RepositoryID, t.Owner, t.Repo, t.Branch,
 		); err != nil {
 			s.logger.Warn("failed to ensure PR watch for session",
 				zap.String("session_id", sessionID),
@@ -1235,6 +1235,7 @@ func (s *Service) taskWorkspaceID(ctx context.Context, taskID string) string {
 // the session's worktree (branch) and the repo (owner/name).
 type sessionWatchTarget struct {
 	RepositoryID string
+	Host         string
 	Owner        string
 	Repo         string
 	Branch       string
@@ -1281,7 +1282,8 @@ func (s *Service) resolveSessionWatchTargets(
 	var targets []sessionWatchTarget
 	for _, tr := range taskRepos {
 		owner, repoName := s.resolveRepoOwnerName(ctx, store, tr.RepositoryID)
-		if owner == "" || repoName == "" {
+		host, hostOK := s.watchTargetHost(ctx, tr.RepositoryID)
+		if owner == "" || repoName == "" || !hostOK {
 			continue
 		}
 		branch := strings.TrimSpace(tr.CheckoutBranch)
@@ -1296,6 +1298,7 @@ func (s *Service) resolveSessionWatchTargets(
 		}
 		targets = append(targets, sessionWatchTarget{
 			RepositoryID: tr.RepositoryID,
+			Host:         host,
 			Owner:        owner,
 			Repo:         repoName,
 			Branch:       branch,
@@ -1344,11 +1347,13 @@ func (s *Service) targetsFromMultiBranchWorktrees(ctx context.Context, store rep
 			continue
 		}
 		owner, repoName := s.resolveRepoOwnerName(ctx, store, wt.RepositoryID)
-		if owner == "" || repoName == "" {
+		host, hostOK := s.watchTargetHost(ctx, wt.RepositoryID)
+		if owner == "" || repoName == "" || !hostOK {
 			continue
 		}
 		targets = append(targets, sessionWatchTarget{
 			RepositoryID: wt.RepositoryID,
+			Host:         host,
 			Owner:        owner,
 			Repo:         repoName,
 			Branch:       branch,
@@ -1481,14 +1486,14 @@ func (s *Service) resolveTaskRepo(ctx context.Context, taskID string) (string, s
 // pass the per-repo id resolved from the git event's repository_name; the
 // legacy single-repo path passes the primary task_repository id.
 func (s *Service) associatePRFromPushScoped(
-	ctx context.Context, workspaceID, sessionID, taskID, owner, repoName, repositoryID, branch string, pr *github.PR,
+	ctx context.Context, workspaceID, sessionID, taskID, host, owner, repoName, repositoryID, branch string, pr *github.PR,
 ) {
 	watchOwner, watchRepo := owner, repoName
 	if pr != nil && pr.RepoOwner != "" && pr.RepoName != "" {
 		watchOwner, watchRepo = pr.RepoOwner, pr.RepoName
 	}
 	watch, watchErr := s.githubService.CreatePRWatchForWorkspace(
-		ctx, workspaceID, sessionID, taskID, repositoryID, watchOwner, watchRepo, pr.Number, branch,
+		ctx, workspaceID, host, sessionID, taskID, repositoryID, watchOwner, watchRepo, pr.Number, branch,
 	)
 	if watchErr != nil {
 		s.logger.Error("failed to create PR watch on push detection",
@@ -1504,7 +1509,7 @@ func (s *Service) associatePRFromPushScoped(
 	}
 
 	if _, assocErr := s.githubService.AssociatePRWithTaskForWorkspace(
-		ctx, workspaceID, taskID, repositoryID, pr,
+		ctx, workspaceID, host, taskID, repositoryID, pr,
 	); assocErr != nil {
 		s.logger.Error("failed to associate PR with task on push detection",
 			zap.String("task_id", taskID),
@@ -1575,8 +1580,12 @@ func (s *Service) CheckSessionPR(ctx context.Context, taskID, sessionID string) 
 	if workspaceID == "" {
 		return false, github.ErrGitHubWorkspaceRequired
 	}
+	host, err := s.repositoryGitHubHost(ctx, repositoryID)
+	if err != nil {
+		return false, err
+	}
 	if _, watchErr := s.githubService.EnsurePRWatchForWorkspace(
-		ctx, workspaceID, sessionID, effectiveTaskID, repositoryID, owner, repoName, branch,
+		ctx, workspaceID, host, sessionID, effectiveTaskID, repositoryID, owner, repoName, branch,
 	); watchErr != nil {
 		s.logger.Warn("failed to ensure PR watch during check",
 			zap.String("session_id", sessionID),
@@ -1585,14 +1594,14 @@ func (s *Service) CheckSessionPR(ctx context.Context, taskID, sessionID string) 
 
 	// Try to find the PR immediately
 	pr, findErr := s.githubService.FindPRByBranchForWorkspace(
-		ctx, workspaceID, owner, repoName, branch,
+		ctx, workspaceID, host, owner, repoName, branch,
 	)
 	if findErr != nil || pr == nil {
 		return false, nil
 	}
 
 	// Found a PR — associate it with the effective task.
-	s.associatePRFromPushScoped(ctx, workspaceID, sessionID, effectiveTaskID, owner, repoName, repositoryID, branch, pr)
+	s.associatePRFromPushScoped(ctx, workspaceID, sessionID, effectiveTaskID, host, owner, repoName, repositoryID, branch, pr)
 	return true, nil
 }
 
@@ -1752,6 +1761,7 @@ func (s *Service) buildTaskBranchList(ctx context.Context, store repoStore) ([]g
 				TaskID:       effectiveTaskID,
 				SessionID:    sess.SessionID,
 				RepositoryID: t.RepositoryID,
+				GitHubHost:   t.Host,
 				Owner:        t.Owner,
 				Repo:         t.Repo,
 				Branch:       t.Branch,

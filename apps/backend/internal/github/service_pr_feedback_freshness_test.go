@@ -53,7 +53,7 @@ func TestPRFeedbackPreservesStatusFreshness(t *testing.T) {
 				{ID: 99, Author: "reviewer", Body: "Fix this unresolved comment", Path: "app.go", Line: 1},
 			})
 			updated := subscribeTaskPRUpdated(t, svc)
-			if _, err := svc.GetPRFeedbackForAutomation(ctx, testWorkspaceID, feedbackSyncOwner, feedbackSyncRepo, 2408); err != nil {
+			if _, err := svc.GetPRFeedbackForAutomation(ctx, testWorkspaceID, "", feedbackSyncOwner, feedbackSyncRepo, 2408); err != nil {
 				t.Fatal(err)
 			}
 			event := awaitTaskPRUpdated(t, updated)
@@ -77,18 +77,18 @@ func TestAutomationFeedbackInvalidationPreservesSiblingCache(t *testing.T) {
 	ctx := context.Background()
 	for _, number := range []int{2408, 2409} {
 		addMergedFeedbackPR(client, number, time.Now().UTC())
-		if _, err := svc.GetPRFeedbackForAutomation(ctx, testWorkspaceID, feedbackSyncOwner, feedbackSyncRepo, number); err != nil {
+		if _, err := svc.GetPRFeedbackForAutomation(ctx, testWorkspaceID, "", feedbackSyncOwner, feedbackSyncRepo, number); err != nil {
 			t.Fatal(err)
 		}
 		client.AddComments(feedbackSyncOwner, feedbackSyncRepo, number, []PRComment{
 			{ID: int64(number), Author: "reviewer", Body: "New actionable comment"},
 		})
 	}
-	if err := svc.InvalidatePRFeedbackForAutomation(ctx, testWorkspaceID, feedbackSyncOwner, feedbackSyncRepo, 2408); err != nil {
+	if err := svc.InvalidatePRFeedbackForAutomation(ctx, testWorkspaceID, "", feedbackSyncOwner, feedbackSyncRepo, 2408); err != nil {
 		t.Fatal(err)
 	}
 	for _, number := range []int{2408, 2409} {
-		feedback, err := svc.GetPRFeedbackForAutomation(ctx, testWorkspaceID, feedbackSyncOwner, feedbackSyncRepo, number)
+		feedback, err := svc.GetPRFeedbackForAutomation(ctx, testWorkspaceID, "", feedbackSyncOwner, feedbackSyncRepo, number)
 		if err != nil {
 			t.Fatal(err)
 		}

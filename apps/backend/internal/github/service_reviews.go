@@ -31,7 +31,7 @@ func (s *Service) CreateReviewWatchForUser(
 	if req == nil || strings.TrimSpace(req.WorkspaceID) == "" {
 		return nil, ErrGitHubWorkspaceRequired
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, req.WorkspaceID, userID, "", "")
+	resolved, err := s.resolvePersonalReadClient(ctx, req.WorkspaceID, userID, repoRef{host: req.GitHubHost})
 	if err != nil {
 		return nil, err
 	}
@@ -67,10 +67,15 @@ func (s *Service) createReviewWatch(
 	if !IsValidCleanupPolicy(req.CleanupPolicy) {
 		return nil, fmt.Errorf("invalid cleanup_policy: %q", req.CleanupPolicy)
 	}
+	host, err := normalizeGitHubHost(req.GitHubHost)
+	if err != nil {
+		return nil, err
+	}
 	rw := &ReviewWatch{
 		WorkspaceID:         req.WorkspaceID,
 		WorkflowID:          req.WorkflowID,
 		WorkflowStepID:      req.WorkflowStepID,
+		GitHubHost:          host,
 		Repos:               repos,
 		AgentProfileID:      req.AgentProfileID,
 		ExecutorProfileID:   req.ExecutorProfileID,
@@ -161,6 +166,9 @@ func (s *Service) UpdateReviewWatch(ctx context.Context, id string, req *UpdateR
 	}
 	if req.WorkflowStepID != nil {
 		rw.WorkflowStepID = *req.WorkflowStepID
+	}
+	if err := applyWatchHost(&rw.GitHubHost, req.GitHubHost); err != nil {
+		return err
 	}
 	if req.Repos != nil {
 		rw.Repos = *req.Repos
@@ -280,7 +288,7 @@ func (s *Service) CheckReviewWatch(ctx context.Context, watch *ReviewWatch) ([]*
 		return nil, admissionErr
 	}
 
-	connection, err := s.store.GetWorkspaceConnection(ctx, watch.WorkspaceID, defaultGitHubHost)
+	connection, err := s.store.GetWorkspaceConnection(ctx, watch.WorkspaceID, githubHostOrDefault(watch.GitHubHost))
 	if err != nil {
 		return nil, fmt.Errorf("load review watch workspace connection: %w", err)
 	}
@@ -294,7 +302,8 @@ func (s *Service) CheckReviewWatch(ctx context.Context, watch *ReviewWatch) ([]*
 		watch.LastError = cause
 		return nil, ErrGitHubPersonalRequired
 	}
-	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, "", "")
+	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, repoRef{host: watch.GitHubHost})
+	s.recordWatchHostError(ctx, watch.ID, watch.LastError, err, s.store.SetReviewWatchLastError)
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +315,7 @@ func (s *Service) CheckReviewWatch(ctx context.Context, watch *ReviewWatch) ([]*
 		zap.String("review_scope", watch.ReviewScope),
 		zap.Bool("enabled", watch.Enabled))
 
-	settings, settingsErr := s.GetWorkspaceSettings(ctx, watch.WorkspaceID)
+	settings, settingsErr := s.workspaceSettingsForHost(ctx, watch.WorkspaceID, watch.GitHubHost)
 	if settingsErr != nil {
 		return nil, settingsErr
 	}
@@ -538,9 +547,9 @@ func (s *Service) ListUserOrgs(ctx context.Context) ([]GitHubOrg, error) {
 }
 
 func (s *Service) ListUserOrgsForWorkspace(
-	ctx context.Context, workspaceID, userID string,
+	ctx context.Context, workspaceID, userID, host string,
 ) ([]GitHubOrg, error) {
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, "", "")
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host: host})
 	if err != nil {
 		return nil, err
 	}
@@ -569,13 +578,13 @@ func (s *Service) SearchOrgRepos(ctx context.Context, org, query string, limit i
 }
 
 func (s *Service) SearchOrgReposForWorkspace(
-	ctx context.Context, workspaceID, org, query string, limit int,
+	ctx context.Context, workspaceID, host, org, query string, limit int,
 ) ([]GitHubRepo, error) {
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, org, "")
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host: host, owner: org})
 	if err != nil {
 		return nil, err
 	}
-	settings, err := s.GetWorkspaceSettings(ctx, workspaceID)
+	settings, err := s.workspaceSettingsForHost(ctx, workspaceID, host)
 	if err != nil {
 		return nil, err
 	}
@@ -620,12 +629,12 @@ func (s *Service) ListRepoBranches(ctx context.Context, owner, repo string) ([]R
 }
 
 func (s *Service) ListRepoBranchesForWorkspace(
-	ctx context.Context, workspaceID, owner, repo string,
+	ctx context.Context, workspaceID, host, owner, repo string,
 ) ([]RepoBranch, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return nil, err
 	}
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, owner, repo)
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host, owner, repo})
 	if err != nil {
 		return nil, err
 	}
@@ -785,13 +794,13 @@ func (s *Service) SearchUserPRs(ctx context.Context, filter, customQuery string)
 }
 
 func (s *Service) SearchUserPRsForWorkspace(
-	ctx context.Context, workspaceID, userID, filter, customQuery string,
+	ctx context.Context, workspaceID, userID, host, filter, customQuery string,
 ) ([]*PR, error) {
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, "", "")
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host: host})
 	if err != nil {
 		return nil, err
 	}
-	settings, err := s.GetWorkspaceSettings(ctx, workspaceID)
+	settings, err := s.workspaceSettingsForHost(ctx, workspaceID, host)
 	if err != nil {
 		return nil, err
 	}
@@ -799,7 +808,7 @@ func (s *Service) SearchUserPRsForWorkspace(
 	if err != nil {
 		return nil, err
 	}
-	return s.filterPersonalPRsByAutomation(ctx, workspaceID, filterPRsByWorkspaceScope(prs, settings))
+	return s.filterPersonalPRsByAutomation(ctx, workspaceID, host, filterPRsByWorkspaceScope(prs, settings))
 }
 
 // SearchUserIssues searches for issues using a filter or custom query. Unless
@@ -813,13 +822,13 @@ func (s *Service) SearchUserIssues(ctx context.Context, filter, customQuery stri
 }
 
 func (s *Service) SearchUserIssuesForWorkspace(
-	ctx context.Context, workspaceID, userID, filter, customQuery string,
+	ctx context.Context, workspaceID, userID, host, filter, customQuery string,
 ) ([]*Issue, error) {
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, "", "")
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host: host})
 	if err != nil {
 		return nil, err
 	}
-	settings, err := s.GetWorkspaceSettings(ctx, workspaceID)
+	settings, err := s.workspaceSettingsForHost(ctx, workspaceID, host)
 	if err != nil {
 		return nil, err
 	}
@@ -827,18 +836,18 @@ func (s *Service) SearchUserIssuesForWorkspace(
 	if err != nil {
 		return nil, err
 	}
-	return s.filterPersonalIssuesByAutomation(ctx, workspaceID, filterIssuesByWorkspaceScope(issues, settings))
+	return s.filterPersonalIssuesByAutomation(ctx, workspaceID, host, filterIssuesByWorkspaceScope(issues, settings))
 }
 
 // ListAutomationPRs is the background-automation search path. It always uses
 // the workspace automation identity and enforces the configured repo boundary.
 func (s *Service) ListAutomationPRs(
-	ctx context.Context, workspaceID, owner, repo, customQuery string,
+	ctx context.Context, workspaceID, host, owner, repo, customQuery string,
 ) ([]*PR, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return nil, err
 	}
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, owner, repo)
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host, owner, repo})
 	if err != nil {
 		return nil, err
 	}

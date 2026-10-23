@@ -71,7 +71,11 @@ and the executor host bridge already bridges enterprise hosts (E12).
 - **Host helpers fail closed.** `WebHostFromURL` and `HostFromProviderHost`
   return an error for a malformed URL or an empty or malformed
   `provider_host`; every caller in tasks 03 and 05 surfaces that error instead
-  of falling back to the `github.com` connection.
+  of falling back to the `github.com` connection. The one exception is a
+  GitHub repository row with an empty `provider_host`: the repositories
+  migration backfills those rows as `https://github.com`, so
+  `RepositoryGitHubHost` reads an empty value as `github.com` and still
+  rejects a malformed one.
 - **Connection key becomes (workspace, host).** It is the smallest model that
   lets one workspace hold several hosts: the host column, request field, and
   App host key already exist (E2, E3, E25). A second connection table would

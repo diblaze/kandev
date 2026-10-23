@@ -92,7 +92,7 @@ func withTestWorkspace(watch *PRWatch) *PRWatch {
 
 func testAutomationScope(t *testing.T, service *Service, workspaceID string) string {
 	t.Helper()
-	resolved, err := service.resolveAutomationClient(context.Background(), workspaceID, "", "")
+	resolved, err := service.resolveAutomationClient(context.Background(), workspaceID, repoRef{})
 	if err != nil {
 		t.Fatalf("resolve test automation client: %v", err)
 	}

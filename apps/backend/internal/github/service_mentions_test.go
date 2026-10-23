@@ -46,6 +46,7 @@ func TestServiceSearchMentionsUsesServerBuiltTitleOnlyQuery(t *testing.T) {
 	issues, err := service.SearchMentionIssuesForWorkspace(
 		context.Background(),
 		"workspace-1",
+		"",
 		`fix type:pr is:issue repo:foreign/private "auth" \\ flow`,
 		3,
 	)
@@ -55,6 +56,7 @@ func TestServiceSearchMentionsUsesServerBuiltTitleOnlyQuery(t *testing.T) {
 	prs, err := service.SearchMentionPullRequestsForWorkspace(
 		context.Background(),
 		"workspace-1",
+		"",
 		`fix type:pr is:issue repo:foreign/private "auth" \\ flow`,
 		4,
 	)
@@ -82,10 +84,10 @@ func TestServiceSearchMentionsUsesServerBuiltTitleOnlyQuery(t *testing.T) {
 
 func TestServiceSearchMentionsRequiresExplicitWorkspaceAndQuery(t *testing.T) {
 	service := &Service{client: NewMockClient(), searchCache: newTTLCache()}
-	if _, err := service.SearchMentionIssuesForWorkspace(context.Background(), "", "auth", 5); err == nil {
+	if _, err := service.SearchMentionIssuesForWorkspace(context.Background(), "", "", "auth", 5); err == nil {
 		t.Fatal("blank workspace was accepted")
 	}
-	if _, err := service.SearchMentionPullRequestsForWorkspace(context.Background(), "workspace-1", " ", 5); err == nil {
+	if _, err := service.SearchMentionPullRequestsForWorkspace(context.Background(), "workspace-1", "", " ", 5); err == nil {
 		t.Fatal("blank query was accepted")
 	}
 }

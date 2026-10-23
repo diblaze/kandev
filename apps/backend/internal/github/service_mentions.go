@@ -20,7 +20,7 @@ var (
 // server-owned, title-only GitHub issue query within one workspace's scope.
 func (s *Service) SearchMentionIssuesForWorkspace(
 	ctx context.Context,
-	workspaceID, query string,
+	workspaceID, host, query string,
 	limit int,
 ) ([]*Issue, error) {
 	workspaceID, query, limit, err := normalizeMentionSearch(workspaceID, query, limit)
@@ -30,6 +30,7 @@ func (s *Service) SearchMentionIssuesForWorkspace(
 	result, err := s.SearchUserIssuesPagedForWorkspace(
 		ctx,
 		workspaceID,
+		host,
 		"",
 		buildMentionTitleQuery("type:issue", query),
 		1,
@@ -48,7 +49,7 @@ func (s *Service) SearchMentionIssuesForWorkspace(
 // SearchMentionIssuesForWorkspace.
 func (s *Service) SearchMentionPullRequestsForWorkspace(
 	ctx context.Context,
-	workspaceID, query string,
+	workspaceID, host, query string,
 	limit int,
 ) ([]*PR, error) {
 	workspaceID, query, limit, err := normalizeMentionSearch(workspaceID, query, limit)
@@ -58,6 +59,7 @@ func (s *Service) SearchMentionPullRequestsForWorkspace(
 	result, err := s.SearchUserPRsPagedForWorkspace(
 		ctx,
 		workspaceID,
+		host,
 		"",
 		buildMentionTitleQuery("type:pr", query),
 		1,

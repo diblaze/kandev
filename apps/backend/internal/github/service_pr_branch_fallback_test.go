@@ -56,7 +56,7 @@ func TestFindPRByBranchForWorkspace_ForkFallsBackToParentWithExactHead(t *testin
 	client.AddPR(forkNetworkPR())
 
 	pr, err := service.FindPRByBranchForWorkspace(
-		context.Background(), testWorkspaceID, forkOwner, forkRepo, forkPRBranch,
+		context.Background(), testWorkspaceID, "", forkOwner, forkRepo, forkPRBranch,
 	)
 	if err != nil {
 		t.Fatalf("FindPRByBranchForWorkspace: %v", err)
@@ -78,7 +78,7 @@ func TestFindPRByBranchForWorkspace_DoesNotUseAnotherForkWithSameBranch(t *testi
 	client.AddPR(otherForkPR)
 
 	pr, err := service.FindPRByBranchForWorkspace(
-		context.Background(), testWorkspaceID, forkOwner, forkRepo, forkPRBranch,
+		context.Background(), testWorkspaceID, "", forkOwner, forkRepo, forkPRBranch,
 	)
 	if err != nil {
 		t.Fatalf("FindPRByBranchForWorkspace: %v", err)

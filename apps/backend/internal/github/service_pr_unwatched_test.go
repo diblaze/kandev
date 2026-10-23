@@ -52,7 +52,7 @@ func TestTriggerPRSyncAll_RefreshesPRLeftBehindByBranchHandover(t *testing.T) {
 
 	// The task's only watch has since moved to the second branch's PR.
 	if _, err := svc.CreatePRWatchForWorkspace(
-		ctx, testWorkspaceID, "session-1", "task-1", "repo-1", "owner", "repo", 1299, "feature/second",
+		ctx, testWorkspaceID, "", "session-1", "task-1", "repo-1", "owner", "repo", 1299, "feature/second",
 	); err != nil {
 		t.Fatalf("CreatePRWatch: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestRefreshStaleWorkspaceWatches_HealsUnwatchedRow(t *testing.T) {
 		batchedMergedPRResponse("feature/second", ""),
 	}
 	if _, err := svc.CreatePRWatchForWorkspace(
-		ctx, testWorkspaceID, "session-1", "task-1", "repo-1", "owner", "repo", 1299, "feature/second",
+		ctx, testWorkspaceID, "", "session-1", "task-1", "repo-1", "owner", "repo", 1299, "feature/second",
 	); err != nil {
 		t.Fatalf("CreatePRWatch: %v", err)
 	}

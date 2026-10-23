@@ -1,7 +1,7 @@
 ---
 id: "03-host-routed-operations"
 title: "Host routing for GitHub operations"
-status: pending
+status: done
 wave: 3
 depends_on:
   - "02-per-host-connections"
@@ -183,4 +183,114 @@ Task 02.
 
 ## Results
 
-Pending.
+Implemented test-first.
+
+What was done:
+
+- `service_routing.go`: `repoRef{host, owner, name}`; `resolveServiceClient`,
+  `resolveAutomationClient`, `resolvePersonalReadClient`,
+  `resolvePersonalWriteClient`, and `ensurePersonalRepositoryBoundary` take it
+  and set `ResolveCredentialRequest.Host`; `credentialCacheScope` includes
+  `Principal.GitHubHost`. `ensureRepositoryInWorkspaceScope` and
+  `automationRepositoryVisibility` take the host.
+- Every exported `...ForWorkspace`, `...ForAutomation`, `...ForWorkspaceUser`
+  method that names an owner and repository, plus the search and listing
+  methods, `ListAutomationPRs`, `IsReviewRequestedForLogin`, and the fork and
+  contribution-destination methods, take `host` before `owner` (or after the
+  user ID for host-wide calls). `GetPRForWorkspace` keeps the anonymous
+  fallback for `github.com` only.
+- Schema: `github_host TEXT NOT NULL DEFAULT 'github.com'` on
+  `github_pr_watches`, `github_task_prs`, `github_review_watches`, and
+  `github_issue_watches` (final `CREATE TABLE`, idempotent `ADD COLUMN`, both
+  rebuild copy lists); model fields and every insert/update; empty writes
+  store `github.com`. `RepoFilter.Host`; repository-list scopes keep and match
+  it (stored empty for `github.com`, invalid entries dropped).
+- Watches: create/ensure/associate persist the host; every watch and task PR
+  resolution uses its `GitHubHost`; batched sync runs one batch per host and
+  skips watches of an unconnected host; the unwatched sweep groups by
+  workspace and host; review and issue watches validate `github_host` on
+  create and update, poll their host, record a host-not-connected error as
+  `last_error` (watch stays enabled), and clear it once the host resolves.
+  Cleanup resolves per watch host (per-watch, workspace sweeps, orphan sweeps).
+- PR feedback persistence matches task PRs by host (`ListTaskPRsByPRNumber`
+  gained a host), so a github.com fetch never writes an enterprise row.
+- HTTP routes and WebSocket PR actions read `host` (query, or body for
+  `/prs/statuses`); watch create/update read `github_host`. Not-configured
+  503 bodies add `host` and name it for an unconnected host.
+- Callers: orchestrator push detection, session watches, branch switch,
+  on-demand check, watch inventory (`TaskBranchInfo.GitHubHost`), CI
+  automation, and review-request checks pass the repository or task PR host
+  (`github_repository_host.go`); backendapp PR base lookup, branch lister,
+  contribution destination verification, Improve Kandev fork probe, and the
+  task change-request status read pass the right host.
+- Automation: PR triggers poll `repo.Host` and add `<host>/` to the dedup key
+  only for a host other than `github.com`; webhook push and check-run payloads
+  carry the registration host and triggers match it; `github_pr_merged`
+  matches the task PR host.
+- Workflow sync and Office config sync: `github_host` column (default
+  `github.com`), config and request fields, validation, and host-taking
+  provider interfaces.
+- Office skill import: `https://<host>/<owner>/<repo>[...]` sources parse with
+  a host and read through the workspace connection for that host
+  (`SetGitHubRepoReader`, wired in `backendapp/main.go`); `github.com` keeps
+  the anonymous fetch.
+- MCP: `classifyAddBranchError` maps `HostNotConnectedError` to a validation
+  error.
+
+Verification (from `apps/backend` unless noted):
+
+- `go test -trimpath -tags fts5 -race ./internal/github -run 'Test(ServiceHostRouting|StoreHostColumns|PRWatchBatchedHosts)' -count=1`: `ok internal/github 3.413s`.
+- `go test -trimpath -tags fts5 -race ./internal/github ./internal/backendapp ./internal/orchestrator/... ./internal/mcp/... ./internal/automation ./internal/workflowsync ./internal/office/configsync ./internal/office/skills -count=1`:
+  every package `ok` (`internal/github 109.951s`, `internal/backendapp 273.557s`, `internal/mcp/handlers 179.717s`, `internal/automation 19.184s`, `internal/workflowsync 1.586s`, `internal/office/configsync 3.165s`, `internal/office/skills 2.538s`, orchestrator subpackages) except `internal/orchestrator` and `internal/orchestrator/executor`, whose 37 failing tests (`TestCompletedRelocation*`, `TestSessionOpen*`, `TestInventory*`, `TestRepairReuseEnvironmentInventory*`, ...) fail identically on an untouched `git archive HEAD` export with `worktree uses a checkout feature that cannot be transferred safely`; they are pre-existing on this machine.
+- `KANDEV_TEST_POSTGRES_DSN=<postgres:16 container> go test -trimpath -tags fts5 -race ./internal/github ./internal/workflowsync ./internal/office/configsync -run 'Host' -count=1`: `ok` for all three; the same DSN without `-race` over the full `internal/github`, `internal/workflowsync`, `internal/office/configsync`, and `internal/automation` packages: all `ok`.
+- `go run ./cmd/sqlguard ./internal`: exit 0.
+- `go test -trimpath -race ./internal/persistence/storeconformance -count=1`: `ok 84.680s`.
+- `go build -tags fts5 ./...` and `go vet` of every touched package: clean.
+- From the repository root, `bash scripts/lint-go-changed <115 changed Go files>` (run per package group): `0 issues.` for each group.
+- `python3 scripts/list-docs.py validate` and `python3 scripts/lint-spec-files.py --all`: pass.
+
+Tests that passed on their first run after the signature sweep, and were then
+proven by breaking the code: the routing table (`Host: ""` in
+`resolveServiceClient`, and single call sites in review, issue, cleanup, and
+mention paths), the cache scope, the legacy rebuild copy lists, the batched
+per-host split and unconnected-host skip, the unwatched-sweep key, the
+workspace cleanup host, the controller `host` query and body, the WebSocket
+payload host, watch host validation, workflow sync and config sync host and
+`ADD COLUMN`, the orchestrator call sites and watch targets, the PR base host,
+the branch lister host, the contribution destination host, the task
+change-request status host, the merged-PR trigger host, and the webhook push
+host.
+
+Deviations:
+
+- The existing GraphQL helper type `repoRef` was renamed `missingRepoRef` so
+  the routing type could take the name the design uses.
+- `PRBaseLookup` gained `ProviderHost` (the stored origin form) instead of a
+  bare `Host`; backendapp converts it, and prefers the comparison target host,
+  then the linked task PR host.
+- A GitHub repository row with an empty `provider_host` is read as
+  `github.com` through the new `github.RepositoryGitHubHost` (the repositories
+  migration backfills such rows); a malformed value still fails. The plan
+  decision and system design now say so.
+- `listRepoBranchesAnonymous` needed no change: only the workspace-less
+  legacy `ListRepoBranches` uses it; `ListRepoBranchesForWorkspace` is always
+  authenticated.
+- Batched PR sync skips the watches of an unconnected host and syncs the
+  other hosts instead of failing the whole workspace batch.
+- Push and CI webhook dedup keys also gain the `<host>/` prefix for non-
+  `github.com` deliveries, like the PR trigger key.
+- `task_change_request_read.go` reads the status of the task PRs' host; it was
+  not listed in this order.
+- No MCP tool takes an owner and repository for a GitHub service call, so no
+  MCP `host` argument was added.
+- The Office skill import accepts any `https://<host>/` source and lets the
+  connection read fail closed for an unconnected host, instead of checking
+  connected hosts while parsing.
+
+Deferred to later tasks, unchanged here: URL-derived hosts
+(`AssociateExistingPRByURLForWorkspace`, `AssociatePRByURLForWorkspace`,
+`LinkTaskIssueForUser`, `ResolveRemoteContributionForWorkspace`) and the
+mention provider still pass `github.com` until task 05;
+`DescribeTaskGitCredentialPolicy` and Git transport stay with task 06;
+`ResolveGitHubAutomationClient` (gist sharing) stays on `github.com` by
+design; frontend `host` and `github_host` fields belong to task 07.

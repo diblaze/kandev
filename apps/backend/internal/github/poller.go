@@ -80,6 +80,7 @@ type TaskBranchInfo struct {
 	TaskID       string
 	SessionID    string
 	RepositoryID string
+	GitHubHost   string
 	Owner        string
 	Repo         string
 	Branch       string
@@ -528,7 +529,7 @@ func prWatchFallbackTargetKey(watch *PRWatch) string {
 	if watch == nil {
 		return ""
 	}
-	return watch.WorkspaceID + "\x00" + watch.Owner + "\x00" + watch.Repo + "\x00" + watch.Branch + "\x00" + fmt.Sprintf("%010d", watch.PRNumber)
+	return watch.WorkspaceID + "\x00" + githubHostOrDefault(watch.GitHubHost) + "\x00" + watch.Owner + "\x00" + watch.Repo + "\x00" + watch.Branch + "\x00" + fmt.Sprintf("%010d", watch.PRNumber)
 }
 
 func prWatchFallbackShouldStopWorkspace(err error) bool {
@@ -756,7 +757,7 @@ func (p *Poller) applyDetectedPR(ctx context.Context, watch *PRWatch, pr *PR) {
 	}
 
 	if _, assocErr := p.service.associatePRWithTaskForSession(
-		ctx, watch.WorkspaceID, watch.SessionID, watch.TaskID, watch.RepositoryID, pr,
+		ctx, watch.WorkspaceID, watch.GitHubHost, watch.SessionID, watch.TaskID, watch.RepositoryID, pr,
 		false, false, TaskPRSourceWatch,
 	); assocErr != nil {
 		p.logger.Error("failed to associate detected PR with task",
@@ -830,7 +831,7 @@ func (p *Poller) reconcileWatches(ctx context.Context) {
 	}
 	for _, task := range tasks {
 		if _, ensureErr := p.service.EnsurePRWatchForWorkspace(
-			ctx, task.WorkspaceID, task.SessionID, task.TaskID, task.RepositoryID, task.Owner, task.Repo, task.Branch,
+			ctx, task.WorkspaceID, task.GitHubHost, task.SessionID, task.TaskID, task.RepositoryID, task.Owner, task.Repo, task.Branch,
 		); ensureErr != nil {
 			p.logger.Error("failed to ensure PR watch",
 				zap.String("session_id", task.SessionID), zap.Error(ensureErr))

@@ -135,7 +135,7 @@ func TestWorkflowAttentionCacheExpiryAndInvalidation(t *testing.T) {
 		t.Fatalf("service status reused no Actions cache: run reads = %d, want 1", got)
 	}
 	svc.prFeedbackCache.clear()
-	if _, err := svc.getPRFeedback(ctx, client, "scope-a", "", "acme", "widget", prOne.Number); err != nil {
+	if _, err := svc.getPRFeedback(ctx, client, "scope-a", "", "", "acme", "widget", prOne.Number); err != nil {
 		t.Fatalf("service feedback read: %v", err)
 	}
 	if got := client.runCalls.Load(); got != 1 {

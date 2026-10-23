@@ -215,7 +215,7 @@ func TestVerifyContributionDestinationForWorkspaceRejectsRecreatedTarget(t *test
 
 	verify := func() error {
 		return service.VerifyContributionDestinationForWorkspace(
-			context.Background(), "workspace-1", "kdlbs", "kandev", "100", "automation", "kandev", "200",
+			context.Background(), "workspace-1", "", "kdlbs", "kandev", "100", "automation", "kandev", "200",
 		)
 	}
 	if err := verify(); err != nil {

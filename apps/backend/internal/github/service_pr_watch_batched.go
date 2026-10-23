@@ -63,12 +63,41 @@ func (s *Service) syncWorkspaceWatchesBatched(
 	if strings.TrimSpace(workspaceID) == "" {
 		return nil, ErrGitHubWorkspaceRequired
 	}
+	hosts := make([]string, 0, 1)
+	byHost := make(map[string][]*PRWatch, 1)
 	for _, watch := range watches {
 		if watch == nil || watch.WorkspaceID != workspaceID {
 			return nil, ErrGitHubWorkspaceRequired
 		}
+		host := githubHostOrDefault(watch.GitHubHost)
+		if _, seen := byHost[host]; !seen {
+			hosts = append(hosts, host)
+		}
+		byHost[host] = append(byHost[host], watch)
 	}
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, "", "")
+	var results []PRWatchSyncResult
+	for _, host := range hosts {
+		hostResults, err := s.syncHostWatchesBatched(ctx, workspaceID, host, byHost[host], explicitRefresh)
+		var notConnected *HostNotConnectedError
+		if errors.As(err, &notConnected) {
+			s.logger.Debug("skip PR watches of a GitHub host without a connection",
+				zap.String("workspace_id", workspaceID), zap.String("github_host", host))
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, hostResults...)
+	}
+	return results, nil
+}
+
+// syncHostWatchesBatched runs the batched lookup for the watches of one host
+// with that host's automation client, so a batch never mixes hosts.
+func (s *Service) syncHostWatchesBatched(
+	ctx context.Context, workspaceID, host string, watches []*PRWatch, explicitRefresh bool,
+) ([]PRWatchSyncResult, error) {
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host: host})
 	if err != nil {
 		return nil, err
 	}
@@ -733,7 +762,7 @@ func (s *Service) applyBatchedNumberedWatch(
 		return PRWatchSyncResult{Watch: w, Status: status, Found: true, SyncFailed: true}
 	} else if existing == nil && status.PR != nil {
 		if _, assocErr := s.associatePRWithTaskForSession(
-			ctx, w.WorkspaceID, w.SessionID, w.TaskID, w.RepositoryID, status.PR,
+			ctx, w.WorkspaceID, w.GitHubHost, w.SessionID, w.TaskID, w.RepositoryID, status.PR,
 			false, false, TaskPRSourceWatch,
 		); assocErr != nil {
 			s.logSyncError("failed to associate numbered PR with task", assocErr,
@@ -860,7 +889,7 @@ func (s *Service) applyBatchedSearchingWatch(
 		return PRWatchSyncResult{Watch: w, Status: status, Found: true, DiscoveryResolved: discoveryResolved}
 	}
 	if _, err := s.associatePRWithTaskForSession(
-		ctx, w.WorkspaceID, w.SessionID, w.TaskID, w.RepositoryID, status.PR,
+		ctx, w.WorkspaceID, w.GitHubHost, w.SessionID, w.TaskID, w.RepositoryID, status.PR,
 		false, false, TaskPRSourceWatch,
 	); err != nil {
 		s.logSyncError("failed to associate detected PR with task", err,

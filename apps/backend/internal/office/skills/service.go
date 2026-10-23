@@ -52,6 +52,7 @@ type SkillService struct {
 	cfgLoader            configLoader
 	userSkillDirResolver UserSkillDirResolver
 	userHomeResolver     func() (string, error)
+	githubRepos          GitHubRepoReader
 }
 
 // NewSkillService creates a new SkillService.

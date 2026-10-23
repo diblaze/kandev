@@ -149,11 +149,11 @@ func (c *Controller) httpGetStatus(ctx *gin.Context) {
 	)
 	if ctx.Query("refresh_rate_limit") == "true" {
 		status, err = c.service.RefreshWorkspaceRateLimit(
-			ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), ctx.Query("host"),
+			ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), ctx.Query(hostQueryParam),
 		)
 	} else {
 		status, err = c.service.GetWorkspaceAuthStatus(
-			ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), ctx.Query("host"),
+			ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), ctx.Query(hostQueryParam),
 		)
 	}
 	if err != nil {
@@ -345,10 +345,7 @@ func (c *Controller) httpUnlinkTaskIssue(ctx *gin.Context) {
 func (c *Controller) handleTaskIssueLinkError(ctx *gin.Context, err error) {
 	switch {
 	case isGitHubNotConfiguredError(err):
-		ctx.JSON(http.StatusServiceUnavailable, gin.H{
-			"error": "GitHub is not configured. Connect GitHub in Settings > Integrations.",
-			"code":  "github_not_configured",
-		})
+		ctx.JSON(http.StatusServiceUnavailable, githubNotConfiguredBody(err, "GitHub is not configured. Connect GitHub in Settings > Integrations."))
 	case errors.Is(err, ErrInvalidIssueReference):
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrIssueRepositoryMismatch):
@@ -563,7 +560,7 @@ func (c *Controller) httpGetPRFeedback(ctx *gin.Context) {
 		return
 	}
 	feedback, err := c.service.GetPRFeedbackForWorkspace(
-		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), owner, repo, number,
+		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), ctx.Query(hostQueryParam), owner, repo, number,
 	)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -582,7 +579,7 @@ func (c *Controller) httpGetPRStatus(ctx *gin.Context) {
 		return
 	}
 	status, err := c.service.GetPRStatusForWorkspace(
-		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), owner, repo, number,
+		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), ctx.Query(hostQueryParam), owner, repo, number,
 	)
 	if err != nil {
 		c.handleSearchError(ctx, err)
@@ -603,6 +600,7 @@ const prStatusesBatchMaxRefs = 200
 func (c *Controller) httpGetPRStatusesBatch(ctx *gin.Context) {
 	var body struct {
 		WorkspaceID string  `json:"workspace_id"`
+		Host        string  `json:"host"`
 		Refs        []PRRef `json:"refs"`
 	}
 	if err := ctx.ShouldBindJSON(&body); err != nil {
@@ -614,7 +612,7 @@ func (c *Controller) httpGetPRStatusesBatch(ctx *gin.Context) {
 		return
 	}
 	statuses, err := c.service.GetPRStatusesBatchForWorkspace(
-		ctx.Request.Context(), body.WorkspaceID, currentGitHubUserID(ctx), body.Refs,
+		ctx.Request.Context(), body.WorkspaceID, currentGitHubUserID(ctx), body.Host, body.Refs,
 	)
 	if err != nil {
 		c.handleSearchError(ctx, err)
@@ -631,7 +629,7 @@ func (c *Controller) httpGetPRInfo(ctx *gin.Context) {
 		return
 	}
 	pr, err := c.service.GetPRForWorkspace(
-		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), owner, repo, number,
+		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), ctx.Query(hostQueryParam), owner, repo, number,
 	)
 	if err != nil {
 		handleGitHubInfoError(ctx, err)
@@ -648,7 +646,7 @@ func (c *Controller) httpGetIssueInfo(ctx *gin.Context) {
 		return
 	}
 	issue, err := c.service.GetIssueForWorkspace(
-		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), owner, repo, number,
+		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), ctx.Query(hostQueryParam), owner, repo, number,
 	)
 	if err != nil {
 		handleGitHubInfoError(ctx, err)
@@ -668,10 +666,7 @@ func parseRouteNumber(ctx *gin.Context, invalidMessage string) (int, bool) {
 
 func handleGitHubInfoError(ctx *gin.Context, err error) {
 	if isGitHubNotConfiguredError(err) {
-		ctx.JSON(http.StatusServiceUnavailable, gin.H{
-			"error": "GitHub is not configured. Connect GitHub in Settings > Integrations.",
-			"code":  "github_not_configured",
-		})
+		ctx.JSON(http.StatusServiceUnavailable, githubNotConfiguredBody(err, "GitHub is not configured. Connect GitHub in Settings > Integrations."))
 		return
 	}
 	status := http.StatusInternalServerError
@@ -717,7 +712,7 @@ func (c *Controller) httpSubmitReview(ctx *gin.Context) {
 	}
 	principal, err := c.service.SubmitReviewForWorkspace(
 		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx),
-		owner, repo, number, req.Event, req.Body,
+		ctx.Query(hostQueryParam), owner, repo, number, req.Event, req.Body,
 	)
 	if err != nil {
 		if errors.Is(err, ErrSelfApprove) {
@@ -754,7 +749,7 @@ func (c *Controller) httpRequestReviewers(ctx *gin.Context) {
 	}
 	principal, err := c.service.RequestReviewersForWorkspace(
 		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx),
-		ctx.Param("owner"), ctx.Param("repo"), number, reviewers,
+		ctx.Query(hostQueryParam), ctx.Param("owner"), ctx.Param("repo"), number, reviewers,
 	)
 	if err != nil {
 		if writeGitHubOperationalAuthError(ctx, err) {
@@ -813,7 +808,7 @@ func (c *Controller) httpMergePR(ctx *gin.Context) {
 	}
 	principal, outcome, err := c.service.MergePRForWorkspace(
 		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx),
-		owner, repo, number, req.MergeMethod,
+		ctx.Query(hostQueryParam), owner, repo, number, req.MergeMethod,
 	)
 	if err != nil {
 		if writeGitHubOperationalAuthError(ctx, err) {
@@ -984,7 +979,7 @@ func (c *Controller) httpTriggerAllReviewChecks(ctx *gin.Context) {
 
 func (c *Controller) httpListUserOrgs(ctx *gin.Context) {
 	orgs, err := c.service.ListUserOrgsForWorkspace(
-		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx),
+		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), ctx.Query(hostQueryParam),
 	)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -1005,14 +1000,11 @@ func (c *Controller) httpListAccessibleRepos(ctx *gin.Context) {
 	query := ctx.Query("q")
 	limit, _ := strconv.Atoi(ctx.Query("limit"))
 	repos, err := c.service.ListAccessibleReposForWorkspace(
-		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), query, limit,
+		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), ctx.Query(hostQueryParam), query, limit,
 	)
 	if err != nil {
 		if isGitHubNotConfiguredError(err) {
-			ctx.JSON(http.StatusServiceUnavailable, gin.H{
-				"error": "GitHub is not configured. Install the gh CLI and run 'gh auth login', or add a GITHUB_TOKEN secret.",
-				"code":  "github_not_configured",
-			})
+			ctx.JSON(http.StatusServiceUnavailable, githubNotConfiguredBody(err, "GitHub is not configured. Install the gh CLI and run 'gh auth login', or add a GITHUB_TOKEN secret."))
 			return
 		}
 		// Preserve GitHub-side status codes (401 / 403 / 404) so the
@@ -1041,7 +1033,7 @@ func (c *Controller) httpSearchRepos(ctx *gin.Context) {
 		return
 	}
 	repos, err := c.service.SearchOrgReposForWorkspace(
-		ctx.Request.Context(), ctx.Query("workspace_id"), org, query, 20,
+		ctx.Request.Context(), ctx.Query("workspace_id"), ctx.Query(hostQueryParam), org, query, 20,
 	)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -1054,14 +1046,11 @@ func (c *Controller) httpListRepoBranches(ctx *gin.Context) {
 	owner := ctx.Param("owner")
 	repo := ctx.Param("repo")
 	branches, err := c.service.ListRepoBranchesForWorkspace(
-		ctx.Request.Context(), ctx.Query("workspace_id"), owner, repo,
+		ctx.Request.Context(), ctx.Query("workspace_id"), ctx.Query(hostQueryParam), owner, repo,
 	)
 	if err != nil {
 		if isGitHubNotConfiguredError(err) {
-			ctx.JSON(http.StatusServiceUnavailable, gin.H{
-				"error": "GitHub is not configured. Install the gh CLI and run 'gh auth login', or add a GITHUB_TOKEN secret.",
-				"code":  "github_not_configured",
-			})
+			ctx.JSON(http.StatusServiceUnavailable, githubNotConfiguredBody(err, "GitHub is not configured. Install the gh CLI and run 'gh auth login', or add a GITHUB_TOKEN secret."))
 			return
 		}
 		status := http.StatusInternalServerError
@@ -1086,14 +1075,11 @@ func (c *Controller) httpGetRepoMergeMethods(ctx *gin.Context) {
 	owner := ctx.Param("owner")
 	repo := ctx.Param("repo")
 	methods, err := c.service.GetRepoMergeMethodsForWorkspace(
-		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), owner, repo,
+		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), ctx.Query(hostQueryParam), owner, repo,
 	)
 	if err != nil {
 		if isGitHubNotConfiguredError(err) {
-			ctx.JSON(http.StatusServiceUnavailable, gin.H{
-				"error": "GitHub is not configured. Install the gh CLI and run 'gh auth login', or add a GITHUB_TOKEN secret.",
-				"code":  "github_not_configured",
-			})
+			ctx.JSON(http.StatusServiceUnavailable, githubNotConfiguredBody(err, "GitHub is not configured. Install the gh CLI and run 'gh auth login', or add a GITHUB_TOKEN secret."))
 			return
 		}
 		status := http.StatusInternalServerError
@@ -1131,7 +1117,7 @@ func (c *Controller) httpSearchUserPRs(ctx *gin.Context) {
 		err    error
 	)
 	result, err = c.service.SearchUserPRsPagedForWorkspaceUser(
-		ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), filter, query, page, perPage,
+		ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), ctx.Query(hostQueryParam), filter, query, page, perPage,
 	)
 	if err != nil {
 		c.handleSearchError(ctx, err)
@@ -1154,7 +1140,7 @@ func (c *Controller) httpSearchUserIssues(ctx *gin.Context) {
 		err    error
 	)
 	result, err = c.service.SearchUserIssuesPagedForWorkspaceUser(
-		ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), filter, query, page, perPage,
+		ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), ctx.Query(hostQueryParam), filter, query, page, perPage,
 	)
 	if err != nil {
 		c.handleSearchError(ctx, err)
@@ -1252,10 +1238,7 @@ func parsePaginationQuery(ctx *gin.Context) (int, int) {
 // handleSearchError maps client errors to proper HTTP responses.
 func (c *Controller) handleSearchError(ctx *gin.Context, err error) {
 	if isGitHubNotConfiguredError(err) {
-		ctx.JSON(http.StatusServiceUnavailable, gin.H{
-			"error": "GitHub is not configured. Install the gh CLI and run 'gh auth login', or add a GITHUB_TOKEN secret.",
-			"code":  "github_not_configured",
-		})
+		ctx.JSON(http.StatusServiceUnavailable, githubNotConfiguredBody(err, "GitHub is not configured. Install the gh CLI and run 'gh auth login', or add a GITHUB_TOKEN secret."))
 		return
 	}
 	status := http.StatusInternalServerError

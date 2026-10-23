@@ -21,7 +21,7 @@ func TestPassiveWorkspaceRefreshHonorsAdaptiveSchedule(t *testing.T) {
 	}}
 	svc.SetTaskActivityProvider(provider)
 	seedTask(t, store, "task-passive-slow", false)
-	watch, err := svc.CreatePRWatchForWorkspace(ctx, testWorkspaceID, "session-passive", "task-passive-slow", "repo-1", "owner", "repo", 0, "feature/passive")
+	watch, err := svc.CreatePRWatchForWorkspace(ctx, testWorkspaceID, "", "session-passive", "task-passive-slow", "repo-1", "owner", "repo", 0, "feature/passive")
 	if err != nil {
 		t.Fatalf("create passive watch: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestPassiveWorkspaceRefreshCooldownSkipsRepeatedWorkspaceReads(t *testing.T
 	svc.SetClock(func() time.Time { return now })
 	seedTask(t, store, "task-passive-cooldown", false)
 	if _, err := svc.CreatePRWatchForWorkspace(
-		ctx, testWorkspaceID, "session-passive-cooldown", "task-passive-cooldown", "repo-1",
+		ctx, testWorkspaceID, "", "session-passive-cooldown", "task-passive-cooldown", "repo-1",
 		"owner", "repo", 0, "feature/passive-cooldown",
 	); err != nil {
 		t.Fatalf("create passive watch: %v", err)
@@ -106,7 +106,7 @@ func TestExplicitPRRefreshBypassesAdaptiveIdleSchedule(t *testing.T) {
 		"task-explicit-slow": {LastActivityAt: now.Add(-24 * time.Hour)},
 	}})
 	seedTask(t, store, "task-explicit-slow", false)
-	watch, err := svc.CreatePRWatchForWorkspace(ctx, testWorkspaceID, "session-explicit", "task-explicit-slow", "repo-1", "owner", "repo", 0, "feature/explicit")
+	watch, err := svc.CreatePRWatchForWorkspace(ctx, testWorkspaceID, "", "session-explicit", "task-explicit-slow", "repo-1", "owner", "repo", 0, "feature/explicit")
 	if err != nil {
 		t.Fatalf("create explicit watch: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestWSSyncTaskPRUsesPassiveAdmissionAndExplicitRefresh(t *testing.T) {
 	}})
 	seedTask(t, store, "task-ws-passive", false)
 	watch, err := svc.CreatePRWatchForWorkspace(
-		ctx, testWorkspaceID, "session-ws-passive", "task-ws-passive", "repo-1",
+		ctx, testWorkspaceID, "", "session-ws-passive", "task-ws-passive", "repo-1",
 		"owner", "repo", 0, "feature/ws-passive",
 	)
 	if err != nil {
@@ -178,7 +178,7 @@ func TestWSSyncTaskPRExplicitRefreshSupersedesInFlightPassiveBatch(t *testing.T)
 	ctx := context.Background()
 	seedTask(t, store, "task-ws-inflight", false)
 	_, err := svc.CreatePRWatchForWorkspace(
-		ctx, testWorkspaceID, "session-ws-inflight", "task-ws-inflight", "repo-1",
+		ctx, testWorkspaceID, "", "session-ws-inflight", "task-ws-inflight", "repo-1",
 		"owner", "repo", 42, "feature/ws-inflight",
 	)
 	if err != nil {
@@ -273,7 +273,7 @@ func TestWSSyncTaskPRPassiveKeepsActionsCache(t *testing.T) {
 	ctx := context.Background()
 	seedTask(t, store, "task-ws-actions", false)
 	_, err := svc.CreatePRWatchForWorkspace(
-		ctx, testWorkspaceID, "session-ws-actions", "task-ws-actions", "repo-1",
+		ctx, testWorkspaceID, "", "session-ws-actions", "task-ws-actions", "repo-1",
 		"owner", "repo", 42, "feature/ws-actions",
 	)
 	if err != nil {
@@ -281,7 +281,7 @@ func TestWSSyncTaskPRPassiveKeepsActionsCache(t *testing.T) {
 	}
 	scope := testAutomationScope(t, svc, testWorkspaceID)
 	key := workflowRunsCacheKey(scope, "owner", "repo", "head-ws-actions")
-	resolved, err := svc.resolveAutomationClient(ctx, testWorkspaceID, "", "")
+	resolved, err := svc.resolveAutomationClient(ctx, testWorkspaceID, repoRef{})
 	if err != nil {
 		t.Fatalf("resolve workspace client: %v", err)
 	}

@@ -4,6 +4,7 @@ package github
 // push webhook is verified and its installation resolved to workspaces.
 type GitHubPushEventPayload struct {
 	WorkspaceIDs  []string
+	Host          string // GitHub host of the App registration that received the delivery
 	Owner         string
 	Name          string
 	Branch        string // ref with refs/heads/ stripped
@@ -16,6 +17,7 @@ type GitHubPushEventPayload struct {
 // for a completed check_run.
 type GitHubCheckRunEventPayload struct {
 	WorkspaceIDs []string
+	Host         string // GitHub host of the App registration that received the delivery
 	Owner        string
 	Name         string // repository name
 	Branch       string // check_run.check_suite.head_branch

@@ -105,7 +105,7 @@ func (s *autoMergeFailureThenReviewRequestService) MergePR(context.Context, stri
 
 func (s *autoMergeFailureThenReviewRequestService) MergePRForAutomation(
 	ctx context.Context,
-	_ string,
+	_, _ string,
 	owner, repo string,
 	number int,
 	method, _ string,

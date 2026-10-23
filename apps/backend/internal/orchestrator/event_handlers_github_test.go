@@ -25,6 +25,8 @@ type repoBranchCall struct {
 type mockGitHubService struct {
 	mu sync.Mutex
 
+	githubHosts []string
+
 	client                github.Client
 	taskPR                *github.TaskPR
 	taskPRs               []*github.TaskPR
@@ -134,13 +136,28 @@ type mockGitHubService struct {
 
 func (m *mockGitHubService) Client() github.Client { return m.client }
 
-func (m *mockGitHubService) InvalidatePRFeedbackForAutomation(context.Context, string, string, string, int) error {
+// recordHost captures the GitHub host every host-routed call received.
+func (m *mockGitHubService) recordHost(host string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.githubHosts = append(m.githubHosts, host)
+}
+
+func (m *mockGitHubService) recordedHosts() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.githubHosts...)
+}
+
+func (m *mockGitHubService) InvalidatePRFeedbackForAutomation(_ context.Context, _, host, _, _ string, _ int) error {
+	m.recordHost(host)
 	return nil
 }
 
 func (m *mockGitHubService) FindPRByBranchForWorkspace(
-	ctx context.Context, _, owner, repo, branch string,
+	ctx context.Context, _, host, owner, repo, branch string,
 ) (*github.PR, error) {
+	m.recordHost(host)
 	if m.client == nil {
 		return nil, nil
 	}
@@ -334,7 +351,8 @@ func (m *mockGitHubService) GetTaskPRByRepoAndNumber(_ context.Context, taskID, 
 	}
 	return nil, nil
 }
-func (m *mockGitHubService) IsReviewRequestedForLogin(context.Context, string, string, string, int, string) (bool, error) {
+func (m *mockGitHubService) IsReviewRequestedForLogin(_ context.Context, _, host, _, _ string, _ int, _ string) (bool, error) {
+	m.recordHost(host)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.lifecycleRequested, m.lifecycleReviewErr
@@ -376,8 +394,9 @@ func (m *mockGitHubService) GetPRFeedback(context.Context, string, string, int) 
 }
 
 func (m *mockGitHubService) GetPRFeedbackForAutomation(
-	ctx context.Context, _, owner, repo string, number int,
+	ctx context.Context, _, host, owner, repo string, number int,
 ) (*github.PRFeedback, error) {
+	m.recordHost(host)
 	return m.GetPRFeedback(ctx, owner, repo, number)
 }
 func (m *mockGitHubService) MergePR(context.Context, string, string, int, string) error {
@@ -386,8 +405,9 @@ func (m *mockGitHubService) MergePR(context.Context, string, string, int, string
 }
 
 func (m *mockGitHubService) MergePRForAutomation(
-	ctx context.Context, _, owner, repo string, number int, method, expectedHeadSHA string,
+	ctx context.Context, _, host, owner, repo string, number int, method, expectedHeadSHA string,
 ) error {
+	m.recordHost(host)
 	m.mergeExpectedHeadSHA = expectedHeadSHA
 	return m.MergePR(ctx, owner, repo, number, method)
 }
@@ -400,8 +420,9 @@ func (m *mockGitHubService) EnsurePRWatch(_ context.Context, _, taskID, reposito
 }
 
 func (m *mockGitHubService) EnsurePRWatchForWorkspace(
-	ctx context.Context, _, sessionID, taskID, repositoryID, owner, repo, branch string,
+	ctx context.Context, _, host, sessionID, taskID, repositoryID, owner, repo, branch string,
 ) (*github.PRWatch, error) {
+	m.recordHost(host)
 	return m.EnsurePRWatch(ctx, sessionID, taskID, repositoryID, owner, repo, branch)
 }
 func (m *mockGitHubService) GetPRWatchBySessionAndRepo(_ context.Context, _, _ string) (*github.PRWatch, error) {
@@ -443,8 +464,9 @@ func (m *mockGitHubService) CreatePRWatch(_ context.Context, _, taskID, reposito
 	return &github.PRWatch{}, nil
 }
 func (m *mockGitHubService) CreatePRWatchForWorkspace(
-	ctx context.Context, workspaceID, sessionID, taskID, repositoryID, owner, repo string, prNumber int, branch string,
+	ctx context.Context, workspaceID, host, sessionID, taskID, repositoryID, owner, repo string, prNumber int, branch string,
 ) (*github.PRWatch, error) {
+	m.recordHost(host)
 	m.lastCreateWatchWorkspaceID = workspaceID
 	return m.CreatePRWatch(ctx, sessionID, taskID, repositoryID, owner, repo, prNumber, branch)
 }
@@ -461,8 +483,9 @@ func (m *mockGitHubService) AssociatePRWithTask(_ context.Context, taskID, repos
 	return &github.TaskPR{}, nil
 }
 func (m *mockGitHubService) AssociatePRWithTaskForWorkspace(
-	ctx context.Context, workspaceID, taskID, repositoryID string, pr *github.PR,
+	ctx context.Context, workspaceID, host, taskID, repositoryID string, pr *github.PR,
 ) (*github.TaskPR, error) {
+	m.recordHost(host)
 	m.lastAssociateWorkspaceID = workspaceID
 	return m.AssociatePRWithTask(ctx, taskID, repositoryID, pr)
 }

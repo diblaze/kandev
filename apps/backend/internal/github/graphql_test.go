@@ -605,7 +605,7 @@ func TestRunBatchedPRQuery_PreservesMissingReposOnReviewThreadPaginationFailure(
 	if !errors.As(err, &missingErr) {
 		t.Fatalf("error = %v, want batchedMissingReposErr", err)
 	}
-	if len(missingErr.Repos) != 1 || missingErr.Repos[0] != (repoRef{Owner: "o", Repo: "dead"}) {
+	if len(missingErr.Repos) != 1 || missingErr.Repos[0] != (missingRepoRef{Owner: "o", Repo: "dead"}) {
 		t.Fatalf("missing repos = %#v, want o/dead", missingErr.Repos)
 	}
 	if missingErr.Inner == nil || !strings.Contains(missingErr.Inner.Error(), "missing repository alias") {

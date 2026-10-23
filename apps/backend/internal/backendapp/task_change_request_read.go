@@ -308,32 +308,39 @@ func (a githubTaskChangeRequestAdapter) ReadTaskChangeRequests(
 	if a.service == nil || task == nil {
 		return result
 	}
-	a.readGitHubTaskChangeRequests(ctx, task, &result)
-	a.readGitHubStatus(ctx, task, &result)
+	host := a.readGitHubTaskChangeRequests(ctx, task, &result)
+	a.readGitHubStatus(ctx, task, host, &result)
 	a.readGitHubAutomationSettings(ctx, task, &result)
 	finalizeTaskChangeRequestProviderResult(&result)
 	return result
 }
 
+// readGitHubTaskChangeRequests appends the task's pull requests and returns
+// the GitHub host of the first one; empty means github.com.
 func (a githubTaskChangeRequestAdapter) readGitHubTaskChangeRequests(
 	ctx context.Context, task *models.Task, result *taskChangeRequestProviderResult,
-) {
+) string {
 	byTask, err := a.service.ListTaskPRs(ctx, []string{task.ID})
 	if err != nil {
 		result.Errors = append(result.Errors, err)
-		return
+		return ""
 	}
+	host := ""
 	for _, pr := range byTask[task.ID] {
 		if pr != nil {
+			if host == "" {
+				host = pr.GitHubHost
+			}
 			result.ChangeRequests = append(result.ChangeRequests, githubTaskChangeRequest(pr))
 		}
 	}
+	return host
 }
 
 func (a githubTaskChangeRequestAdapter) readGitHubStatus(
-	ctx context.Context, task *models.Task, result *taskChangeRequestProviderResult,
+	ctx context.Context, task *models.Task, host string, result *taskChangeRequestProviderResult,
 ) {
-	authStatus, err := a.service.GetWorkspaceAuthStatus(ctx, task.WorkspaceID, "", "")
+	authStatus, err := a.service.GetWorkspaceAuthStatus(ctx, task.WorkspaceID, "", host)
 	if err != nil {
 		result.Errors = append(result.Errors, err)
 		return

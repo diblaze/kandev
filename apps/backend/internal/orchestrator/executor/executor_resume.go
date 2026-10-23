@@ -301,6 +301,7 @@ func (e *Executor) resolvePRBaseForLaunch(
 	lookup := PRBaseLookup{
 		TaskID: tr.TaskID, TaskRepositoryID: tr.ID, RepositoryID: tr.RepositoryID,
 		Number: info.PRNumber, CheckoutBranch: info.CheckoutBranch,
+		ProviderHost:  repo.ProviderHost,
 		AttachedOwner: repo.ProviderOwner, AttachedRepository: repo.ProviderName,
 		Target: expected,
 	}

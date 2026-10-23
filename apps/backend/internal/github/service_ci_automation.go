@@ -383,9 +383,9 @@ func (s *Service) ClearTaskCIError(ctx context.Context, taskID, repositoryID str
 }
 
 func (s *Service) IsReviewRequestedForLogin(
-	ctx context.Context, workspaceID, owner, repo string, prNumber int, login string,
+	ctx context.Context, workspaceID, host, owner, repo string, prNumber int, login string,
 ) (bool, error) {
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, owner, repo)
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host, owner, repo})
 	if err != nil {
 		return false, err
 	}
@@ -466,7 +466,7 @@ func (s *Service) resolveTaskPRAutomationClient(
 			return nil, err
 		}
 	}
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, pr.Owner, pr.Repo)
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{pr.GitHubHost, pr.Owner, pr.Repo})
 	if err != nil {
 		return nil, fmt.Errorf("resolve authenticated reviewer: %w", err)
 	}

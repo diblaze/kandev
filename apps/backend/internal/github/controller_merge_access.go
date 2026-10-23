@@ -12,7 +12,7 @@ func (c *Controller) httpGetRepoMergeAccess(ctx *gin.Context) {
 	ctx.Header("Cache-Control", "no-store")
 	access, err := c.service.GetRepoMergeAccessForWorkspace(
 		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx),
-		ctx.Param("owner"), ctx.Param("repo"),
+		ctx.Query(hostQueryParam), ctx.Param("owner"), ctx.Param("repo"),
 	)
 	if err == nil {
 		ctx.JSON(http.StatusOK, access)

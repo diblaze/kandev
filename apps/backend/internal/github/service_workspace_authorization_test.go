@@ -181,7 +181,7 @@ func TestGetPRForWorkspaceWithoutConnectionUsesAnonymousClient(t *testing.T) {
 	svc := NewService(&stubClient{getPRFunc: func(context.Context, string, string, int) (*PR, error) {
 		return &PR{Title: "ambient credential"}, nil
 	}}, AuthMethodPAT, nil, nil, nil, testLogger(t))
-	pr, err := svc.GetPRForWorkspace(context.Background(), "workspace-without-connection", "user-1", "acme", "private", 1)
+	pr, err := svc.GetPRForWorkspace(context.Background(), "workspace-without-connection", "user-1", "", "acme", "private", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestGetPRForAutomationUsesWorkspaceCredential(t *testing.T) {
 	svc := NewService(ambient, AuthMethodPAT, nil, nil, nil, testLogger(t))
 	configureTestWorkspaceAuth(t, svc, workspace, "workspace-1")
 
-	pr, err := svc.GetPRForAutomation(context.Background(), "workspace-1", "acme", "widgets", 42)
+	pr, err := svc.GetPRForAutomation(context.Background(), "workspace-1", "", "acme", "widgets", 42)
 	if err != nil {
 		t.Fatalf("GetPRForAutomation() error: %v", err)
 	}

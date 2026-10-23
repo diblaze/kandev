@@ -2838,6 +2838,9 @@ func buildOfficeFeatureServices(
 	}
 	skillSvc := officeskills.NewSkillService(repo, log, activity, agentSvc, cfgLoader)
 	skillSvc.SetUserSkillDirResolver(makeUserSkillDirResolver(agentRegistry))
+	if services.GitHub != nil {
+		skillSvc.SetGitHubRepoReader(services.GitHub)
+	}
 	projectSvc := officeprojects.NewProjectService(repo, log, activity)
 	costSvc := officecosts.NewCostService(repo, log, activity, agentSvc, agentSvc)
 	// Office service delegates budget evaluation (pre-execution + post-event)

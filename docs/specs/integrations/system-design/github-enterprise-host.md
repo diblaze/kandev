@@ -143,6 +143,10 @@ Each GitHub operation takes its host from the item it serves:
 | Webhook delivery | the receiving App registration's `github_host` |
 | Broker credential scope | `scope.Host` |
 
+A GitHub repository row with an empty `provider_host` is a `github.com`
+repository, because the repositories migration backfills it that way; a
+malformed `provider_host` fails the operation.
+
 The internal service resolves clients through one helper that takes a
 `repoRef{host, owner, name}`. Exported service methods that name an owner and
 repository take the host as an extra argument. Callers outside the GitHub
@@ -154,6 +158,9 @@ Review watches, issue watches, automation triggers, workflow sync, and Office
 config sync store one host. Polls, searches, and repository reads resolve the
 connection for that host. A watch whose host loses its connection records the
 host-not-connected error as its last error and keeps its configuration.
+Batched pull-request lookups run one batch per host. A repository-list
+workspace scope matches each entry's host (empty means `github.com`);
+organization scopes name owners only and apply to every host.
 
 ### Repository identity
 

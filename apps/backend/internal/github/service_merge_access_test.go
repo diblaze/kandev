@@ -23,11 +23,11 @@ func TestService_MergeAccessUsesTargetAndDoesNotCachePermissions(t *testing.T) {
 	service := newTestService(client)
 	configureTestWorkspaceAuth(t, service, client, testWorkspaceID)
 
-	access, err := service.GetRepoMergeAccessForWorkspace(context.Background(), testWorkspaceID, DefaultUserID, "upstream", "site")
+	access, err := service.GetRepoMergeAccessForWorkspace(context.Background(), testWorkspaceID, DefaultUserID, "", "upstream", "site")
 	require.NoError(t, err)
 	require.Equal(t, MergeAccessDenied, access.State)
 	seedMergeAccessRepository(client, "upstream", true, true)
-	access, err = service.GetRepoMergeAccessForWorkspace(context.Background(), testWorkspaceID, DefaultUserID, "upstream", "site")
+	access, err = service.GetRepoMergeAccessForWorkspace(context.Background(), testWorkspaceID, DefaultUserID, "", "upstream", "site")
 	require.NoError(t, err)
 	require.Equal(t, MergeAccessAllowed, access.State)
 }
@@ -48,7 +48,7 @@ func TestService_MergeAccessInstallationCapabilities(t *testing.T) {
 			service := newAppReviewRequestService(t, client, map[GitHubAppCapability]bool{
 				CapabilityGitWrite: tt.gitWrite, CapabilityPullRequestWrite: tt.prWrite,
 			})
-			access, err := service.GetRepoMergeAccessForWorkspace(context.Background(), "workspace-a", DefaultUserID, "upstream", "site")
+			access, err := service.GetRepoMergeAccessForWorkspace(context.Background(), "workspace-a", DefaultUserID, "", "upstream", "site")
 			require.NoError(t, err)
 			require.Equal(t, tt.want, access.State)
 			require.Equal(t, AuthPrincipalApp, access.Actor.Kind)
@@ -70,7 +70,7 @@ func TestService_MergeAccessDoesNotReplaceDeniedPersonalActorWithApp(t *testing.
 		},
 	}
 	service.resolver.SetUserProvider(fixedUserCredentialProvider{client: personal})
-	access, err := service.GetRepoMergeAccessForWorkspace(context.Background(), "workspace-a", DefaultUserID, "upstream", "site")
+	access, err := service.GetRepoMergeAccessForWorkspace(context.Background(), "workspace-a", DefaultUserID, "", "upstream", "site")
 	require.NoError(t, err)
 	require.Equal(t, MergeAccessDenied, access.State)
 	require.Equal(t, "contributor", access.Actor.Login)
@@ -103,7 +103,7 @@ func TestService_MergeAccessCannotConfirmIncompleteReads(t *testing.T) {
 			}
 			service := newTestService(tt.client)
 			configureTestWorkspaceAuth(t, service, tt.client, testWorkspaceID)
-			access, err := service.GetRepoMergeAccessForWorkspace(context.Background(), testWorkspaceID, DefaultUserID, "upstream", "site")
+			access, err := service.GetRepoMergeAccessForWorkspace(context.Background(), testWorkspaceID, DefaultUserID, "", "upstream", "site")
 			require.Equal(t, tt.wantErr, err != nil)
 			require.Equal(t, MergeAccessUnknown, access.State)
 		})
@@ -117,7 +117,7 @@ func TestService_MergeAccessRequiresWorkspaceAuthorization(t *testing.T) {
 	configureTestWorkspaceAuth(t, service, client, testWorkspaceID)
 	denied := errors.New("workspace access denied")
 	service.workspaceAuthorizer = func(context.Context, string) error { return denied }
-	access, err := service.GetRepoMergeAccessForWorkspace(context.Background(), testWorkspaceID, DefaultUserID, "upstream", "site")
+	access, err := service.GetRepoMergeAccessForWorkspace(context.Background(), testWorkspaceID, DefaultUserID, "", "upstream", "site")
 	require.ErrorIs(t, err, denied)
 	require.Equal(t, MergeAccessUnknown, access.State)
 	require.Nil(t, access.Actor)
@@ -134,7 +134,7 @@ func TestService_MergeAccessRejectsRepositoryOutsideWorkspaceScope(t *testing.T)
 	seedMergeAccessRepository(client, "upstream", true, true)
 	service := NewService(client, AuthMethodPAT, nil, store, nil, testLogger(t))
 	configureTestWorkspaceAuth(t, service, client, testWorkspaceID)
-	access, err := service.GetRepoMergeAccessForWorkspace(context.Background(), testWorkspaceID, DefaultUserID, "upstream", "site")
+	access, err := service.GetRepoMergeAccessForWorkspace(context.Background(), testWorkspaceID, DefaultUserID, "", "upstream", "site")
 	require.ErrorIs(t, err, ErrRepoNotResolvable)
 	require.Equal(t, MergeAccessUnknown, access.State)
 	require.Nil(t, access.Actor)

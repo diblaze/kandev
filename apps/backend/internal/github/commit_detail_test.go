@@ -103,7 +103,7 @@ func TestGetPRCommitDetailForWorkspaceUsesAuthorizedClient(t *testing.T) {
 	})
 	svc := newWorkspaceAuthenticatedTestService(t, client, nil, "workspace-1")
 
-	detail, err := svc.GetPRCommitDetailForWorkspace(context.Background(), "workspace-1", "", "acme", "widget", sha)
+	detail, err := svc.GetPRCommitDetailForWorkspace(context.Background(), "workspace-1", "", "", "acme", "widget", sha)
 	if err != nil {
 		t.Fatalf("GetPRCommitDetailForWorkspace: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestGetPRCommitDetailForWorkspaceRejectsUnsafeSHA(t *testing.T) {
 		return errors.New("workspace lookup should not run")
 	}}
 
-	_, err := svc.GetPRCommitDetailForWorkspace(context.Background(), "workspace-1", "", "acme", "widget", "main")
+	_, err := svc.GetPRCommitDetailForWorkspace(context.Background(), "workspace-1", "", "", "acme", "widget", "main")
 	if err == nil || !strings.Contains(err.Error(), "invalid commit SHA") {
 		t.Fatalf("error = %v, want invalid commit SHA before provider access", err)
 	}

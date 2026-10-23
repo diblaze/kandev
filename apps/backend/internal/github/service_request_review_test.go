@@ -202,15 +202,15 @@ func TestService_RequestReviewersForWorkspace_InvalidatesCorrespondingPersonalRe
 	configureTestWorkspaceAuth(t, service, client, "workspace-a")
 	ctx := context.Background()
 
-	if _, err := service.GetPRFeedbackForWorkspace(ctx, "workspace-a", "user-a", "o", "r", 1); err != nil {
+	if _, err := service.GetPRFeedbackForWorkspace(ctx, "workspace-a", "user-a", "", "o", "r", 1); err != nil {
 		t.Fatalf("prime feedback cache: %v", err)
 	}
-	if _, err := service.GetPRStatusForWorkspace(ctx, "workspace-a", "user-a", "o", "r", 1); err != nil {
+	if _, err := service.GetPRStatusForWorkspace(ctx, "workspace-a", "user-a", "", "o", "r", 1); err != nil {
 		t.Fatalf("prime status cache: %v", err)
 	}
 
 	principal, err := service.RequestReviewersForWorkspace(
-		ctx, "workspace-a", "user-a", "o", "r", 1, []string{"octocat"},
+		ctx, "workspace-a", "user-a", "", "o", "r", 1, []string{"octocat"},
 	)
 	if err != nil {
 		t.Fatalf("RequestReviewersForWorkspace: %v", err)
@@ -222,10 +222,10 @@ func TestService_RequestReviewersForWorkspace_InvalidatesCorrespondingPersonalRe
 		t.Fatalf("review requests = %#v", requests)
 	}
 
-	if _, err := service.GetPRFeedbackForWorkspace(ctx, "workspace-a", "user-a", "o", "r", 1); err != nil {
+	if _, err := service.GetPRFeedbackForWorkspace(ctx, "workspace-a", "user-a", "", "o", "r", 1); err != nil {
 		t.Fatalf("refetch feedback cache: %v", err)
 	}
-	if _, err := service.GetPRStatusForWorkspace(ctx, "workspace-a", "user-a", "o", "r", 1); err != nil {
+	if _, err := service.GetPRStatusForWorkspace(ctx, "workspace-a", "user-a", "", "o", "r", 1); err != nil {
 		t.Fatalf("refetch status cache: %v", err)
 	}
 	if client.feedbackCalls != 2 || client.statusCalls != 2 {
@@ -236,7 +236,7 @@ func TestService_RequestReviewersForWorkspace_InvalidatesCorrespondingPersonalRe
 func TestService_RequestReviewersForWorkspace_RejectsMissingAppWriteCapability(t *testing.T) {
 	service := newAppReviewRequestService(t, &stubClient{}, nil)
 	_, err := service.RequestReviewersForWorkspace(
-		context.Background(), "workspace-a", "user-a", "o", "r", 1, []string{"octocat"},
+		context.Background(), "workspace-a", "user-a", "", "o", "r", 1, []string{"octocat"},
 	)
 	if !errors.Is(err, ErrGitHubCapabilityDenied) {
 		t.Fatalf("RequestReviewersForWorkspace error = %v, want capability denied", err)
@@ -255,7 +255,7 @@ func TestService_RequestReviewersForWorkspace_RejectsRepositoryOutsideWorkspaceS
 	service := NewService(NewMockClient(), AuthMethodPAT, nil, store, nil, testLogger(t))
 	configureTestWorkspaceAuth(t, service, NewMockClient(), "workspace-a")
 	_, err := service.RequestReviewersForWorkspace(
-		context.Background(), "workspace-a", "user-a", "o", "outside", 1, []string{"octocat"},
+		context.Background(), "workspace-a", "user-a", "", "o", "outside", 1, []string{"octocat"},
 	)
 	if !errors.Is(err, ErrRepoNotResolvable) {
 		t.Fatalf("RequestReviewersForWorkspace error = %v, want repository scope denial", err)

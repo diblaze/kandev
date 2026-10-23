@@ -35,7 +35,7 @@ type taskPRAgentAutomationService interface {
 	GetTaskCIOptionsResponse(ctx context.Context, taskID string) (*github.TaskCIOptionsResponse, error)
 	GetTaskCIPRState(ctx context.Context, taskID, repositoryID string, prNumber int) (*github.TaskCIPRAutomationState, error)
 	RebindTaskPRReviewer(ctx context.Context, taskID string) (string, bool, error)
-	IsReviewRequestedForLogin(ctx context.Context, workspaceID, owner, repo string, prNumber int, login string) (bool, error)
+	IsReviewRequestedForLogin(ctx context.Context, workspaceID, host, owner, repo string, prNumber int, login string) (bool, error)
 	SetTaskPRReviewRequestState(ctx context.Context, taskID, repositoryID string, prNumber int, requested bool) error
 	SetTaskPRObservedState(ctx context.Context, taskID, repositoryID string, prNumber int, state string) error
 	RecordTaskPRLifecyclePrompt(ctx context.Context, prompt github.TaskPRLifecyclePrompt) error
@@ -170,7 +170,7 @@ func currentTaskPRReviewRequest(
 	if pr.PendingReviewCount > 0 {
 		var err error
 		requested, err = automation.IsReviewRequestedForLogin(
-			ctx, pr.WorkspaceID, pr.Owner, pr.Repo, pr.PRNumber, options.ReviewReviewerLogin,
+			ctx, pr.WorkspaceID, pr.GitHubHost, pr.Owner, pr.Repo, pr.PRNumber, options.ReviewReviewerLogin,
 		)
 		if err != nil {
 			return nil, err

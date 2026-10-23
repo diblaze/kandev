@@ -18,7 +18,7 @@ type fakeGitHubClients struct {
 }
 
 func (f fakeGitHubClients) ListRepoDirectoryForWorkspace(
-	ctx context.Context, _ string, owner, repo, path, ref string,
+	ctx context.Context, _, _ string, owner, repo, path, ref string,
 ) ([]github.RepoContentEntry, error) {
 	if f.client == nil {
 		return nil, github.ErrNoClient
@@ -27,7 +27,7 @@ func (f fakeGitHubClients) ListRepoDirectoryForWorkspace(
 }
 
 func (f fakeGitHubClients) GetRepoFileContentForWorkspace(
-	ctx context.Context, _ string, owner, repo, path, ref string,
+	ctx context.Context, _, _ string, owner, repo, path, ref string,
 ) ([]byte, error) {
 	if f.client == nil {
 		return nil, github.ErrNoClient

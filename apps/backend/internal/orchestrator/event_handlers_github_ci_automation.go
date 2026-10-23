@@ -316,7 +316,7 @@ func (s *Service) handleTaskPRCIAutoFix(ctx context.Context, pr *github.TaskPR, 
 		return !ciAutomationReadyToMerge(pr), ""
 	}
 	feedback, err := s.githubService.GetPRFeedbackForAutomation(
-		ctx, pr.WorkspaceID, pr.Owner, pr.Repo, pr.PRNumber,
+		ctx, pr.WorkspaceID, pr.GitHubHost, pr.Owner, pr.Repo, pr.PRNumber,
 	)
 	if err != nil {
 		return true, fmt.Sprintf("fetch PR feedback: %v", err)
@@ -461,7 +461,7 @@ func (s *Service) handleTaskPRCIAutoFixLegacy(ctx context.Context, pr *github.Ta
 		return !ciAutomationReadyToMerge(pr), ""
 	}
 	feedback, err := s.githubService.GetPRFeedbackForAutomation(
-		ctx, pr.WorkspaceID, pr.Owner, pr.Repo, pr.PRNumber,
+		ctx, pr.WorkspaceID, pr.GitHubHost, pr.Owner, pr.Repo, pr.PRNumber,
 	)
 	if err != nil {
 		return true, fmt.Sprintf("fetch PR feedback: %v", err)
@@ -653,7 +653,7 @@ func (s *Service) executeCIAutoMerge(
 	signature string,
 ) ciAutomationMergeOutcome {
 	if err := s.githubService.MergePRForAutomation(
-		ctx, pr.WorkspaceID, pr.Owner, pr.Repo, pr.PRNumber, "", pr.HeadSHA,
+		ctx, pr.WorkspaceID, pr.GitHubHost, pr.Owner, pr.Repo, pr.PRNumber, "", pr.HeadSHA,
 	); err != nil {
 		message := fmt.Sprintf("merge PR: %v", err)
 		if recordErr := s.githubService.RecordTaskCIMergeAttemptResult(

@@ -88,10 +88,10 @@ func (s *Service) LinkTaskIssueForUser(
 	if err != nil {
 		return nil, err
 	}
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, task.WorkspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, task.WorkspaceID, defaultGitHubHost, owner, repo); err != nil {
 		return nil, err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, task.WorkspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalReadClient(ctx, task.WorkspaceID, userID, repoRef{defaultGitHubHost, owner, repo})
 	if err != nil {
 		return nil, err
 	}

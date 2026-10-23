@@ -84,7 +84,7 @@ func TestGetPRFeedbackForWorkspace_PersistsMergedStateOverStaleRow(t *testing.T)
 	updated := subscribeTaskPRUpdated(t, svc)
 
 	if _, err := svc.GetPRFeedbackForWorkspace(
-		ctx, testWorkspaceID, "", feedbackSyncOwner, feedbackSyncRepo, 2408,
+		ctx, testWorkspaceID, "", "", feedbackSyncOwner, feedbackSyncRepo, 2408,
 	); err != nil {
 		t.Fatalf("GetPRFeedbackForWorkspace: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestGetPRFeedbackForWorkspace_PartialSyncKeepsUncomputedAggregates(t *testi
 
 	updated := subscribeTaskPRUpdated(t, svc)
 	if _, err := svc.GetPRFeedbackForWorkspace(
-		ctx, testWorkspaceID, "", feedbackSyncOwner, feedbackSyncRepo, 2408,
+		ctx, testWorkspaceID, "", "", feedbackSyncOwner, feedbackSyncRepo, 2408,
 	); err != nil {
 		t.Fatalf("GetPRFeedbackForWorkspace: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestGetPRFeedbackForWorkspace_CachedResponseDoesNotRewriteRow(t *testing.T)
 	updated := subscribeTaskPRUpdated(t, svc)
 	for i := range 3 {
 		if _, err := svc.GetPRFeedbackForWorkspace(
-			ctx, testWorkspaceID, "", feedbackSyncOwner, feedbackSyncRepo, 2408,
+			ctx, testWorkspaceID, "", "", feedbackSyncOwner, feedbackSyncRepo, 2408,
 		); err != nil {
 			t.Fatalf("GetPRFeedbackForWorkspace call %d: %v", i, err)
 		}
@@ -202,7 +202,7 @@ func TestGetPRFeedbackForWorkspace_CachedResponseDoesNotRewriteRow(t *testing.T)
 	}
 	// Cache hits must not touch the row at all.
 	if _, err := svc.GetPRFeedbackForWorkspace(
-		ctx, testWorkspaceID, "", feedbackSyncOwner, feedbackSyncRepo, 2408,
+		ctx, testWorkspaceID, "", "", feedbackSyncOwner, feedbackSyncRepo, 2408,
 	); err != nil {
 		t.Fatalf("GetPRFeedbackForWorkspace (cached): %v", err)
 	}
@@ -258,7 +258,7 @@ func TestGetPRFeedbackForWorkspace_DoesNotWriteOtherWorkspacesRows(t *testing.T)
 
 	updated := subscribeTaskPRUpdated(t, svc)
 	if _, err := svc.GetPRFeedbackForWorkspace(
-		ctx, testWorkspaceID, "", feedbackSyncOwner, feedbackSyncRepo, 2408,
+		ctx, testWorkspaceID, "", "", feedbackSyncOwner, feedbackSyncRepo, 2408,
 	); err != nil {
 		t.Fatalf("GetPRFeedbackForWorkspace: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestGetPRFeedbackForWorkspace_PersistFailureDoesNotFailTheRead(t *testing.T
 	}
 
 	feedback, err := svc.GetPRFeedbackForWorkspace(
-		ctx, testWorkspaceID, "", feedbackSyncOwner, feedbackSyncRepo, 2408,
+		ctx, testWorkspaceID, "", "", feedbackSyncOwner, feedbackSyncRepo, 2408,
 	)
 	if err != nil {
 		t.Fatalf("persist failure must not fail the feedback read: %v", err)

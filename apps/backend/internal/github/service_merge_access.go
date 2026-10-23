@@ -18,10 +18,10 @@ type RepoMergeAccess struct {
 }
 
 func (s *Service) GetRepoMergeAccessForWorkspace(
-	ctx context.Context, workspaceID, userID, owner, repo string,
+	ctx context.Context, workspaceID, userID, host, owner, repo string,
 ) (RepoMergeAccess, error) {
 	access := RepoMergeAccess{State: MergeAccessUnknown}
-	resolved, err := s.resolvePersonalWriteClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalWriteClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return access, err
 	}

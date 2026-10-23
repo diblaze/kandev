@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	executoridentity "github.com/kandev/kandev/internal/executors/identity"
 	"strings"
@@ -29,7 +30,7 @@ func (s *Service) CreateIssueWatchForWorkspace(
 	if err := s.authorizeWorkspaceAccess(ctx, req.WorkspaceID); err != nil {
 		return nil, err
 	}
-	if _, err := s.resolveAutomationClient(ctx, req.WorkspaceID, "", ""); err != nil {
+	if _, err := s.resolveAutomationClient(ctx, req.WorkspaceID, repoRef{host: req.GitHubHost}); err != nil {
 		return nil, err
 	}
 	return s.createIssueWatch(ctx, req)
@@ -59,10 +60,15 @@ func (s *Service) createIssueWatch(ctx context.Context, req *CreateIssueWatchReq
 	if !IsValidCleanupPolicy(req.CleanupPolicy) {
 		return nil, fmt.Errorf("invalid cleanup_policy: %q", req.CleanupPolicy)
 	}
+	host, err := normalizeGitHubHost(req.GitHubHost)
+	if err != nil {
+		return nil, err
+	}
 	iw := &IssueWatch{
 		WorkspaceID:         req.WorkspaceID,
 		WorkflowID:          req.WorkflowID,
 		WorkflowStepID:      req.WorkflowStepID,
+		GitHubHost:          host,
 		Repos:               repos,
 		AgentProfileID:      req.AgentProfileID,
 		ExecutorProfileID:   req.ExecutorProfileID,
@@ -159,6 +165,9 @@ func (s *Service) UpdateIssueWatch(ctx context.Context, id string, req *UpdateIs
 	if req.WorkflowStepID != nil {
 		iw.WorkflowStepID = *req.WorkflowStepID
 	}
+	if err := applyWatchHost(&iw.GitHubHost, req.GitHubHost); err != nil {
+		return err
+	}
 	if req.Repos != nil {
 		iw.Repos = *req.Repos
 	}
@@ -252,7 +261,8 @@ func (s *Service) CheckIssueWatch(ctx context.Context, watch *IssueWatch) ([]*Is
 		return nil, admissionErr
 	}
 
-	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, "", "")
+	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, repoRef{host: watch.GitHubHost})
+	s.recordWatchHostError(ctx, watch.ID, watch.LastError, err, s.store.SetIssueWatchLastError)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +273,7 @@ func (s *Service) CheckIssueWatch(ctx context.Context, watch *IssueWatch) ([]*Is
 		zap.String("custom_query", watch.CustomQuery),
 		zap.Bool("enabled", watch.Enabled))
 
-	settings, settingsErr := s.GetWorkspaceSettings(ctx, watch.WorkspaceID)
+	settings, settingsErr := s.workspaceSettingsForHost(ctx, watch.WorkspaceID, watch.GitHubHost)
 	if settingsErr != nil {
 		return nil, settingsErr
 	}
@@ -457,5 +467,27 @@ func (s *Service) publishNewIssueEvent(ctx context.Context, watch *IssueWatch, i
 	})
 	if err := s.eventBus.Publish(ctx, events.GitHubNewIssue, event); err != nil {
 		s.logger.Debug("failed to publish new issue event", zap.Error(err))
+	}
+}
+
+// recordWatchHostError stores a host-not-connected resolution failure as the
+// watch's last error and clears a recorded error once the host resolves.
+func (s *Service) recordWatchHostError(
+	ctx context.Context, watchID, lastError string, resolveErr error,
+	set func(context.Context, string, string) error,
+) {
+	if s.store == nil || watchID == "" {
+		return
+	}
+	cause := ""
+	var notConnected *HostNotConnectedError
+	switch {
+	case errors.As(resolveErr, &notConnected):
+		cause = notConnected.Error()
+	case resolveErr != nil || lastError == "":
+		return
+	}
+	if err := set(ctx, watchID, cause); err != nil {
+		s.logger.Debug("record watch host error failed", zap.String("watch_id", watchID), zap.Error(err))
 	}
 }

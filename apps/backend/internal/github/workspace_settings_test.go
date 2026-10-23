@@ -148,7 +148,7 @@ func TestService_SearchUserPRsPagedForWorkspace_FiltersToSelectedRepos(t *testin
 		t.Fatalf("save workspace settings: %v", err)
 	}
 
-	page, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "repo:other/repo is:open", 1, 25)
+	page, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "", "repo:other/repo is:open", 1, 25)
 	if err != nil {
 		t.Fatalf("search scoped prs: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestService_SearchUserPRsPagedForWorkspace_AppendsScopeToQuery(t *testing.T
 		t.Fatalf("save workspace settings: %v", err)
 	}
 
-	page, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "is:open", 1, 25)
+	page, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "", "is:open", 1, 25)
 	if err != nil {
 		t.Fatalf("search scoped prs: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestService_SearchUserPRsPagedForWorkspace_AppendsScopeToQuery(t *testing.T
 	assertSearchCalls(t, client.calls, "is:open", []string{"repo:kdlbs/kandev", "repo:kdlbs/docs"})
 	client.calls = nil
 
-	if _, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "review-requested:@me", "", 1, 25); err != nil {
+	if _, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "review-requested:@me", "", 1, 25); err != nil {
 		t.Fatalf("search scoped prs with preset filter: %v", err)
 	}
 	assertSearchCalls(t, client.calls, "review-requested:@me", []string{"repo:kdlbs/kandev", "repo:kdlbs/docs"})
@@ -236,7 +236,7 @@ func TestService_SearchUserPRsPagedForWorkspace_OrgScopeIncludesPersonalOwner(t 
 		t.Fatalf("save workspace settings: %v", err)
 	}
 
-	if _, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "is:open", 1, 25); err != nil {
+	if _, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "", "is:open", 1, 25); err != nil {
 		t.Fatalf("search scoped prs: %v", err)
 	}
 	assertSearchCalls(t, client.calls, "is:open", []string{"org:octo", "user:octo"})
@@ -265,7 +265,7 @@ func TestService_SearchUserPRsPagedForWorkspace_FanoutFetchesDeeperProviderPages
 		t.Fatalf("save workspace settings: %v", err)
 	}
 
-	page, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "is:open", 5, 25)
+	page, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "", "is:open", 5, 25)
 	if err != nil {
 		t.Fatalf("search scoped prs: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestService_SearchUserPRsPagedForWorkspace_OrgScopeDedupesFanoutTotal(t *te
 		t.Fatalf("save workspace settings: %v", err)
 	}
 
-	page, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "is:open", 1, 25)
+	page, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "", "is:open", 1, 25)
 	if err != nil {
 		t.Fatalf("search scoped prs: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestService_SearchUserPRsPagedForWorkspace_EmptyRepoScopeFailsClosed(t *tes
 		t.Fatalf("save workspace settings: %v", err)
 	}
 
-	page, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "is:open", 1, 25)
+	page, err := svc.SearchUserPRsPagedForWorkspace(ctx, "ws-1", "", "", "is:open", 1, 25)
 	if err != nil {
 		t.Fatalf("search scoped prs: %v", err)
 	}
@@ -466,7 +466,7 @@ func TestService_SearchUserIssuesPagedForWorkspace_AllScopePreservesResults(t *t
 	store := newTestStore(t)
 	svc := newWorkspaceAuthenticatedTestService(t, client, store, "ws-1")
 
-	page, err := svc.SearchUserIssuesPagedForWorkspace(context.Background(), "ws-1", "", "is:open", 1, 25)
+	page, err := svc.SearchUserIssuesPagedForWorkspace(context.Background(), "ws-1", "", "", "is:open", 1, 25)
 	if err != nil {
 		t.Fatalf("search scoped issues: %v", err)
 	}
@@ -502,7 +502,7 @@ func TestService_SearchUserIssuesPagedForWorkspace_FansOutSelectedRepos(t *testi
 		t.Fatalf("save workspace settings: %v", err)
 	}
 
-	page, err := svc.SearchUserIssuesPagedForWorkspace(ctx, "ws-1", "", "is:open", 1, 25)
+	page, err := svc.SearchUserIssuesPagedForWorkspace(ctx, "ws-1", "", "", "is:open", 1, 25)
 	if err != nil {
 		t.Fatalf("search scoped issues: %v", err)
 	}

@@ -26,11 +26,11 @@ import (
 // its own watch row. Multi-branch tasks store one watch per branch so a
 // secondary branch's push isn't lost behind the primary's existing watch.
 func (s *Service) CreatePRWatch(ctx context.Context, sessionID, taskID, repositoryID, owner, repo string, prNumber int, branch string) (*PRWatch, error) {
-	return s.createPRWatch(ctx, "", sessionID, taskID, repositoryID, owner, repo, prNumber, branch)
+	return s.createPRWatch(ctx, "", "", sessionID, taskID, repositoryID, owner, repo, prNumber, branch)
 }
 
 func (s *Service) CreatePRWatchForWorkspace(
-	ctx context.Context, workspaceID, sessionID, taskID, repositoryID, owner, repo string, prNumber int, branch string,
+	ctx context.Context, workspaceID, host, sessionID, taskID, repositoryID, owner, repo string, prNumber int, branch string,
 ) (*PRWatch, error) {
 	if strings.TrimSpace(workspaceID) == "" {
 		return nil, ErrGitHubWorkspaceRequired
@@ -38,11 +38,11 @@ func (s *Service) CreatePRWatchForWorkspace(
 	if err := s.authorizeWorkspaceAccess(ctx, workspaceID); err != nil {
 		return nil, err
 	}
-	return s.createPRWatch(ctx, workspaceID, sessionID, taskID, repositoryID, owner, repo, prNumber, branch)
+	return s.createPRWatch(ctx, workspaceID, host, sessionID, taskID, repositoryID, owner, repo, prNumber, branch)
 }
 
 func (s *Service) createPRWatch(
-	ctx context.Context, workspaceID, sessionID, taskID, repositoryID, owner, repo string, prNumber int, branch string,
+	ctx context.Context, workspaceID, host, sessionID, taskID, repositoryID, owner, repo string, prNumber int, branch string,
 ) (*PRWatch, error) {
 	// Evict any negative-cache entry up front. Caller intent on either
 	// branch (creating a new watch or re-finding an existing one) is "I
@@ -66,6 +66,7 @@ func (s *Service) createPRWatch(
 	}
 	w := &PRWatch{
 		WorkspaceID:  workspaceID,
+		GitHubHost:   host,
 		SessionID:    sessionID,
 		TaskID:       taskID,
 		RepositoryID: repositoryID,
@@ -245,7 +246,7 @@ func (s *Service) CheckPRWatchForWorkspace(ctx context.Context, watch *PRWatch) 
 	if watch == nil || strings.TrimSpace(watch.WorkspaceID) == "" {
 		return nil, false, ErrGitHubWorkspaceRequired
 	}
-	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, watch.Owner, watch.Repo)
+	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, repoRef{watch.GitHubHost, watch.Owner, watch.Repo})
 	if err != nil {
 		return nil, false, err
 	}
@@ -331,20 +332,20 @@ func prWatchFeedbackWatermark(watch *PRWatch, status *PRStatus) *time.Time {
 // so each branch gets its own watch — keying on (session, repo) alone
 // drops secondary branches' watches behind the primary's existing row.
 func (s *Service) EnsurePRWatch(ctx context.Context, sessionID, taskID, repositoryID, owner, repo, branch string) (*PRWatch, error) {
-	return s.ensurePRWatch(ctx, "", sessionID, taskID, repositoryID, owner, repo, branch)
+	return s.ensurePRWatch(ctx, "", "", sessionID, taskID, repositoryID, owner, repo, branch)
 }
 
 func (s *Service) EnsurePRWatchForWorkspace(
-	ctx context.Context, workspaceID, sessionID, taskID, repositoryID, owner, repo, branch string,
+	ctx context.Context, workspaceID, host, sessionID, taskID, repositoryID, owner, repo, branch string,
 ) (*PRWatch, error) {
 	if strings.TrimSpace(workspaceID) == "" {
 		return nil, ErrGitHubWorkspaceRequired
 	}
-	return s.ensurePRWatch(ctx, workspaceID, sessionID, taskID, repositoryID, owner, repo, branch)
+	return s.ensurePRWatch(ctx, workspaceID, host, sessionID, taskID, repositoryID, owner, repo, branch)
 }
 
 func (s *Service) ensurePRWatch(
-	ctx context.Context, workspaceID, sessionID, taskID, repositoryID, owner, repo, branch string,
+	ctx context.Context, workspaceID, host, sessionID, taskID, repositoryID, owner, repo, branch string,
 ) (*PRWatch, error) {
 	// Same up-front eviction as CreatePRWatch — see that function for the
 	// rationale. The existing-watch early-return path must not inherit a
@@ -370,6 +371,7 @@ func (s *Service) ensurePRWatch(
 	}
 	w := &PRWatch{
 		WorkspaceID:  workspaceID,
+		GitHubHost:   host,
 		SessionID:    sessionID,
 		TaskID:       taskID,
 		RepositoryID: repositoryID,
@@ -405,18 +407,18 @@ func (s *Service) AssociatePRWithTask(ctx context.Context, taskID, repositoryID 
 	// pr here comes from branch-search discovery (poller.detectPRForWatch) or
 	// a batched status result of unknown populated-ness — never assert
 	// outcomeFieldsPopulated for this wrapper's callers (AC-11).
-	return s.associatePRWithTask(ctx, "", taskID, repositoryID, pr, false, false, TaskPRSourceWatch)
+	return s.associatePRWithTask(ctx, "", "", taskID, repositoryID, pr, false, false, TaskPRSourceWatch)
 }
 
 // AssociatePRWithTaskForWorkspace is the workspace-scoped variant of
 // AssociatePRWithTask; `repositoryID` is repositories.ID, same as there.
 func (s *Service) AssociatePRWithTaskForWorkspace(
-	ctx context.Context, workspaceID, taskID, repositoryID string, pr *PR,
+	ctx context.Context, workspaceID, host, taskID, repositoryID string, pr *PR,
 ) (*TaskPR, error) {
 	if strings.TrimSpace(workspaceID) == "" {
 		return nil, ErrGitHubWorkspaceRequired
 	}
-	return s.associatePRWithTask(ctx, workspaceID, taskID, repositoryID, pr, false, false, TaskPRSourceWatch)
+	return s.associatePRWithTask(ctx, workspaceID, host, taskID, repositoryID, pr, false, false, TaskPRSourceWatch)
 }
 
 // resolveEffectiveAssociationTaskID redirects a watch-sourced association
@@ -551,15 +553,15 @@ func (s *Service) reconcileTaskPROwnership(
 // workspace-group owner before anything else runs when source is
 // TaskPRSourceWatch — see resolveEffectiveAssociationTaskID.
 func (s *Service) associatePRWithTask(
-	ctx context.Context, workspaceID, taskID, repositoryID string, pr *PR,
+	ctx context.Context, workspaceID, host, taskID, repositoryID string, pr *PR,
 	restoreDetached, outcomeFieldsPopulated bool, source string,
 ) (*TaskPR, error) {
-	return s.associatePRWithTaskForSession(ctx, workspaceID, "", taskID, repositoryID, pr,
+	return s.associatePRWithTaskForSession(ctx, workspaceID, host, "", taskID, repositoryID, pr,
 		restoreDetached, outcomeFieldsPopulated, source)
 }
 
 func (s *Service) associatePRWithTaskForSession(
-	ctx context.Context, workspaceID, sessionID, taskID, repositoryID string, pr *PR,
+	ctx context.Context, workspaceID, host, sessionID, taskID, repositoryID string, pr *PR,
 	restoreDetached, outcomeFieldsPopulated bool, source string,
 ) (*TaskPR, error) {
 	originalTaskID := taskID
@@ -613,6 +615,7 @@ func (s *Service) associatePRWithTaskForSession(
 		WorkspaceID:       workspaceID,
 		TaskID:            taskID,
 		RepositoryID:      repositoryID,
+		GitHubHost:        host,
 		Owner:             pr.RepoOwner,
 		Repo:              pr.RepoName,
 		PRNumber:          pr.Number,
@@ -689,7 +692,7 @@ func (s *Service) AssociateExistingPRByURL(ctx context.Context, taskID, reposito
 	if err != nil {
 		return nil, fmt.Errorf("fetch PR: %w", err)
 	}
-	tp, err := s.associatePRWithTask(ctx, "", taskID, repositoryID, pr, true, true, TaskPRSourceURLLink)
+	tp, err := s.associatePRWithTask(ctx, "", "", taskID, repositoryID, pr, true, true, TaskPRSourceURLLink)
 	if err != nil {
 		return nil, fmt.Errorf("associate PR with task: %w", err)
 	}
@@ -708,10 +711,10 @@ func (s *Service) AssociateExistingPRByURLForWorkspace(
 	if err := s.validateTaskRepositoryID(ctx, taskID, repositoryID); err != nil {
 		return nil, err
 	}
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, defaultGitHubHost, owner, repo); err != nil {
 		return nil, err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{defaultGitHubHost, owner, repo})
 	if err != nil {
 		return nil, err
 	}
@@ -719,7 +722,7 @@ func (s *Service) AssociateExistingPRByURLForWorkspace(
 	if err != nil {
 		return nil, fmt.Errorf("fetch PR: %w", err)
 	}
-	tp, err := s.associatePRWithTask(ctx, workspaceID, taskID, repositoryID, pr, true, true, TaskPRSourceURLLink)
+	tp, err := s.associatePRWithTask(ctx, workspaceID, defaultGitHubHost, taskID, repositoryID, pr, true, true, TaskPRSourceURLLink)
 	if err != nil {
 		return nil, fmt.Errorf("associate PR with task: %w", err)
 	}
@@ -769,7 +772,7 @@ func (s *Service) AssociatePRByURL(ctx context.Context, sessionID, taskID, repos
 	}
 
 	// Associate PR with task (persists + publishes WS event)
-	if _, assocErr := s.associatePRWithTaskForSession(ctx, "", sessionID, taskID, repositoryID, pr, true, true, TaskPRSourceWatch); assocErr != nil {
+	if _, assocErr := s.associatePRWithTaskForSession(ctx, "", "", sessionID, taskID, repositoryID, pr, true, true, TaskPRSourceWatch); assocErr != nil {
 		s.logger.Error("failed to associate PR with task after creation",
 			zap.String("task_id", effectiveTaskID), zap.Error(assocErr))
 	}
@@ -785,10 +788,10 @@ func (s *Service) AssociatePRByURLForWorkspace(
 	if err := s.validateTaskRepositoryID(ctx, taskID, repositoryID); err != nil {
 		return err
 	}
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, defaultGitHubHost, owner, repo); err != nil {
 		return err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, owner, repo)
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{defaultGitHubHost, owner, repo})
 	if err != nil {
 		return err
 	}
@@ -805,11 +808,11 @@ func (s *Service) AssociatePRByURLForWorkspace(
 	// row never syncs.
 	effectiveTaskID := s.resolveEffectiveAssociationTaskIDForSession(ctx, sessionID, taskID, repositoryID)
 	if _, err := s.CreatePRWatchForWorkspace(
-		ctx, workspaceID, sessionID, effectiveTaskID, repositoryID, owner, repo, prNumber, branch,
+		ctx, workspaceID, defaultGitHubHost, sessionID, effectiveTaskID, repositoryID, owner, repo, prNumber, branch,
 	); err != nil {
 		return fmt.Errorf("create PR watch: %w", err)
 	}
-	if _, err := s.associatePRWithTaskForSession(ctx, workspaceID, sessionID, taskID, repositoryID, pr, true, true, TaskPRSourceWatch); err != nil {
+	if _, err := s.associatePRWithTaskForSession(ctx, workspaceID, defaultGitHubHost, sessionID, taskID, repositoryID, pr, true, true, TaskPRSourceWatch); err != nil {
 		return fmt.Errorf("associate PR with task: %w", err)
 	}
 	return nil
@@ -1122,7 +1125,7 @@ func (s *Service) applyPassiveFallbackSnapshot(ctx context.Context, watch *PRWat
 	}
 	if existing == nil {
 		if _, err := s.associatePRWithTaskForSession(
-			ctx, watch.WorkspaceID, watch.SessionID, watch.TaskID, watch.RepositoryID, status.PR,
+			ctx, watch.WorkspaceID, watch.GitHubHost, watch.SessionID, watch.TaskID, watch.RepositoryID, status.PR,
 			false, false, TaskPRSourceWatch,
 		); err != nil {
 			return err
@@ -1774,7 +1777,7 @@ func (s *Service) fetchRequiredReviewsForTaskPR(ctx context.Context, tp *TaskPR,
 	if tp.WorkspaceID == "" {
 		return s.fetchRequiredReviews(ctx, tp.Owner, tp.Repo, branch)
 	}
-	return s.fetchRequiredReviewsForWorkspace(ctx, tp.WorkspaceID, tp.Owner, tp.Repo, branch)
+	return s.fetchRequiredReviewsForWorkspace(ctx, tp.WorkspaceID, tp.GitHubHost, tp.Owner, tp.Repo, branch)
 }
 
 // TriggerPRSync performs an immediate PR status sync for a task. Single-repo
@@ -1906,7 +1909,7 @@ func (s *Service) areAllWatchesPermanentlyMissing(ctx context.Context, watches [
 		return false
 	}
 	for _, w := range watches {
-		resolved, err := s.resolveAutomationClient(ctx, w.WorkspaceID, w.Owner, w.Repo)
+		resolved, err := s.resolveAutomationClient(ctx, w.WorkspaceID, repoRef{w.GitHubHost, w.Owner, w.Repo})
 		if err != nil || !s.isRepoCachedAsMissingForScope(resolved.CacheScope, w.Owner, w.Repo) {
 			return false
 		}
@@ -1989,7 +1992,7 @@ func (s *Service) triggerPRDetectionWithOptions(
 	if watch == nil || strings.TrimSpace(watch.WorkspaceID) == "" {
 		return nil, ErrGitHubWorkspaceRequired
 	}
-	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, watch.Owner, watch.Repo)
+	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, repoRef{watch.GitHubHost, watch.Owner, watch.Repo})
 	if err != nil {
 		return nil, err
 	}
@@ -2122,7 +2125,7 @@ func (s *Service) detectPRForWatchOnce(
 		return nil, fmt.Errorf("update PR watch: %w", err)
 	}
 	if _, assocErr := s.associatePRWithTaskForSession(
-		ctx, watch.WorkspaceID, watch.SessionID, watch.TaskID, watch.RepositoryID, pr,
+		ctx, watch.WorkspaceID, watch.GitHubHost, watch.SessionID, watch.TaskID, watch.RepositoryID, pr,
 		false, false, TaskPRSourceWatch,
 	); assocErr != nil {
 		s.logSyncError("failed to associate PR with task during sync", assocErr,
@@ -2162,7 +2165,7 @@ func (s *Service) triggerPRStatusSyncWithOptions(
 		rawTaskID = watch.TaskID
 	}
 	taskID = s.reconcileTaskPROwnership(ctx, watch.SessionID, rawTaskID, watch.RepositoryID, watch.PRNumber)
-	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, watch.Owner, watch.Repo)
+	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, repoRef{watch.GitHubHost, watch.Owner, watch.Repo})
 	if err != nil {
 		return nil, err
 	}
@@ -2264,7 +2267,7 @@ func (s *Service) ensurePRStatusAssociation(
 	// SyncTaskPR may publish again if status fields changed. That double event
 	// is harmless because clients re-fetch state.
 	_, assocErr := s.associatePRWithTaskForSession(
-		ctx, watch.WorkspaceID, watch.SessionID, rawTaskID, watch.RepositoryID, status.PR,
+		ctx, watch.WorkspaceID, watch.GitHubHost, watch.SessionID, rawTaskID, watch.RepositoryID, status.PR,
 		false, false, TaskPRSourceWatch,
 	)
 	return assocErr

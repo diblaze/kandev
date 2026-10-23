@@ -23,7 +23,7 @@ const (
 type gitHubCredentialSource interface {
 	GitCredentialResolver() gitcredentials.Resolver
 	VerifyContributionDestinationForWorkspace(
-		context.Context, string, string, string, string, string, string, string,
+		context.Context, string, string, string, string, string, string, string, string,
 	) error
 }
 

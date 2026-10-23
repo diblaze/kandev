@@ -46,7 +46,7 @@ func (f *fakeManagedGitHub) DescribeTaskGitCredentialPolicy(context.Context, str
 	return f.policy, f.policyErr
 }
 
-func (f *fakeManagedGitHub) ProbeContributionForkCapabilityForWorkspace(context.Context, string, string, string) (github.ContributionForkResolution, error) {
+func (f *fakeManagedGitHub) ProbeContributionForkCapabilityForWorkspace(context.Context, string, string, string, string) (github.ContributionForkResolution, error) {
 	f.probed = true
 	return f.result, f.resultErr
 }

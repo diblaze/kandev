@@ -2,17 +2,20 @@ package skills
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/kandev/kandev/internal/github"
 	"github.com/kandev/kandev/internal/office/models"
 )
 
@@ -55,8 +58,28 @@ func (f *httpFetcher) Fetch(ctx context.Context, url string) ([]byte, int, error
 	return body, resp.StatusCode, nil
 }
 
-// ParsedSource holds the result of parsing a source string.
+// GitHubRepoReader reads repository contents through a workspace's GitHub
+// connection for a host. Satisfied by github.Service.
+type GitHubRepoReader interface {
+	ListRepoDirectoryForWorkspace(
+		ctx context.Context, workspaceID, host, owner, repo, path, ref string,
+	) ([]github.RepoContentEntry, error)
+	GetRepoFileContentForWorkspace(
+		ctx context.Context, workspaceID, host, owner, repo, path, ref string,
+	) ([]byte, error)
+}
+
+var _ GitHubRepoReader = (*github.Service)(nil)
+
+// SetGitHubRepoReader wires the reader used for GitHub Enterprise sources.
+func (s *SkillService) SetGitHubRepoReader(reader GitHubRepoReader) {
+	s.githubRepos = reader
+}
+
+// ParsedSource holds the result of parsing a source string. Host is set for a
+// GitHub host other than github.com.
 type ParsedSource struct {
+	Host       string
 	Owner      string
 	Repo       string
 	Slug       string
@@ -82,6 +105,9 @@ func ParseSource(source string) (*ParsedSource, error) {
 	}
 	if strings.HasPrefix(source, "https://github.com/") {
 		return parseGitHubURL(source)
+	}
+	if strings.HasPrefix(source, "https://") {
+		return parseEnterpriseGitHubURL(source)
 	}
 	if m := orgRepoSlugRe.FindStringSubmatch(source); m != nil {
 		return &ParsedSource{
@@ -109,7 +135,30 @@ func parseSkillsShURL(source string) (*ParsedSource, error) {
 }
 
 func parseGitHubURL(source string) (*ParsedSource, error) {
-	trimmed := strings.TrimPrefix(source, "https://github.com/")
+	return parseGitHubPath(source, strings.TrimPrefix(source, "https://github.com/"))
+}
+
+// parseEnterpriseGitHubURL accepts https://<host>/<owner>/<repo>[/tree/...]
+// for a GitHub Enterprise host; the import reads it through the workspace
+// connection for that host, which fails when the host is not connected.
+func parseEnterpriseGitHubURL(source string) (*ParsedSource, error) {
+	host, err := github.WebHostFromURL(source)
+	if err != nil {
+		return nil, fmt.Errorf("unrecognized source format: %q", source)
+	}
+	parsed, err := url.Parse(source)
+	if err != nil {
+		return nil, fmt.Errorf("unrecognized source format: %q", source)
+	}
+	ps, err := parseGitHubPath(source, strings.TrimPrefix(parsed.Path, "/"))
+	if err != nil {
+		return nil, err
+	}
+	ps.Host = host
+	return ps, nil
+}
+
+func parseGitHubPath(source, trimmed string) (*ParsedSource, error) {
 	trimmed = strings.TrimSuffix(trimmed, "/")
 	// Handle tree paths like org/repo/tree/main/skills/slug
 	parts := strings.SplitN(trimmed, "/", 6)
@@ -227,6 +276,12 @@ func (s *SkillService) importLocal(ctx context.Context, wsID, localPath string) 
 func (s *SkillService) importFromGitHub(
 	ctx context.Context, wsID string, ps *ParsedSource, fetcher GitHubFetcher,
 ) (*SkillImportResult, error) {
+	if ps.Host != "" {
+		if s.githubRepos == nil {
+			return nil, fmt.Errorf("importing from GitHub host %q is not available", ps.Host)
+		}
+		fetcher = &workspaceRepoFetcher{reader: s.githubRepos, workspaceID: wsID, ps: ps}
+	}
 	if ps.Slug != "" {
 		return s.importSingleSkill(ctx, wsID, ps, fetcher)
 	}
@@ -274,7 +329,7 @@ func (s *SkillService) importRepoSkills(
 	result := &SkillImportResult{}
 	for _, slug := range slugs {
 		sps := &ParsedSource{
-			Owner: ps.Owner, Repo: ps.Repo, Slug: slug,
+			Host: ps.Host, Owner: ps.Owner, Repo: ps.Repo, Slug: slug,
 			SourceType: ps.SourceType,
 		}
 		r, err := s.importSingleSkill(ctx, wsID, sps, fetcher)
@@ -298,12 +353,15 @@ func buildSourceLocator(ps *ParsedSource) string {
 	if ps.SourceType == "skills_sh" {
 		return fmt.Sprintf("https://skills.sh/%s/%s/%s", ps.Owner, ps.Repo, ps.Slug)
 	}
-	return fmt.Sprintf("https://github.com/%s/%s", ps.Owner, ps.Repo)
+	return fmt.Sprintf("https://%s/%s/%s", cmp.Or(ps.Host, "github.com"), ps.Owner, ps.Repo)
 }
 
 func fetchSkillMD(
 	ctx context.Context, owner, repo, slug string, fetcher GitHubFetcher,
 ) (string, error) {
+	if repoFetcher, ok := fetcher.(*workspaceRepoFetcher); ok {
+		return repoFetcher.skillMD(ctx, slug)
+	}
 	for _, branch := range []string{"main", "master"} {
 		url := fmt.Sprintf(
 			"https://raw.githubusercontent.com/%s/%s/%s/skills/%s/SKILL.md",
@@ -325,6 +383,9 @@ func fetchSkillMD(
 func discoverSkillSlugs(
 	ctx context.Context, owner, repo string, fetcher GitHubFetcher,
 ) ([]string, error) {
+	if repoFetcher, ok := fetcher.(*workspaceRepoFetcher); ok {
+		return repoFetcher.skillSlugs(ctx)
+	}
 	// Use the GitHub API to list the skills directory tree.
 	url := fmt.Sprintf(
 		"https://api.github.com/repos/%s/%s/contents/skills", owner, repo,
@@ -434,4 +495,42 @@ func (s *SkillService) basePath() string {
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".kandev")
+}
+
+// workspaceRepoFetcher reads one enterprise repository's skills through the
+// workspace connection for its host, on the default branch.
+type workspaceRepoFetcher struct {
+	reader      GitHubRepoReader
+	workspaceID string
+	ps          *ParsedSource
+}
+
+func (f *workspaceRepoFetcher) Fetch(context.Context, string) ([]byte, int, error) {
+	return nil, 0, fmt.Errorf("raw fetch is not used for GitHub host %q", f.ps.Host)
+}
+
+func (f *workspaceRepoFetcher) skillMD(ctx context.Context, slug string) (string, error) {
+	content, err := f.reader.GetRepoFileContentForWorkspace(
+		ctx, f.workspaceID, f.ps.Host, f.ps.Owner, f.ps.Repo, "skills/"+slug+"/SKILL.md", "",
+	)
+	if err != nil {
+		return "", fmt.Errorf("SKILL.md not found for %s/%s/skills/%s: %w", f.ps.Owner, f.ps.Repo, slug, err)
+	}
+	return string(content), nil
+}
+
+func (f *workspaceRepoFetcher) skillSlugs(ctx context.Context) ([]string, error) {
+	entries, err := f.reader.ListRepoDirectoryForWorkspace(
+		ctx, f.workspaceID, f.ps.Host, f.ps.Owner, f.ps.Repo, "skills", "",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not list skills directory: %w", err)
+	}
+	var slugs []string
+	for _, entry := range entries {
+		if entry.Type == github.RepoContentTypeDir {
+			slugs = append(slugs, entry.Name)
+		}
+	}
+	return slugs, nil
 }

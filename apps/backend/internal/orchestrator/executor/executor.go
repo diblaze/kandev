@@ -1477,9 +1477,11 @@ func NewPRBaseResolutionError(cause error, knownCrossRepository, invalidAssociat
 
 // PRBaseLookup ties a provider lookup to one task-repository attachment.
 type PRBaseLookup struct {
-	TaskID             string
-	TaskRepositoryID   string
-	RepositoryID       string
+	TaskID           string
+	TaskRepositoryID string
+	RepositoryID     string
+	// ProviderHost is the attached repository's provider_host as stored.
+	ProviderHost       string
 	Number             int
 	CheckoutBranch     string
 	AttachedOwner      string

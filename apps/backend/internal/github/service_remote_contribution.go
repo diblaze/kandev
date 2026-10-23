@@ -24,7 +24,7 @@ func (s *Service) ResolveRemoteContributionForWorkspace(
 	if err != nil {
 		return nil, err
 	}
-	pr, err := s.GetPRForWorkspace(ctx, workspaceID, userID, owner, repo, number)
+	pr, err := s.GetPRForWorkspace(ctx, workspaceID, userID, defaultGitHubHost, owner, repo, number)
 	if err != nil {
 		return nil, fmt.Errorf("resolve GitHub pull request: %w", err)
 	}

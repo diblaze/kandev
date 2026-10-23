@@ -925,7 +925,7 @@ func TestMatchesMergedRepo(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := matchesMergedRepo(tt.owner, tt.repo, tt.cfg)
+			got := matchesMergedRepo("", tt.owner, tt.repo, tt.cfg)
 			if got != tt.want {
 				t.Fatalf("matchesMergedRepo(%q, %q, ...) = %v, want %v", tt.owner, tt.repo, got, tt.want)
 			}

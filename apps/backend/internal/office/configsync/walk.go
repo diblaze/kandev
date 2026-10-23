@@ -40,10 +40,10 @@ type DirEntry struct {
 // Satisfied by github.Service.
 type GitHubClientProvider interface {
 	ListRepoDirectoryForWorkspace(
-		ctx context.Context, workspaceID, owner, repo, path, ref string,
+		ctx context.Context, workspaceID, host, owner, repo, path, ref string,
 	) ([]github.RepoContentEntry, error)
 	GetRepoFileContentForWorkspace(
-		ctx context.Context, workspaceID, owner, repo, path, ref string,
+		ctx context.Context, workspaceID, host, owner, repo, path, ref string,
 	) ([]byte, error)
 }
 
@@ -412,7 +412,9 @@ func (w *walker) list(ctx context.Context, cfg *Config, dir string) ([]DirEntry,
 		if w.gh == nil {
 			return nil, fmt.Errorf("config sync: github integration is not connected for this workspace")
 		}
-		entries, err := w.gh.ListRepoDirectoryForWorkspace(ctx, cfg.WorkspaceID, cfg.RepoOwner, cfg.RepoName, dir, cfg.Branch)
+		entries, err := w.gh.ListRepoDirectoryForWorkspace(
+			ctx, cfg.WorkspaceID, cfg.GitHubHost, cfg.RepoOwner, cfg.RepoName, dir, cfg.Branch,
+		)
 		if err != nil {
 			return nil, classifyFetchErr(err)
 		}
@@ -451,7 +453,9 @@ func (w *walker) fetch(ctx context.Context, cfg *Config, filePath string) ([]byt
 		if w.gh == nil {
 			return nil, fmt.Errorf("config sync: github integration is not connected for this workspace")
 		}
-		content, err = w.gh.GetRepoFileContentForWorkspace(ctx, cfg.WorkspaceID, cfg.RepoOwner, cfg.RepoName, filePath, cfg.Branch)
+		content, err = w.gh.GetRepoFileContentForWorkspace(
+			ctx, cfg.WorkspaceID, cfg.GitHubHost, cfg.RepoOwner, cfg.RepoName, filePath, cfg.Branch,
+		)
 	case ProviderGitLab:
 		if w.gl == nil {
 			return nil, fmt.Errorf("config sync: gitlab integration is not connected for this workspace")

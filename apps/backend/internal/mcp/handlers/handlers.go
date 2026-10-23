@@ -22,6 +22,7 @@ import (
 	"github.com/kandev/kandev/internal/coordinator"
 	"github.com/kandev/kandev/internal/events"
 	"github.com/kandev/kandev/internal/events/bus"
+	"github.com/kandev/kandev/internal/github"
 	mcpscope "github.com/kandev/kandev/internal/mcp/scope"
 	"github.com/kandev/kandev/internal/orchestrator"
 	"github.com/kandev/kandev/internal/orchestrator/executor"
@@ -2526,6 +2527,10 @@ func classifyAddBranchError(err error) string {
 	}
 	if errors.Is(err, taskrepo.ErrTaskNotFound) {
 		return ws.ErrorCodeNotFound
+	}
+	var hostNotConnected *github.HostNotConnectedError
+	if errors.As(err, &hostNotConnected) {
+		return ws.ErrorCodeValidation
 	}
 	msg := err.Error()
 	switch {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/kandev/kandev/internal/common/authcircuit"
 	"github.com/kandev/kandev/internal/common/securityutil"
+	"github.com/kandev/kandev/internal/github"
 )
 
 // Defaults for optional config fields.
@@ -25,6 +26,8 @@ const (
 	// sensible cadence, and safely below time.Duration overflow territory.
 	MaxIntervalSeconds = 30 * 24 * 60 * 60
 )
+
+const defaultGitHubHost = "github.com"
 
 // Supported sync sources. A workspace has exactly one.
 const (
@@ -46,7 +49,10 @@ type Config struct {
 	WorkspaceID string `json:"workspace_id"`
 	// Provider selects the sync source: ProviderGitHub uses RepoOwner and
 	// RepoName, ProviderGitLab uses ProjectPath.
-	Provider        string     `json:"provider"`
+	Provider string `json:"provider"`
+	// GitHubHost is the GitHub host of RepoOwner/RepoName; github.com for
+	// rows saved before hosts existed. Empty for ProviderGitLab.
+	GitHubHost      string     `json:"github_host"`
 	RepoOwner       string     `json:"repo_owner"`
 	RepoName        string     `json:"repo_name"`
 	ProjectPath     string     `json:"project_path"`
@@ -107,10 +113,14 @@ func (c *Config) circuitOpen(now time.Time) bool {
 // "what this config points at". Changing any of these fields (a deliberate
 // SetConfig call) always resets the circuit — see Store.UpsertConfigForWorkspace.
 func (r *SetConfigRequest) fingerprint() string {
-	return strings.Join([]string{
+	fields := []string{
 		r.Provider, r.RepoOwner, r.RepoName, r.ProjectPath, r.Branch, r.Path,
 		fmt.Sprintf("%d", r.IntervalSeconds),
-	}, "\x1f")
+	}
+	if r.GitHubHost != "" && r.GitHubHost != defaultGitHubHost {
+		fields = append(fields, r.GitHubHost)
+	}
+	return strings.Join(fields, "\x1f")
 }
 
 // SetConfigRequest is the payload for creating or updating a workspace's
@@ -119,7 +129,9 @@ func (r *SetConfigRequest) fingerprint() string {
 type SetConfigRequest struct {
 	// Provider is optional; an empty value means ProviderGitHub, which keeps
 	// pre-GitLab API clients working unchanged.
-	Provider        string `json:"provider"`
+	Provider string `json:"provider"`
+	// GitHubHost is optional for ProviderGitHub; empty means github.com.
+	GitHubHost      string `json:"github_host"`
 	RepoOwner       string `json:"repo_owner"`
 	RepoName        string `json:"repo_name"`
 	ProjectPath     string `json:"project_path"`
@@ -157,6 +169,11 @@ func (r *SetConfigRequest) normalizeGitHubTarget() error {
 	if r.ProjectPath != "" {
 		return fmt.Errorf("%w: project_path is only valid for the %q provider", ErrInvalidConfig, ProviderGitLab)
 	}
+	host, err := github.RepositoryGitHubHost(r.GitHubHost)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
+	r.GitHubHost = host
 	if r.RepoOwner == "" || strings.ContainsAny(r.RepoOwner, "/ ") {
 		return fmt.Errorf("%w: repo_owner is required and cannot contain slashes or spaces", ErrInvalidConfig)
 	}
@@ -170,6 +187,7 @@ func (r *SetConfigRequest) normalizeGitHubTarget() error {
 // arbitrarily nested paths ("group/subgroup/project"), so the value is
 // validated as a whole rather than split into owner and name.
 func (r *SetConfigRequest) normalizeGitLabTarget() error {
+	r.GitHubHost = ""
 	if r.RepoOwner != "" || r.RepoName != "" {
 		return fmt.Errorf(
 			"%w: repo_owner and repo_name are only valid for the %q provider", ErrInvalidConfig, ProviderGitHub)

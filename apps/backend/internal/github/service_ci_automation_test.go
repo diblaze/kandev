@@ -296,7 +296,7 @@ func TestServiceTaskPRAgentAutomationHelpers(t *testing.T) {
 		t.Fatalf("create task PR: %v", err)
 	}
 	api, ok := any(svc).(interface {
-		IsReviewRequestedForLogin(context.Context, string, string, string, int, string) (bool, error)
+		IsReviewRequestedForLogin(context.Context, string, string, string, string, int, string) (bool, error)
 		HasEnabledTaskPRAgentPrompts(context.Context, string) (bool, error)
 	})
 	if !ok {
@@ -304,7 +304,7 @@ func TestServiceTaskPRAgentAutomationHelpers(t *testing.T) {
 	}
 
 	requested, err := api.IsReviewRequestedForLogin(
-		context.Background(), testWorkspaceID, "acme", "widget", 42, "reviewer",
+		context.Background(), testWorkspaceID, "", "acme", "widget", 42, "reviewer",
 	)
 	if err != nil || !requested {
 		t.Fatalf("requested = %v, err = %v", requested, err)
@@ -532,13 +532,13 @@ func TestServiceTaskPRAutomationUsesWorkspaceCredentialsInsteadOfAmbientClient(t
 		}
 	}
 	requestedA, err := svc.IsReviewRequestedForLogin(
-		ctx, "workspace-a", "acme", "widget", 42, "reviewer-a",
+		ctx, "workspace-a", "", "acme", "widget", 42, "reviewer-a",
 	)
 	if err != nil || !requestedA {
 		t.Fatalf("workspace-a requested = %v, err = %v", requestedA, err)
 	}
 	requestedB, err := svc.IsReviewRequestedForLogin(
-		ctx, "workspace-b", "acme", "widget", 42, "reviewer-b",
+		ctx, "workspace-b", "", "acme", "widget", 42, "reviewer-b",
 	)
 	if err != nil || !requestedB {
 		t.Fatalf("workspace-b requested = %v, err = %v", requestedB, err)

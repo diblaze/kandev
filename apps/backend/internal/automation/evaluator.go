@@ -125,7 +125,7 @@ func (e *GitHubEvaluator) checkPRTrigger(ctx context.Context, t *AutomationTrigg
 		// Use ListReviewRequestedPRs with a custom query scoped to this repo.
 		query := fmt.Sprintf("is:pr is:open repo:%s/%s", repo.Owner, repo.Name)
 		prs, err := e.githubService.ListAutomationPRs(
-			ctx, automation.WorkspaceID, repo.Owner, repo.Name, query,
+			ctx, automation.WorkspaceID, repo.Host, repo.Owner, repo.Name, query,
 		)
 		if err != nil {
 			e.logger.Debug("failed to list PRs for automation trigger",
@@ -147,7 +147,7 @@ func (e *GitHubEvaluator) checkPRTrigger(ctx context.Context, t *AutomationTrigg
 				continue
 			}
 
-			dedupKey := fmt.Sprintf("pr:%s/%s#%d", repo.Owner, repo.Name, pr.Number)
+			dedupKey := fmt.Sprintf("pr:%s%s/%s#%d", repo.DedupHostPrefix(), repo.Owner, repo.Name, pr.Number)
 			e.firePRTrigger(ctx, t, pr, dedupKey)
 		}
 	}
@@ -190,9 +190,9 @@ func matchesBranches(branch string, filters []string) bool {
 // matchesRepo checks if owner/name matches any entry in the repo filter list.
 // An empty list never matches — webhook-driven push/CI triggers cannot act
 // without knowing which repo(s) to scope to.
-func matchesRepo(owner, name string, repos []github.RepoFilter) bool {
+func matchesRepo(repo github.RepoFilter, repos []github.RepoFilter) bool {
 	for _, r := range repos {
-		if r.Owner == owner && r.Name == name {
+		if r.Owner == repo.Owner && r.Name == repo.Name && r.MatchesHost(repo.Host) {
 			return true
 		}
 	}

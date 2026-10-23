@@ -17,12 +17,14 @@ type githubPRBaseLookupServiceStub struct {
 	getErr    error
 	listErr   error
 	getCalls  []string
+	getHosts  []string
 	listCalls [][]string
 }
 
 func (s *githubPRBaseLookupServiceStub) GetPRForAutomation(
-	_ context.Context, _ string, owner, repo string, number int,
+	_ context.Context, _, host, owner, repo string, number int,
 ) (*githubpkg.PR, error) {
+	s.getHosts = append(s.getHosts, host)
 	s.getCalls = append(s.getCalls, owner+"/"+repo+"#"+strconv.Itoa(number))
 	return s.pr, s.getErr
 }

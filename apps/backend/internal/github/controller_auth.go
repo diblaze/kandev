@@ -34,7 +34,7 @@ func githubUserID(ctx context.Context) string {
 
 func (c *Controller) httpGetWorkspaceConnection(ctx *gin.Context) {
 	status, err := c.service.GetWorkspaceAuthStatus(
-		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), ctx.Query("host"),
+		ctx.Request.Context(), ctx.Query("workspace_id"), currentGitHubUserID(ctx), ctx.Query(hostQueryParam),
 	)
 	if err != nil {
 		writeGitHubAuthError(ctx, err)
@@ -98,7 +98,7 @@ func (c *Controller) httpSetWorkspaceConnection(ctx *gin.Context) {
 
 func (c *Controller) httpDeleteWorkspaceConnection(ctx *gin.Context) {
 	if err := c.service.DeleteWorkspaceConnection(
-		ctx.Request.Context(), workspaceIDFromRouteOrQuery(ctx), ctx.Query("host"),
+		ctx.Request.Context(), workspaceIDFromRouteOrQuery(ctx), ctx.Query(hostQueryParam),
 	); err != nil {
 		writeGitHubAuthError(ctx, err)
 		return
@@ -170,7 +170,7 @@ func (c *Controller) httpStartPersonalAuth(ctx *gin.Context) {
 		return
 	}
 	result, err := c.service.StartPersonalAuth(
-		ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), ctx.Query("host"),
+		ctx.Request.Context(), workspaceID, currentGitHubUserID(ctx), ctx.Query(hostQueryParam),
 	)
 	if err != nil {
 		writeGitHubAuthError(ctx, err)
@@ -220,7 +220,7 @@ func validGitHubCallbackState(state string) bool {
 
 func (c *Controller) httpDisconnectPersonalAuth(ctx *gin.Context) {
 	if err := c.service.DisconnectPersonalAuth(
-		ctx.Request.Context(), workspaceIDFromRouteOrQuery(ctx), currentGitHubUserID(ctx), ctx.Query("host"),
+		ctx.Request.Context(), workspaceIDFromRouteOrQuery(ctx), currentGitHubUserID(ctx), ctx.Query(hostQueryParam),
 	); err != nil {
 		writeGitHubAuthError(ctx, err)
 		return
@@ -414,16 +414,27 @@ func githubAuthErrorResponse(err error) (int, string) {
 	return status, code
 }
 
+const hostQueryParam = "host"
+
+// githubNotConfiguredBody is the github_not_configured response body; it
+// names the host when the error is a host without a connection.
+func githubNotConfiguredBody(err error, message string) gin.H {
+	body := gin.H{"code": githubNotConfiguredCode, "error": message}
+	var hostError *HostNotConnectedError
+	if errors.As(err, &hostError) {
+		body["host"] = hostError.Host
+		body["error"] = hostError.Error()
+	}
+	return body
+}
+
 func isGitHubNotConfiguredError(err error) bool {
 	return errors.Is(err, ErrNoClient) || errors.Is(err, ErrGitHubNotConfigured)
 }
 
 func writeGitHubOperationalAuthError(ctx *gin.Context, err error) bool {
 	if isGitHubNotConfiguredError(err) {
-		ctx.JSON(http.StatusServiceUnavailable, gin.H{
-			"code":  githubNotConfiguredCode,
-			"error": "GitHub is not configured. Connect GitHub in workspace settings.",
-		})
+		ctx.JSON(http.StatusServiceUnavailable, githubNotConfiguredBody(err, "GitHub is not configured. Connect GitHub in workspace settings."))
 		return true
 	}
 	if errors.Is(err, ErrRepoNotResolvable) {

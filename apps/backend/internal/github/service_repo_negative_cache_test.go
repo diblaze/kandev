@@ -271,7 +271,7 @@ func TestService_EvictRepoNegative_OnWatchCreate(t *testing.T) {
 	// cache key is case-insensitive.
 	w := &PRWatch{SessionID: "s1", TaskID: "t1", Owner: "dead", Repo: "repo", PRNumber: 1, Branch: "main"}
 	if _, err := svc.CreatePRWatchForWorkspace(
-		ctx, testWorkspaceID, w.SessionID, w.TaskID, "", w.Owner, w.Repo, w.PRNumber, w.Branch,
+		ctx, testWorkspaceID, "", w.SessionID, w.TaskID, "", w.Owner, w.Repo, w.PRNumber, w.Branch,
 	); err != nil {
 		t.Fatalf("CreatePRWatch: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestWSSyncTaskPR_ReturnsPermanentEnvelopeWhenSyncErrors(t *testing.T) {
 		t.Fatalf("create watch: %v", err)
 	}
 	gh.branchErr = &batchedMissingReposErr{
-		Repos: []repoRef{{Owner: w.Owner, Repo: w.Repo}},
+		Repos: []missingRepoRef{{Owner: w.Owner, Repo: w.Repo}},
 		Inner: errors.New("sibling repo unavailable"),
 	}
 

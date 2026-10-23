@@ -42,4 +42,7 @@ func TestGitHubWebhookAppliesOnlyToRegistrationHostConnections(t *testing.T) {
 	if received == nil || len(received.WorkspaceIDs) != 1 || received.WorkspaceIDs[0] != "ws-enterprise" {
 		t.Fatalf("push workspaces = %+v", received)
 	}
+	if received.Host != enterpriseTestHost {
+		t.Fatalf("push host = %q, want the registration host", received.Host)
+	}
 }

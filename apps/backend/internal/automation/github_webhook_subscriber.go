@@ -111,7 +111,7 @@ func (s *GitHubWebhookSubscriber) checkPushTrigger(
 		s.logger.Debug("invalid github_push trigger config", zap.String("trigger_id", t.ID), zap.Error(err))
 		return
 	}
-	if !s.triggerMatchesWorkspaceAndRepo(ctx, t, payload.WorkspaceIDs, payload.Owner, payload.Name, cfg.Repos) {
+	if !s.triggerMatchesWorkspaceAndRepo(ctx, t, payload.WorkspaceIDs, github.RepoFilter{Host: payload.Host, Owner: payload.Owner, Name: payload.Name}, cfg.Repos) {
 		return
 	}
 	if !matchesBranches(payload.Branch, cfg.Branches) {
@@ -120,7 +120,8 @@ func (s *GitHubWebhookSubscriber) checkPushTrigger(
 
 	// The same commit SHA can be pushed to multiple matching branches; key the
 	// dedup on the branch too so a later branch's push isn't suppressed.
-	dedupKey := fmt.Sprintf("push:%s/%s@%s@%s", payload.Owner, payload.Name, payload.Branch, payload.SHA)
+	dedupKey := fmt.Sprintf("push:%s%s/%s@%s@%s", github.RepoFilter{Host: payload.Host}.DedupHostPrefix(),
+		payload.Owner, payload.Name, payload.Branch, payload.SHA)
 	data, _ := json.Marshal(map[string]interface{}{
 		automationRepoKey:    fmt.Sprintf("%s/%s", payload.Owner, payload.Name),
 		automationBranchKey:  payload.Branch,
@@ -157,7 +158,7 @@ func (s *GitHubWebhookSubscriber) checkCITrigger(
 		s.logger.Debug("invalid github_ci trigger config", zap.String("trigger_id", t.ID), zap.Error(err))
 		return
 	}
-	if !s.triggerMatchesWorkspaceAndRepo(ctx, t, payload.WorkspaceIDs, payload.Owner, payload.Name, cfg.Repos) {
+	if !s.triggerMatchesWorkspaceAndRepo(ctx, t, payload.WorkspaceIDs, github.RepoFilter{Host: payload.Host, Owner: payload.Owner, Name: payload.Name}, cfg.Repos) {
 		return
 	}
 	if !matchesFilterValue(payload.Conclusion, cfg.Conclusions) ||
@@ -166,7 +167,8 @@ func (s *GitHubWebhookSubscriber) checkCITrigger(
 		return
 	}
 
-	dedupKey := fmt.Sprintf("ci:%s/%s#%d", payload.Owner, payload.Name, payload.CheckRunID)
+	dedupKey := fmt.Sprintf("ci:%s%s/%s#%d", github.RepoFilter{Host: payload.Host}.DedupHostPrefix(),
+		payload.Owner, payload.Name, payload.CheckRunID)
 	data, _ := json.Marshal(map[string]interface{}{
 		automationRepoKey:       fmt.Sprintf("%s/%s", payload.Owner, payload.Name),
 		automationBranchKey:     payload.Branch,
@@ -186,9 +188,9 @@ func (s *GitHubWebhookSubscriber) checkCITrigger(
 // the event's repo matches the trigger's repo filter (empty repo filter
 // never matches — these webhook triggers cannot act without a repo).
 func (s *GitHubWebhookSubscriber) triggerMatchesWorkspaceAndRepo(
-	ctx context.Context, t *AutomationTrigger, workspaceIDs []string, owner, name string, repos []github.RepoFilter,
+	ctx context.Context, t *AutomationTrigger, workspaceIDs []string, repo github.RepoFilter, repos []github.RepoFilter,
 ) bool {
-	if !matchesRepo(owner, name, repos) {
+	if !matchesRepo(repo, repos) {
 		return false
 	}
 	a, err := s.svc.GetAutomation(ctx, t.AutomationID)

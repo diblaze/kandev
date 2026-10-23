@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/kandev/kandev/internal/github"
 )
 
 // Defaults for optional config fields.
@@ -57,7 +59,10 @@ type Config struct {
 	WorkspaceID string `json:"workspace_id"`
 	// Provider selects the sync source: ProviderGitHub uses RepoOwner and
 	// RepoName, ProviderGitLab uses ProjectPath.
-	Provider        string     `json:"provider"`
+	Provider string `json:"provider"`
+	// GitHubHost is the GitHub host of RepoOwner/RepoName; github.com for
+	// rows saved before hosts existed. Empty for ProviderGitLab.
+	GitHubHost      string     `json:"github_host"`
 	RepoOwner       string     `json:"repo_owner"`
 	RepoName        string     `json:"repo_name"`
 	ProjectPath     string     `json:"project_path"`
@@ -90,7 +95,9 @@ type Config struct {
 type SetConfigRequest struct {
 	// Provider is required and must be ProviderGitHub or ProviderGitLab; an
 	// omitted value is rejected rather than defaulted.
-	Provider        string  `json:"provider"`
+	Provider string `json:"provider"`
+	// GitHubHost is optional for ProviderGitHub; empty means github.com.
+	GitHubHost      string  `json:"github_host"`
 	RepoOwner       string  `json:"repo_owner"`
 	RepoName        string  `json:"repo_name"`
 	ProjectPath     string  `json:"project_path"`
@@ -162,6 +169,11 @@ func (r *SetConfigRequest) normalizeGitHubTarget() error {
 	if r.ProjectPath != "" {
 		return fmt.Errorf("%w: project_path is only valid for the %q provider", ErrInvalidConfig, ProviderGitLab)
 	}
+	host, err := github.RepositoryGitHubHost(r.GitHubHost)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
+	r.GitHubHost = host
 	if r.RepoOwner == "" || strings.ContainsAny(r.RepoOwner, "/ ") {
 		return fmt.Errorf("%w: repo_owner is required and cannot contain slashes or spaces", ErrInvalidConfig)
 	}
@@ -175,6 +187,7 @@ func (r *SetConfigRequest) normalizeGitHubTarget() error {
 // arbitrarily nested paths ("group/subgroup/project"), so the value is
 // validated as a whole rather than split into owner and name.
 func (r *SetConfigRequest) normalizeGitLabTarget() error {
+	r.GitHubHost = ""
 	if r.RepoOwner != "" || r.RepoName != "" {
 		return fmt.Errorf(
 			"%w: repo_owner and repo_name are only valid for the %q provider", ErrInvalidConfig, ProviderGitHub)

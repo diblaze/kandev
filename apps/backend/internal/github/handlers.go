@@ -213,7 +213,7 @@ func wsStatus(svc *Service, _ *logger.Logger) func(ctx context.Context, msg *ws.
 			return ws.NewError(msg.ID, msg.Action, ws.ErrorCodeBadRequest, errMsgInvalidPayload, nil)
 		}
 		workspaceID, _ := payload["workspace_id"].(string)
-		host, _ := payload["host"].(string)
+		host, _ := payload[hostQueryParam].(string)
 		status, err := svc.GetWorkspaceAuthStatus(ctx, workspaceID, githubUserID(ctx), host)
 		if err != nil {
 			return ws.NewError(msg.ID, msg.Action, ws.ErrorCodeInternalError, err.Error(), nil)
@@ -317,13 +317,14 @@ func wsGetPRFeedback(svc *Service, _ *logger.Logger) func(ctx context.Context, m
 		owner, _ := payload["owner"].(string)
 		repo, _ := payload["repo"].(string)
 		workspaceID, _ := payload["workspace_id"].(string)
+		host, _ := payload[hostQueryParam].(string)
 		numberF, _ := payload["number"].(float64)
 		number := int(numberF)
 		if owner == "" || repo == "" || number == 0 {
 			return ws.NewError(msg.ID, msg.Action, ws.ErrorCodeBadRequest, "owner, repo, number required", nil)
 		}
 		feedback, err := svc.GetPRFeedbackForWorkspace(
-			ctx, workspaceID, githubUserID(ctx), owner, repo, number,
+			ctx, workspaceID, githubUserID(ctx), host, owner, repo, number,
 		)
 		if err != nil {
 			return ws.NewError(msg.ID, msg.Action, ws.ErrorCodeInternalError, err.Error(), nil)
@@ -451,8 +452,9 @@ func wsGetPRFiles(svc *Service, _ *logger.Logger) func(ctx context.Context, msg 
 		}
 		payload, _ := parseMap(msg)
 		workspaceID, _ := payload["workspace_id"].(string)
+		host, _ := payload[hostQueryParam].(string)
 		files, err := svc.GetPRFilesForWorkspace(
-			ctx, workspaceID, githubUserID(ctx), owner, repo, number,
+			ctx, workspaceID, githubUserID(ctx), host, owner, repo, number,
 		)
 		if err != nil {
 			return ws.NewError(msg.ID, msg.Action, ws.ErrorCodeInternalError, err.Error(), nil)
@@ -469,8 +471,9 @@ func wsGetPRCommits(svc *Service, _ *logger.Logger) func(ctx context.Context, ms
 		}
 		payload, _ := parseMap(msg)
 		workspaceID, _ := payload["workspace_id"].(string)
+		host, _ := payload[hostQueryParam].(string)
 		commits, err := svc.GetPRCommitsForWorkspace(
-			ctx, workspaceID, githubUserID(ctx), owner, repo, number,
+			ctx, workspaceID, githubUserID(ctx), host, owner, repo, number,
 		)
 		if err != nil {
 			return ws.NewError(msg.ID, msg.Action, ws.ErrorCodeInternalError, err.Error(), nil)
@@ -490,6 +493,7 @@ func wsGetPRCommitDetail(svc *Service, _ *logger.Logger) func(ctx context.Contex
 		owner, _ := payload["owner"].(string)
 		repo, _ := payload["repo"].(string)
 		sha, _ := payload["sha"].(string)
+		host, _ := payload[hostQueryParam].(string)
 		if workspaceID == "" || owner == "" || repo == "" || sha == "" {
 			resp, _ := ws.NewError(msg.ID, msg.Action, ws.ErrorCodeBadRequest, "workspace_id, owner, repo, sha required", nil)
 			return resp, nil
@@ -499,7 +503,7 @@ func wsGetPRCommitDetail(svc *Service, _ *logger.Logger) func(ctx context.Contex
 			return resp, nil
 		}
 		detail, err := svc.GetPRCommitDetailForWorkspace(
-			ctx, workspaceID, githubUserID(ctx), owner, repo, sha,
+			ctx, workspaceID, githubUserID(ctx), host, owner, repo, sha,
 		)
 		if err != nil {
 			return ws.NewError(msg.ID, msg.Action, ws.ErrorCodeInternalError, err.Error(), nil)

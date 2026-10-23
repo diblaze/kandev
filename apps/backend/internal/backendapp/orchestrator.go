@@ -388,7 +388,7 @@ type githubExecutorCredentialPolicyAdapter struct {
 }
 
 type githubPRBaseLookupService interface {
-	GetPRForAutomation(context.Context, string, string, string, int) (*githubpkg.PR, error)
+	GetPRForAutomation(context.Context, string, string, string, string, int) (*githubpkg.PR, error)
 	ListTaskPRs(context.Context, []string) (map[string][]*githubpkg.TaskPR, error)
 }
 
@@ -399,13 +399,13 @@ type githubPRBaseResolver struct {
 func (r githubPRBaseResolver) ResolvePRBase(
 	ctx context.Context, workspaceID string, lookup executorpkg.PRBaseLookup,
 ) (taskmodels.PRBase, error) {
-	owner, repo, err := r.prBaseRepository(ctx, lookup)
+	host, owner, repo, err := r.prBaseRepository(ctx, lookup)
 	if err != nil {
 		return taskmodels.PRBase{}, err
 	}
 	knownCrossRepository := !strings.EqualFold(owner, lookup.AttachedOwner) ||
 		!strings.EqualFold(repo, lookup.AttachedRepository)
-	pr, err := r.service.GetPRForAutomation(ctx, workspaceID, owner, repo, lookup.Number)
+	pr, err := r.service.GetPRForAutomation(ctx, workspaceID, host, owner, repo, lookup.Number)
 	if err != nil {
 		if knownCrossRepository {
 			return taskmodels.PRBase{}, executorpkg.NewPRBaseResolutionError(err, true, false)
@@ -466,9 +466,12 @@ func validateGitHubPRBaseLookup(pr *githubpkg.PR, owner, repo string, number int
 	return nil
 }
 
+// prBaseRepository returns the host, owner, and name of the PR's base
+// repository: the expected comparison target, then the linked task PR, then
+// the attached repository.
 func (r githubPRBaseResolver) prBaseRepository(
 	ctx context.Context, lookup executorpkg.PRBaseLookup,
-) (string, string, error) {
+) (string, string, string, error) {
 	if lookup.Target != nil {
 		checkoutBranch := lookup.CheckoutBranch
 		if checkoutBranch == "" {
@@ -476,25 +479,29 @@ func (r githubPRBaseResolver) prBaseRepository(
 		}
 		if err := lookup.Target.Validate(); err != nil || lookup.Target.Number != lookup.Number ||
 			lookup.Target.HeadBranch != checkoutBranch {
-			return "", "", fmt.Errorf("PR comparison target did not match task repository %q", lookup.TaskRepositoryID)
+			return "", "", "", fmt.Errorf("PR comparison target did not match task repository %q", lookup.TaskRepositoryID)
 		}
 		owner, repo, ok := splitGitHubRepositoryPath(lookup.Target.TargetRepository.Path)
 		if !ok {
-			return "", "", fmt.Errorf("PR comparison target repository is invalid")
+			return "", "", "", fmt.Errorf("PR comparison target repository is invalid")
 		}
-		return owner, repo, nil
+		return lookup.Target.TargetRepository.Host, owner, repo, nil
 	}
 	linked, err := r.linkedTaskPR(ctx, lookup)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if linked != nil {
-		return linked.Owner, linked.Repo, nil
+		return linked.GitHubHost, linked.Owner, linked.Repo, nil
 	}
 	if lookup.AttachedOwner == "" || lookup.AttachedRepository == "" {
-		return "", "", fmt.Errorf("task repository %q has no GitHub repository identity", lookup.TaskRepositoryID)
+		return "", "", "", fmt.Errorf("task repository %q has no GitHub repository identity", lookup.TaskRepositoryID)
 	}
-	return lookup.AttachedOwner, lookup.AttachedRepository, nil
+	host, err := githubpkg.RepositoryGitHubHost(lookup.ProviderHost)
+	if err != nil {
+		return "", "", "", err
+	}
+	return host, lookup.AttachedOwner, lookup.AttachedRepository, nil
 }
 
 func (r githubPRBaseResolver) linkedTaskPR(

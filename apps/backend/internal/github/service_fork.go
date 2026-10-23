@@ -57,13 +57,13 @@ type contributionForkClient interface {
 // for a read-only bootstrap capability probe.
 func (s *Service) ResolveContributionForkForWorkspace(
 	ctx context.Context,
-	workspaceID, owner, repo string,
+	workspaceID, host, owner, repo string,
 	create bool,
 ) (ContributionForkResolution, error) {
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return ContributionForkResolution{}, err
 	}
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, owner, repo)
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host, owner, repo})
 	if err != nil {
 		return ContributionForkResolution{}, err
 	}
@@ -88,9 +88,9 @@ func (s *Service) ResolveContributionForkForWorkspace(
 // returned with a blocked status so callers can preserve the issue-only path.
 func (s *Service) ProbeContributionForkCapabilityForWorkspace(
 	ctx context.Context,
-	workspaceID, owner, repo string,
+	workspaceID, host, owner, repo string,
 ) (ContributionForkResolution, error) {
-	result, err := s.ResolveContributionForkForWorkspace(ctx, workspaceID, owner, repo, false)
+	result, err := s.ResolveContributionForkForWorkspace(ctx, workspaceID, host, owner, repo, false)
 	if err == nil {
 		return result, nil
 	}
@@ -102,9 +102,9 @@ func (s *Service) ProbeContributionForkCapabilityForWorkspace(
 // server-authored destination. Direct target write returns a nil binding.
 func (s *Service) ResolveContributionDestinationForWorkspace(
 	ctx context.Context,
-	workspaceID, owner, repo string,
+	workspaceID, host, owner, repo string,
 ) (*taskmodels.ContributionDestination, error) {
-	result, err := s.ResolveContributionForkForWorkspace(ctx, workspaceID, owner, repo, true)
+	result, err := s.ResolveContributionForkForWorkspace(ctx, workspaceID, host, owner, repo, true)
 	if err != nil {
 		return nil, err
 	}
@@ -117,12 +117,12 @@ func (s *Service) ResolveContributionDestinationForWorkspace(
 // old destination lease.
 func (s *Service) VerifyContributionDestinationForWorkspace(
 	ctx context.Context,
-	workspaceID, sourceOwner, sourceRepo, sourceProviderID, targetOwner, targetRepo, targetProviderID string,
+	workspaceID, host, sourceOwner, sourceRepo, sourceProviderID, targetOwner, targetRepo, targetProviderID string,
 ) error {
 	if strings.TrimSpace(sourceProviderID) == "" || strings.TrimSpace(targetProviderID) == "" {
 		return errors.New("contribution destination provider IDs are required")
 	}
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, targetOwner, targetRepo)
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host, targetOwner, targetRepo})
 	if err != nil {
 		return err
 	}

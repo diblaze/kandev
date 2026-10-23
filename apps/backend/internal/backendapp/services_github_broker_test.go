@@ -34,6 +34,7 @@ type recordingPluginCredentialRemote struct {
 type fakeContributionDestinationVerifier struct {
 	err   error
 	calls int
+	hosts []string
 }
 
 type factoryTestGitCredentialResolver struct{}
@@ -60,17 +61,18 @@ func (s *factoryTestGitHubCredentialSource) GitCredentialResolver() gitcredentia
 
 func (s *factoryTestGitHubCredentialSource) VerifyContributionDestinationForWorkspace(
 	ctx context.Context,
-	workspaceID, sourceOwner, sourceRepo, sourceProviderID, targetOwner, targetRepo, targetProviderID string,
+	workspaceID, host, sourceOwner, sourceRepo, sourceProviderID, targetOwner, targetRepo, targetProviderID string,
 ) error {
 	return s.verifier.VerifyContributionDestinationForWorkspace(
-		ctx, workspaceID, sourceOwner, sourceRepo, sourceProviderID, targetOwner, targetRepo, targetProviderID,
+		ctx, workspaceID, host, sourceOwner, sourceRepo, sourceProviderID, targetOwner, targetRepo, targetProviderID,
 	)
 }
 
 func (f *fakeContributionDestinationVerifier) VerifyContributionDestinationForWorkspace(
-	context.Context, string, string, string, string, string, string, string,
+	_ context.Context, _, host, _, _, _, _, _, _ string,
 ) error {
 	f.calls++
+	f.hosts = append(f.hosts, host)
 	return f.err
 }
 

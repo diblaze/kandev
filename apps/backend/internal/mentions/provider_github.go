@@ -23,12 +23,12 @@ const (
 type GitHubMentionService interface {
 	SearchMentionIssuesForWorkspace(
 		ctx context.Context,
-		workspaceID, query string,
+		workspaceID, host, query string,
 		limit int,
 	) ([]*github.Issue, error)
 	SearchMentionPullRequestsForWorkspace(
 		ctx context.Context,
-		workspaceID, query string,
+		workspaceID, host, query string,
 		limit int,
 	) ([]*github.PR, error)
 	GetWorkspaceSettings(ctx context.Context, workspaceID string) (*github.WorkspaceSettings, error)
@@ -72,7 +72,7 @@ func (p *githubProvider) Search(ctx context.Context, request SearchRequest) ([]C
 	limit := clampGitHubMentionLimit(request.Limit)
 	if p.kind == githubPullRequestKind {
 		prs, err := p.service.SearchMentionPullRequestsForWorkspace(
-			ctx, request.WorkspaceID, request.Query, limit,
+			ctx, request.WorkspaceID, "", request.Query, limit,
 		)
 		if err != nil {
 			return nil, classifyGitHubMentionError(err)
@@ -80,7 +80,7 @@ func (p *githubProvider) Search(ctx context.Context, request SearchRequest) ([]C
 		return githubPullRequestCandidates(prs, limit), nil
 	}
 	issues, err := p.service.SearchMentionIssuesForWorkspace(
-		ctx, request.WorkspaceID, request.Query, limit,
+		ctx, request.WorkspaceID, "", request.Query, limit,
 	)
 	if err != nil {
 		return nil, classifyGitHubMentionError(err)

@@ -35,7 +35,7 @@ type pushDiagnosticsGitHubService struct {
 }
 
 func (s *pushDiagnosticsGitHubService) FindPRByBranchForWorkspace(
-	_ context.Context, workspaceID, owner, repo, branch string,
+	_ context.Context, workspaceID, _, owner, repo, branch string,
 ) (*github.PR, error) {
 	s.calls = append(s.calls, pushDiscoveryCall{
 		WorkspaceID: workspaceID,

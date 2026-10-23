@@ -32,7 +32,7 @@ func TestPRStatusFromTaskPRSnapshotPreservesDraftConflictObservation(t *testing.
 
 	seedTask(t, svc.store, "task-snapshot-conflict-new", false)
 	associated, err := svc.associatePRWithTask(
-		ctx, testWorkspaceID, "task-snapshot-conflict-new", "repo-1", status.PR,
+		ctx, testWorkspaceID, "", "task-snapshot-conflict-new", "repo-1", status.PR,
 		false, false, TaskPRSourceWatch,
 	)
 	if err != nil {

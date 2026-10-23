@@ -32,7 +32,7 @@ func newFakeGitHub() *fakeGitHub {
 }
 
 func (f *fakeGitHub) ListRepoDirectoryForWorkspace(
-	_ context.Context, _, _, _, path, _ string,
+	_ context.Context, _, _, _, _, path, _ string,
 ) ([]github.RepoContentEntry, error) {
 	if err, ok := f.dirErr[path]; ok {
 		return nil, err
@@ -45,7 +45,7 @@ func (f *fakeGitHub) ListRepoDirectoryForWorkspace(
 }
 
 func (f *fakeGitHub) GetRepoFileContentForWorkspace(
-	_ context.Context, _, _, _, path, _ string,
+	_ context.Context, _, _, _, _, path, _ string,
 ) ([]byte, error) {
 	f.fetchCalls++
 	if err, ok := f.fileErr[path]; ok {

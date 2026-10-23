@@ -100,7 +100,7 @@ func (s *Service) CleanupMergedReviewTasks(ctx context.Context, watch *ReviewWat
 	if watch == nil || watch.WorkspaceID == "" {
 		return 0, ErrGitHubWorkspaceRequired
 	}
-	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, "", "")
+	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, repoRef{host: watch.GitHubHost})
 	if err != nil {
 		return 0, err
 	}
@@ -132,7 +132,7 @@ func (s *Service) cleanupScheduledMergedReviewTasks(
 	if !admission.allowWorkspace(watch.WorkspaceID) {
 		return scheduledReviewCleanupResult{}, nil
 	}
-	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, "", "")
+	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, repoRef{host: watch.GitHubHost})
 	if err != nil {
 		return scheduledReviewCleanupResult{Failures: []scheduledReviewCleanupFailure{{
 			Task: prTasks[0], WorkspaceID: watch.WorkspaceID, Err: err,
@@ -178,33 +178,28 @@ func (s *Service) CleanupReviewTasksForWorkspace(ctx context.Context, workspaceI
 	if s.taskDeleter == nil {
 		return 0, nil
 	}
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, "", "")
-	if err != nil {
-		return 0, err
-	}
 	watches, err := s.store.ListReviewWatches(ctx, workspaceID)
 	if err != nil {
 		return 0, fmt.Errorf("list review watches: %w", err)
 	}
 	watchPolicies := make(map[string]string, len(watches))
+	watchHosts := make(map[string]string, len(watches))
 	for _, watch := range watches {
 		watchPolicies[watch.ID] = NormalizeCleanupPolicy(watch.CleanupPolicy)
+		watchHosts[watch.ID] = githubHostOrDefault(watch.GitHubHost)
 	}
 	if len(watchPolicies) == 0 {
-		return 0, nil
+		return s.ensureWorkspaceCleanupConnection(ctx, workspaceID)
 	}
 	prTasks, err := s.store.ListAllReviewPRTasks(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("list all review PR tasks: %w", err)
 	}
-	candidates := make([]*ReviewPRTask, 0, len(prTasks))
-	for _, rpt := range prTasks {
-		if _, ok := watchPolicies[rpt.ReviewWatchID]; ok {
-			candidates = append(candidates, rpt)
-		}
-	}
-	return s.cleanupReviewPRTaskBatch(ctx, resolved.Client, resolved.RateTracker, candidates, func(rpt *ReviewPRTask) string {
-		return watchPolicies[rpt.ReviewWatchID]
+	candidatesByHost := groupByWatchHost(watchHosts, prTasks, func(rpt *ReviewPRTask) string { return rpt.ReviewWatchID })
+	return forEachCleanupHost(ctx, s, workspaceID, candidatesByHost, func(resolved *resolvedServiceClient, candidates []*ReviewPRTask) (int, error) {
+		return s.cleanupReviewPRTaskBatch(ctx, resolved.Client, resolved.RateTracker, candidates, func(rpt *ReviewPRTask) string {
+			return watchPolicies[rpt.ReviewWatchID]
+		})
 	})
 }
 
@@ -237,12 +232,12 @@ func (s *Service) cleanupAllReviewTasks(
 	if len(prTasks) == 0 {
 		return scheduledReviewCleanupResult{}, nil
 	}
-	policyCache, enabledCache, unknownCache, workspaceCache := s.buildReviewWatchCaches(ctx, prTasks)
+	policyCache, enabledCache, unknownCache, scopeCache := s.buildReviewWatchCaches(ctx, prTasks)
 	// Allocate a fresh slice rather than reusing prTasks' backing array
 	// via prTasks[:0]; the in-place version is safe today (write index
 	// always trails read index) but silently breaks if a future caller
 	// reads prTasks after the filter.
-	candidatesByWorkspace := make(map[string][]*ReviewPRTask)
+	candidatesByScope := make(map[workspaceHost][]*ReviewPRTask)
 	for _, rpt := range prTasks {
 		// Watch fetch failed — skip this cycle so we don't fail-open and
 		// reap an enabled-watch row under the wrong policy.
@@ -254,16 +249,16 @@ func (s *Service) cleanupAllReviewTasks(
 		if orphansOnly && enabledCache[rpt.ReviewWatchID] {
 			continue
 		}
-		workspaceID := workspaceCache[rpt.ReviewWatchID]
-		if workspaceID == "" {
+		scope := scopeCache[rpt.ReviewWatchID]
+		if scope.workspaceID == "" {
 			continue
 		}
-		candidatesByWorkspace[workspaceID] = append(candidatesByWorkspace[workspaceID], rpt)
+		candidatesByScope[scope] = append(candidatesByScope[scope], rpt)
 	}
 	result := scheduledReviewCleanupResult{}
-	for workspaceID, candidates := range candidatesByWorkspace {
+	for scope, candidates := range candidatesByScope {
 		workspaceResult, workspaceErr := s.cleanupReviewTasksForWorkspace(
-			ctx, workspaceID, candidates, scheduled, admission,
+			ctx, scope, candidates, scheduled, admission,
 			func(rpt *ReviewPRTask) string { return policyCache[rpt.ReviewWatchID] },
 		)
 		result.Deleted += workspaceResult.Deleted
@@ -278,19 +273,20 @@ func (s *Service) cleanupAllReviewTasks(
 
 func (s *Service) cleanupReviewTasksForWorkspace(
 	ctx context.Context,
-	workspaceID string,
+	scope workspaceHost,
 	candidates []*ReviewPRTask,
 	scheduled bool,
 	admission scheduledReviewCleanupAdmission,
 	resolvePolicy func(*ReviewPRTask) string,
 ) (scheduledReviewCleanupResult, error) {
+	workspaceID := scope.workspaceID
 	if scheduled && !admission.allowWorkspace(workspaceID) {
 		return scheduledReviewCleanupResult{}, nil
 	}
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, "", "")
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host: scope.host})
 	if err != nil {
 		s.logger.Warn("skip review cleanup for unavailable workspace connection",
-			zap.String("workspace_id", workspaceID), zap.Error(err))
+			zap.String("workspace_id", workspaceID), zap.String("github_host", scope.host), zap.Error(err))
 		if scheduled {
 			return scheduledReviewCleanupResult{Failures: []scheduledReviewCleanupFailure{{
 				Task: candidates[0], WorkspaceID: workspaceID, Err: err,
@@ -309,6 +305,10 @@ func (s *Service) cleanupReviewTasksForWorkspace(
 	return scheduledReviewCleanupResult{Deleted: deleted}, err
 }
 
+// workspaceHost names the automation connection that serves a group of
+// watches or task pull requests.
+type workspaceHost struct{ workspaceID, host string }
+
 // buildReviewWatchCaches loads the cleanup policy + enabled flag for each
 // distinct watch ID referenced by prTasks. A per-row fetch error logs Warn
 // and adds the watch ID to the returned `unknown` set — the caller MUST
@@ -323,7 +323,7 @@ func (s *Service) cleanupReviewTasksForWorkspace(
 //nolint:dupl // mirrors buildIssueWatchCaches — different task/watch types
 func (s *Service) buildReviewWatchCaches(
 	ctx context.Context, prTasks []*ReviewPRTask,
-) (policy map[string]string, enabled map[string]bool, unknown map[string]bool, workspace map[string]string) {
+) (policy map[string]string, enabled map[string]bool, unknown map[string]bool, scope map[string]workspaceHost) {
 	seen := make(map[string]struct{})
 	for _, rpt := range prTasks {
 		seen[rpt.ReviewWatchID] = struct{}{}
@@ -331,7 +331,7 @@ func (s *Service) buildReviewWatchCaches(
 	policy = make(map[string]string, len(seen))
 	enabled = make(map[string]bool, len(seen))
 	unknown = make(map[string]bool)
-	workspace = make(map[string]string, len(seen))
+	scope = make(map[string]workspaceHost, len(seen))
 	for watchID := range seen {
 		watch, err := s.store.GetReviewWatch(ctx, watchID)
 		if err != nil {
@@ -345,9 +345,9 @@ func (s *Service) buildReviewWatchCaches(
 		}
 		policy[watchID] = NormalizeCleanupPolicy(watch.CleanupPolicy)
 		enabled[watchID] = watch.Enabled
-		workspace[watchID] = watch.WorkspaceID
+		scope[watchID] = workspaceHost{workspaceID: watch.WorkspaceID, host: githubHostOrDefault(watch.GitHubHost)}
 	}
-	return policy, enabled, unknown, workspace
+	return policy, enabled, unknown, scope
 }
 
 // deleteTaskWithReason deletes a task, threading the cleanup reason through to
@@ -662,7 +662,7 @@ func (s *Service) CleanupClosedIssueTasks(ctx context.Context, watch *IssueWatch
 	if watch == nil || watch.WorkspaceID == "" {
 		return 0, ErrGitHubWorkspaceRequired
 	}
-	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, "", "")
+	resolved, err := s.resolveAutomationClient(ctx, watch.WorkspaceID, repoRef{host: watch.GitHubHost})
 	if err != nil {
 		return 0, err
 	}
@@ -695,34 +695,74 @@ func (s *Service) CleanupIssueTasksForWorkspace(ctx context.Context, workspaceID
 	if s.taskDeleter == nil {
 		return 0, nil
 	}
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, "", "")
-	if err != nil {
-		return 0, err
-	}
 	watches, err := s.store.ListIssueWatches(ctx, workspaceID)
 	if err != nil {
 		return 0, fmt.Errorf("list issue watches: %w", err)
 	}
 	watchPolicies := make(map[string]string, len(watches))
+	watchHosts := make(map[string]string, len(watches))
 	for _, watch := range watches {
 		watchPolicies[watch.ID] = NormalizeCleanupPolicy(watch.CleanupPolicy)
+		watchHosts[watch.ID] = githubHostOrDefault(watch.GitHubHost)
 	}
 	if len(watchPolicies) == 0 {
-		return 0, nil
+		return s.ensureWorkspaceCleanupConnection(ctx, workspaceID)
 	}
 	issueTasks, err := s.store.ListAllIssueWatchTasks(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("list all issue watch tasks: %w", err)
 	}
-	candidates := make([]*IssueWatchTask, 0, len(issueTasks))
-	for _, it := range issueTasks {
-		if _, ok := watchPolicies[it.IssueWatchID]; ok {
-			candidates = append(candidates, it)
+	candidatesByHost := groupByWatchHost(watchHosts, issueTasks, func(it *IssueWatchTask) string { return it.IssueWatchID })
+	return forEachCleanupHost(ctx, s, workspaceID, candidatesByHost, func(resolved *resolvedServiceClient, candidates []*IssueWatchTask) (int, error) {
+		return s.cleanupIssueTaskBatch(ctx, resolved.Client, resolved.RateTracker, candidates, func(it *IssueWatchTask) string {
+			return watchPolicies[it.IssueWatchID]
+		})
+	})
+}
+
+// ensureWorkspaceCleanupConnection reports a workspace without a github.com
+// connection when a manual sweep has no rows to route by host.
+func (s *Service) ensureWorkspaceCleanupConnection(ctx context.Context, workspaceID string) (int, error) {
+	_, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{})
+	return 0, err
+}
+
+// groupByWatchHost keeps the dedup rows owned by a known watch, grouped by
+// that watch's host.
+func groupByWatchHost[T any](watchHosts map[string]string, rows []T, watchID func(T) string) map[string][]T {
+	grouped := make(map[string][]T)
+	for _, row := range rows {
+		if host, ok := watchHosts[watchID(row)]; ok {
+			grouped[host] = append(grouped[host], row)
 		}
 	}
-	return s.cleanupIssueTaskBatch(ctx, resolved.Client, resolved.RateTracker, candidates, func(it *IssueWatchTask) string {
-		return watchPolicies[it.IssueWatchID]
-	})
+	return grouped
+}
+
+// forEachCleanupHost runs one cleanup batch per host with that host's
+// automation client. Every host is attempted; the first error is returned.
+// With no rows it only checks the github.com connection.
+func forEachCleanupHost[T any](
+	ctx context.Context, s *Service, workspaceID string, byHost map[string][]T,
+	run func(*resolvedServiceClient, []T) (int, error),
+) (int, error) {
+	if len(byHost) == 0 {
+		return s.ensureWorkspaceCleanupConnection(ctx, workspaceID)
+	}
+	deleted := 0
+	var firstErr error
+	for host, candidates := range byHost {
+		resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host: host})
+		if err == nil {
+			var batchDeleted int
+			batchDeleted, err = run(resolved, candidates)
+			deleted += batchDeleted
+		}
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return deleted, firstErr
 }
 
 //nolint:dupl // mirrors cleanupAllReviewTasks — different types, same orchestration
@@ -737,8 +777,8 @@ func (s *Service) cleanupAllIssueTasks(ctx context.Context, orphansOnly bool) (i
 	if len(issueTasks) == 0 {
 		return 0, nil
 	}
-	policyCache, enabledCache, unknownCache, workspaceCache := s.buildIssueWatchCaches(ctx, issueTasks)
-	candidatesByWorkspace := make(map[string][]*IssueWatchTask)
+	policyCache, enabledCache, unknownCache, scopeCache := s.buildIssueWatchCaches(ctx, issueTasks)
+	candidatesByScope := make(map[workspaceHost][]*IssueWatchTask)
 	for _, it := range issueTasks {
 		if unknownCache[it.IssueWatchID] {
 			continue
@@ -746,18 +786,18 @@ func (s *Service) cleanupAllIssueTasks(ctx context.Context, orphansOnly bool) (i
 		if orphansOnly && enabledCache[it.IssueWatchID] {
 			continue
 		}
-		workspaceID := workspaceCache[it.IssueWatchID]
-		if workspaceID == "" {
+		scope := scopeCache[it.IssueWatchID]
+		if scope.workspaceID == "" {
 			continue
 		}
-		candidatesByWorkspace[workspaceID] = append(candidatesByWorkspace[workspaceID], it)
+		candidatesByScope[scope] = append(candidatesByScope[scope], it)
 	}
 	deleted := 0
-	for workspaceID, candidates := range candidatesByWorkspace {
-		resolved, resolveErr := s.resolveAutomationClient(ctx, workspaceID, "", "")
+	for scope, candidates := range candidatesByScope {
+		resolved, resolveErr := s.resolveAutomationClient(ctx, scope.workspaceID, repoRef{host: scope.host})
 		if resolveErr != nil {
 			s.logger.Warn("skip issue cleanup for unavailable workspace connection",
-				zap.String("workspace_id", workspaceID), zap.Error(resolveErr))
+				zap.String("workspace_id", scope.workspaceID), zap.String("github_host", scope.host), zap.Error(resolveErr))
 			continue
 		}
 		batchDeleted, batchErr := s.cleanupIssueTaskBatch(ctx, resolved.Client, resolved.RateTracker, candidates, func(it *IssueWatchTask) string {
@@ -774,7 +814,7 @@ func (s *Service) cleanupAllIssueTasks(ctx context.Context, orphansOnly bool) (i
 //nolint:dupl // mirrors buildReviewWatchCaches — different task/watch types
 func (s *Service) buildIssueWatchCaches(
 	ctx context.Context, issueTasks []*IssueWatchTask,
-) (policy map[string]string, enabled map[string]bool, unknown map[string]bool, workspace map[string]string) {
+) (policy map[string]string, enabled map[string]bool, unknown map[string]bool, scope map[string]workspaceHost) {
 	seen := make(map[string]struct{})
 	for _, it := range issueTasks {
 		seen[it.IssueWatchID] = struct{}{}
@@ -782,7 +822,7 @@ func (s *Service) buildIssueWatchCaches(
 	policy = make(map[string]string, len(seen))
 	enabled = make(map[string]bool, len(seen))
 	unknown = make(map[string]bool)
-	workspace = make(map[string]string, len(seen))
+	scope = make(map[string]workspaceHost, len(seen))
 	for watchID := range seen {
 		watch, err := s.store.GetIssueWatch(ctx, watchID)
 		if err != nil {
@@ -796,9 +836,9 @@ func (s *Service) buildIssueWatchCaches(
 		}
 		policy[watchID] = NormalizeCleanupPolicy(watch.CleanupPolicy)
 		enabled[watchID] = watch.Enabled
-		workspace[watchID] = watch.WorkspaceID
+		scope[watchID] = workspaceHost{workspaceID: watch.WorkspaceID, host: githubHostOrDefault(watch.GitHubHost)}
 	}
-	return policy, enabled, unknown, workspace
+	return policy, enabled, unknown, scope
 }
 
 //nolint:dupl // mirrors cleanupReviewPRTaskBatch — different types, same structure

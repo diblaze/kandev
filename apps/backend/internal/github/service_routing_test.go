@@ -88,7 +88,7 @@ func (p fixedUserCredentialProvider) ResolveUser(
 
 func TestResolveServiceClientRequiresWorkspace(t *testing.T) {
 	svc := &Service{}
-	_, err := svc.resolveAutomationClient(context.Background(), "", "octo", "repo")
+	_, err := svc.resolveAutomationClient(context.Background(), "", repoRef{owner: "octo", name: "repo"})
 	if !errors.Is(err, ErrGitHubWorkspaceRequired) {
 		t.Fatalf("expected workspace required, got %v", err)
 	}
@@ -104,7 +104,7 @@ func TestResolveServiceClientAuthorizesWorkspaceBeforeCredentialLookup(t *testin
 	}}
 
 	_, err := svc.resolveServiceClient(
-		context.Background(), "victim-workspace", "attacker", CredentialPurposePersonalRead, "", "",
+		context.Background(), "victim-workspace", "attacker", CredentialPurposePersonalRead, repoRef{},
 	)
 	if !errors.Is(err, want) {
 		t.Fatalf("resolveServiceClient() error = %v, want authorization denial", err)
@@ -300,13 +300,13 @@ func TestPersonalRepositoryResolutionRequiresAutomationVisibility(t *testing.T) 
 	)
 
 	_, err := service.resolvePersonalReadClient(
-		context.Background(), "workspace-1", "user-1", "personal-only", "repo",
+		context.Background(), "workspace-1", "user-1", repoRef{owner: "personal-only", name: "repo"},
 	)
 	if !errors.Is(err, ErrRepoNotResolvable) {
 		t.Fatalf("resolvePersonalReadClient() error = %v, want repository boundary denial", err)
 	}
 	if _, err := service.resolvePersonalReadClient(
-		context.Background(), "workspace-1", "user-1", "acme", "allowed",
+		context.Background(), "workspace-1", "user-1", repoRef{owner: "acme", name: "allowed"},
 	); err != nil {
 		t.Fatalf("allowed repository resolution failed: %v", err)
 	}
@@ -322,7 +322,7 @@ func TestPersonalAccessibleReposIntersectAutomationVisibility(t *testing.T) {
 	)
 
 	repos, err := service.ListAccessibleReposForWorkspace(
-		context.Background(), "workspace-1", "user-1", "", 50,
+		context.Background(), "workspace-1", "user-1", "", "", 50,
 	)
 	if err != nil {
 		t.Fatalf("ListAccessibleReposForWorkspace() error = %v", err)
@@ -342,17 +342,17 @@ func TestPersonalSearchAndStatusResultsIntersectAutomationVisibility(t *testing.
 	)
 	ctx := context.Background()
 
-	prs, err := service.SearchUserPRsForWorkspace(ctx, "workspace-1", "user-1", "", "")
+	prs, err := service.SearchUserPRsForWorkspace(ctx, "workspace-1", "user-1", "", "", "")
 	if err != nil || len(prs) != 1 || prs[0].RepoName != "allowed" {
 		t.Fatalf("unpaged PR search = %+v, %v", prs, err)
 	}
 	issues, err := service.SearchUserIssuesPagedForWorkspaceUser(
-		ctx, "workspace-1", "user-1", "", "", 1, 50,
+		ctx, "workspace-1", "user-1", "", "", "", 1, 50,
 	)
 	if err != nil || len(issues.Issues) != 1 || issues.TotalCount != 1 || issues.Issues[0].RepoName != "allowed" {
 		t.Fatalf("paged issue search = %+v, %v", issues, err)
 	}
-	statuses, err := service.GetPRStatusesBatchForWorkspace(ctx, "workspace-1", "user-1", []PRRef{
+	statuses, err := service.GetPRStatusesBatchForWorkspace(ctx, "workspace-1", "user-1", "", []PRRef{
 		{Owner: "acme", Repo: "allowed", Number: 1},
 		{Owner: "personal-only", Repo: "repo", Number: 2},
 	})
@@ -377,13 +377,13 @@ func TestPersonalSearchPaginatesAfterAutomationVisibilityFiltering(t *testing.T)
 	ctx := context.Background()
 
 	prs, err := service.SearchUserPRsPagedForWorkspaceUser(
-		ctx, "workspace-1", "user-1", "", "", 1, 1,
+		ctx, "workspace-1", "user-1", "", "", "", 1, 1,
 	)
 	if err != nil || len(prs.PRs) != 1 || prs.TotalCount != 1 || prs.PRs[0].Number != 101 {
 		t.Fatalf("paged PR search = %+v, %v", prs, err)
 	}
 	issues, err := service.SearchUserIssuesPagedForWorkspaceUser(
-		ctx, "workspace-1", "user-1", "", "", 1, 1,
+		ctx, "workspace-1", "user-1", "", "", "", 1, 1,
 	)
 	if err != nil || len(issues.Issues) != 1 || issues.TotalCount != 1 || issues.Issues[0].Number != 101 {
 		t.Fatalf("paged issue search = %+v, %v", issues, err)

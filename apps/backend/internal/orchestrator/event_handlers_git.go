@@ -460,6 +460,7 @@ func (s *Service) taskHoldsRepository(ctx context.Context, store repoStore, task
 }
 
 type pushRepositoryIdentity struct {
+	host         string
 	owner        string
 	name         string
 	repositoryID string
@@ -489,6 +490,9 @@ func (s *Service) resolvePushRepositoryIdentity(
 	repoObj := s.getPushRepository(ctx, repositoryID)
 	if repoObj == nil {
 		return identity
+	}
+	if !s.applyPushRepositoryHost(&identity, repoObj) {
+		return pushRepositoryIdentity{repositoryID: repositoryID}
 	}
 	remoteURL := s.enrichPushRepositoryIdentity(&identity, repoObj)
 	if identity.projectPath == "" {
@@ -1262,13 +1266,17 @@ func (s *Service) resetPRWatchForBranchSwitch(ctx context.Context, taskID, sessi
 	if owner == "" || repoName == "" {
 		return
 	}
+	host, hostOK := s.watchTargetHost(ctx, repositoryID)
+	if !hostOK {
+		return
+	}
 	workspaceID := s.taskWorkspaceID(ctx, taskID)
 	if workspaceID == "" {
 		return
 	}
 	effectiveTaskID := s.resolveEffectivePushTaskIDForSession(ctx, sessionID, taskID, repositoryID)
 	if _, err := s.githubService.EnsurePRWatchForWorkspace(
-		ctx, workspaceID, sessionID, effectiveTaskID, repositoryID, owner, repoName, newBranch,
+		ctx, workspaceID, host, sessionID, effectiveTaskID, repositoryID, owner, repoName, newBranch,
 	); err != nil {
 		s.logger.Error("failed to add PR watch after branch switch",
 			zap.String("session_id", sessionID), zap.String("new_branch", newBranch),

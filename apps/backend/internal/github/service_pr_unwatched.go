@@ -35,7 +35,7 @@ func unwatchedTaskPRs(
 		if w == nil || w.PRNumber == 0 {
 			continue
 		}
-		watched[prStatusCacheKey(w.Owner, w.Repo, w.PRNumber)] = struct{}{}
+		watched[hostPRKey(w.GitHubHost, w.Owner, w.Repo, w.PRNumber)] = struct{}{}
 	}
 	pending := make([]*TaskPR, 0, len(rows))
 	for _, tp := range rows {
@@ -45,7 +45,7 @@ func unwatchedTaskPRs(
 		if !explicitRefresh && !taskPRNeedsUnwatchedSync(tp, now) {
 			continue
 		}
-		if _, ok := watched[prStatusCacheKey(tp.Owner, tp.Repo, tp.PRNumber)]; ok {
+		if _, ok := watched[hostPRKey(tp.GitHubHost, tp.Owner, tp.Repo, tp.PRNumber)]; ok {
 			continue
 		}
 		pending = append(pending, tp)
@@ -77,13 +77,14 @@ func taskPRNeedsUnwatchedSync(tp *TaskPR, now time.Time) bool {
 // Check and review aggregates deliberately stay untouched: they belong to the
 // active, watch-covered PR.
 //
+// Rows are grouped by workspace and host so each group uses one connection.
 // fallbackWorkspaceID covers legacy rows written before task_prs carried
 // workspace ownership; rows with neither are skipped because there is no
 // credential to resolve.
 func (s *Service) syncUnwatchedTaskPRs(
 	ctx context.Context, pending []*TaskPR, fallbackWorkspaceID string, explicitRefresh bool,
 ) {
-	byWorkspace := make(map[string][]*TaskPR, 1)
+	byScope := make(map[workspaceHost][]*TaskPR, 1)
 	for _, tp := range pending {
 		workspaceID := tp.WorkspaceID
 		if workspaceID == "" {
@@ -94,20 +95,21 @@ func (s *Service) syncUnwatchedTaskPRs(
 				zap.String("task_id", tp.TaskID), zap.Int("pr_number", tp.PRNumber))
 			continue
 		}
-		byWorkspace[workspaceID] = append(byWorkspace[workspaceID], tp)
+		scope := workspaceHost{workspaceID: workspaceID, host: githubHostOrDefault(tp.GitHubHost)}
+		byScope[scope] = append(byScope[scope], tp)
 	}
-	for workspaceID, group := range byWorkspace {
-		s.syncUnwatchedTaskPRGroup(ctx, workspaceID, group, explicitRefresh)
+	for scope, group := range byScope {
+		s.syncUnwatchedTaskPRGroup(ctx, scope, group, explicitRefresh)
 	}
 }
 
 func (s *Service) syncUnwatchedTaskPRGroup(
-	ctx context.Context, workspaceID string, group []*TaskPR, explicitRefresh bool,
+	ctx context.Context, scope workspaceHost, group []*TaskPR, explicitRefresh bool,
 ) {
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, "", "")
+	resolved, err := s.resolveAutomationClient(ctx, scope.workspaceID, repoRef{host: scope.host})
 	if err != nil {
 		s.logger.Debug("resolve client for unwatched task PR sync failed",
-			zap.String("workspace_id", workspaceID), zap.Error(err))
+			zap.String("workspace_id", scope.workspaceID), zap.String("github_host", scope.host), zap.Error(err))
 		return
 	}
 	if explicitRefresh {
@@ -435,4 +437,10 @@ func (s *Service) collectStaleWorkspaceSyncTargets(
 		}
 	}
 	return allWatches, pending
+}
+
+// hostPRKey identifies a pull request across hosts, an empty host meaning
+// github.com.
+func hostPRKey(host, owner, repo string, number int) string {
+	return githubHostOrDefault(strings.ToLower(host)) + "\x00" + prStatusCacheKey(owner, repo, number)
 }

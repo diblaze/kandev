@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+
+	"github.com/kandev/kandev/internal/db"
 )
 
 // Store persists workspace-scoped config sync configuration and the
@@ -39,6 +41,7 @@ const createTablesSQL = `
 		repo_owner TEXT NOT NULL DEFAULT '',
 		repo_name TEXT NOT NULL DEFAULT '',
 		project_path TEXT NOT NULL DEFAULT '',
+		github_host TEXT NOT NULL DEFAULT 'github.com',
 		branch TEXT NOT NULL DEFAULT 'main',
 		path TEXT NOT NULL DEFAULT '',
 		interval_seconds INTEGER NOT NULL DEFAULT 300,
@@ -65,11 +68,17 @@ const createTablesSQL = `
 `
 
 func (s *Store) initSchema() error {
-	_, err := s.db.Exec(createTablesSQL)
-	return err
+	if _, err := s.db.Exec(createTablesSQL); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`ALTER TABLE office_config_sync_configs ADD COLUMN github_host TEXT NOT NULL DEFAULT 'github.com'`)
+	if err != nil && !db.IsDuplicateColumnError(err) {
+		return err
+	}
+	return nil
 }
 
-const configSelectColumns = `workspace_id, provider, repo_owner, repo_name, project_path, branch, path,
+const configSelectColumns = `workspace_id, provider, github_host, repo_owner, repo_name, project_path, branch, path,
 	interval_seconds, poll_enabled, last_synced_at, last_ok, last_error, last_warnings, last_hash,
 	created_at, updated_at`
 
@@ -85,6 +94,7 @@ func scanConfig(row configScanner) (*Config, error) {
 	if err := row.Scan(
 		&cfg.WorkspaceID,
 		&cfg.Provider,
+		&cfg.GitHubHost,
 		&cfg.RepoOwner,
 		&cfg.RepoName,
 		&cfg.ProjectPath,
@@ -155,12 +165,13 @@ func (s *Store) UpsertConfigForWorkspace(ctx context.Context, workspaceID string
 	now := time.Now().UTC()
 	_, err := s.db.ExecContext(ctx, s.db.Rebind(`
 		INSERT INTO office_config_sync_configs (
-			workspace_id, provider, repo_owner, repo_name, project_path, branch, path,
+			workspace_id, provider, github_host, repo_owner, repo_name, project_path, branch, path,
 			interval_seconds, poll_enabled,
 			last_synced_at, last_ok, last_error, last_warnings, last_hash, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, '', '[]', '', ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, '', '[]', '', ?, ?)
 		ON CONFLICT(workspace_id) DO UPDATE SET
 			provider = excluded.provider,
+			github_host = excluded.github_host,
 			repo_owner = excluded.repo_owner,
 			repo_name = excluded.repo_name,
 			project_path = excluded.project_path,
@@ -174,7 +185,7 @@ func (s *Store) UpsertConfigForWorkspace(ctx context.Context, workspaceID string
 			last_warnings = '[]',
 			last_hash = '',
 			updated_at = excluded.updated_at
-	`), workspaceID, req.Provider, req.RepoOwner, req.RepoName, req.ProjectPath, req.Branch, *req.Path,
+	`), workspaceID, req.Provider, req.GitHubHost, req.RepoOwner, req.RepoName, req.ProjectPath, req.Branch, *req.Path,
 		req.IntervalSeconds, boolToInt(req.PollEnabled != nil && *req.PollEnabled), now, now)
 	if err != nil {
 		return nil, err

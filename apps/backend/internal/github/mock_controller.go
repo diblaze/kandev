@@ -136,7 +136,7 @@ func (c *MockController) setWorkspaceConnection(ctx *gin.Context) {
 // mockConnectionHost reads the optional host query parameter, which defaults
 // to github.com, and answers 400 for an invalid host.
 func mockConnectionHost(ctx *gin.Context) (string, bool) {
-	host, err := normalizeGitHubHost(ctx.Query("host"))
+	host, err := normalizeGitHubHost(ctx.Query(hostQueryParam))
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{errKey: err.Error()})
 		return "", false

@@ -16,7 +16,7 @@ type feedbackCacheGitHubService struct {
 }
 
 func (s *feedbackCacheGitHubService) InvalidatePRFeedbackForAutomation(
-	_ context.Context, _, _, _ string, _ int,
+	_ context.Context, _, _, _, _ string, _ int,
 ) error {
 	if s.invalidationErr != nil {
 		return s.invalidationErr

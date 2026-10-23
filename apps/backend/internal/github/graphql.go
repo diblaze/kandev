@@ -278,11 +278,11 @@ type graphQLError struct {
 	Path    []string `json:"path"`
 }
 
-// repoRef is a minimal (owner, repo) pair used by the batched GraphQL
+// missingRepoRef is a minimal (owner, repo) pair used by the batched GraphQL
 // helpers to surface which repositories the response flagged as
 // unresolvable. Service.SyncWatchesBatched feeds these into the negative
 // cache so subsequent polls short-circuit the dead-repo storm.
-type repoRef struct {
+type missingRepoRef struct {
 	Owner string
 	Repo  string
 }
@@ -297,7 +297,7 @@ type repoRef struct {
 // other (non-resolution) errors were also present and the caller should
 // treat the whole batch as failed for those.
 type batchedMissingReposErr struct {
-	Repos []repoRef
+	Repos []missingRepoRef
 	Inner error
 }
 
@@ -369,7 +369,7 @@ func graphQLRetryAtFromData(data map[string]json.RawMessage) *time.Time {
 // batchedMissingReposErr; the residual non-resolution errors are
 // collapsed via graphQLErrorsToErr exactly as before so the storm-fix
 // doesn't change behavior for unrelated GraphQL failures.
-func classifyBatchedErrors(errs []graphQLError, aliasToRepo map[string]repoRef) (missing []repoRef, residual []graphQLError) {
+func classifyBatchedErrors(errs []graphQLError, aliasToRepo map[string]missingRepoRef) (missing []missingRepoRef, residual []graphQLError) {
 	seen := map[string]bool{}
 	for _, e := range errs {
 		if isRepoNotResolvableErr(errors.New(e.Message)) && len(e.Path) > 0 {
@@ -388,25 +388,25 @@ func classifyBatchedErrors(errs []graphQLError, aliasToRepo map[string]repoRef) 
 	return missing, residual
 }
 
-// aliasMapForPRRefs returns alias -> repoRef for the
+// aliasMapForPRRefs returns alias -> missingRepoRef for the
 // owner/repo-sorted ordering buildBatchedPRQuery applies. A
 // resolution-failure error's path[0] is always the outer repository
 // alias ("repo0", "repo1", ...).
-func aliasMapForPRRefs(refs []graphQLPRRef) map[string]repoRef {
+func aliasMapForPRRefs(refs []graphQLPRRef) map[string]missingRepoRef {
 	groups := groupGraphQLPRRefs(refs)
-	out := make(map[string]repoRef, len(groups))
+	out := make(map[string]missingRepoRef, len(groups))
 	for i, group := range groups {
-		out[fmt.Sprintf("repo%d", i)] = repoRef{Owner: group.Owner, Repo: group.Repo}
+		out[fmt.Sprintf("repo%d", i)] = missingRepoRef{Owner: group.Owner, Repo: group.Repo}
 	}
 	return out
 }
 
-// aliasMapForBranchRefs returns alias -> repoRef for the input-order
+// aliasMapForBranchRefs returns alias -> missingRepoRef for the input-order
 // b0, b1, ... aliases buildBatchedBranchQuery applies.
-func aliasMapForBranchRefs(refs []graphQLBranchRef) map[string]repoRef {
-	out := make(map[string]repoRef, len(refs))
+func aliasMapForBranchRefs(refs []graphQLBranchRef) map[string]missingRepoRef {
+	out := make(map[string]missingRepoRef, len(refs))
 	for i, r := range refs {
-		out[fmt.Sprintf("b%d", i)] = repoRef{Owner: r.Owner, Repo: r.Repo}
+		out[fmt.Sprintf("b%d", i)] = missingRepoRef{Owner: r.Owner, Repo: r.Repo}
 	}
 	return out
 }
@@ -420,7 +420,7 @@ func aliasMapForBranchRefs(refs []graphQLBranchRef) map[string]repoRef {
 //   - resolution misses present → return *batchedMissingReposErr; Inner
 //     is nil iff there were no residuals so callers can keep the
 //     partial decode, otherwise Inner carries the composite
-func wrapBatchedErrors(missing []repoRef, residual []graphQLError) error {
+func wrapBatchedErrors(missing []missingRepoRef, residual []graphQLError) error {
 	residualErr := graphQLErrorsToErr(residual)
 	if len(missing) == 0 {
 		return residualErr
@@ -809,7 +809,7 @@ func runBatchedPRQuery(ctx context.Context, exec GraphQLExecutor, refs []graphQL
 	// where the first 50 happened to be dead would silently skip the
 	// remaining watches on every poll cycle until the first batch's
 	// repos landed in the negative cache.
-	var allMissing []repoRef
+	var allMissing []missingRepoRef
 	var allResidual []graphQLError
 	var retryAt *time.Time
 	var continuations []reviewThreadContinuation
@@ -845,7 +845,7 @@ func finishBatchedQuery(
 	ctx context.Context,
 	exec GraphQLExecutor,
 	result map[string]*PRStatus,
-	missing []repoRef,
+	missing []missingRepoRef,
 	residual []graphQLError,
 	continuations []reviewThreadContinuation,
 	retryAt *time.Time,
@@ -1091,7 +1091,7 @@ func runBatchedBranchQuery(
 	}
 	// Same accumulation pattern as runBatchedPRQuery — see that function
 	// for the rationale (one dead-repo chunk must not drop later chunks).
-	var allMissing []repoRef
+	var allMissing []missingRepoRef
 	var allResidual []graphQLError
 	var retryAt *time.Time
 	for _, chunk := range chunkedRefs(refs) {

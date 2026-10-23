@@ -534,6 +534,7 @@ func (s *GitHubWebhookService) processPush(ctx context.Context, payload []byte) 
 	}
 	s.publishEvent(ctx, events.GitHubPushReceived, &GitHubPushEventPayload{
 		WorkspaceIDs:  workspaceIDs,
+		Host:          s.host,
 		Owner:         event.Repository.Owner.Login,
 		Name:          event.Repository.Name,
 		Branch:        strings.TrimPrefix(event.Ref, gitBranchRefPrefix),
@@ -587,6 +588,7 @@ func (s *GitHubWebhookService) processCheckRun(ctx context.Context, payload []by
 	}
 	s.publishEvent(ctx, events.GitHubCheckRunCompleted, &GitHubCheckRunEventPayload{
 		WorkspaceIDs: workspaceIDs,
+		Host:         s.host,
 		Owner:        event.Repository.Owner.Login,
 		Name:         event.Repository.Name,
 		Branch:       event.CheckRun.CheckSuite.HeadBranch,

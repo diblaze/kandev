@@ -24,11 +24,11 @@ import (
 // logged at Debug and swallowed. A dead store must never turn a working PR
 // panel into an error.
 //
-// Scoping: rows are looked up inside workspaceID only, matching the credential
+// Scoping: rows are looked up inside workspaceID and host only, matching the credential
 // scope the caller already passed ensureRepositoryInWorkspaceScope with. The
 // legacy workspace-less GetPRFeedback entry point passes "" and is skipped
 // rather than being allowed to write across workspaces.
-func (s *Service) persistPRFeedbackState(ctx context.Context, workspaceID string, feedback *PRFeedback) {
+func (s *Service) persistPRFeedbackState(ctx context.Context, workspaceID, host string, feedback *PRFeedback) {
 	if s == nil || s.store == nil || workspaceID == "" {
 		return
 	}
@@ -36,7 +36,7 @@ func (s *Service) persistPRFeedbackState(ctx context.Context, workspaceID string
 		return
 	}
 	pr := feedback.PR
-	rows, err := s.store.ListTaskPRsByPRNumber(ctx, workspaceID, pr.RepoOwner, pr.RepoName, pr.Number)
+	rows, err := s.store.ListTaskPRsByPRNumber(ctx, workspaceID, host, pr.RepoOwner, pr.RepoName, pr.Number)
 	if err != nil {
 		s.logger.Debug("list task PRs for feedback persist failed",
 			zap.String("workspace_id", workspaceID), zap.String("owner", pr.RepoOwner),

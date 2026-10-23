@@ -21,7 +21,7 @@ type fakeGitHubMentionService struct {
 
 func (s *fakeGitHubMentionService) SearchMentionIssuesForWorkspace(
 	_ context.Context,
-	workspaceID, query string,
+	workspaceID, _, query string,
 	limit int,
 ) ([]*github.Issue, error) {
 	s.workspaceID, s.query, s.limit = workspaceID, query, limit
@@ -30,7 +30,7 @@ func (s *fakeGitHubMentionService) SearchMentionIssuesForWorkspace(
 
 func (s *fakeGitHubMentionService) SearchMentionPullRequestsForWorkspace(
 	_ context.Context,
-	workspaceID, query string,
+	workspaceID, _, query string,
 	limit int,
 ) ([]*github.PR, error) {
 	s.workspaceID, s.query, s.limit = workspaceID, query, limit

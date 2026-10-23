@@ -11,10 +11,7 @@ import (
 // (scheme, path, port, user info, whitespace, leading dash) is rejected.
 func normalizeGitHubHost(raw string) (string, error) {
 	host := strings.ToLower(strings.TrimSpace(raw))
-	switch host {
-	case "":
-		return defaultGitHubHost, nil
-	case "www." + defaultGitHubHost:
+	if host == "" || host == "www."+defaultGitHubHost {
 		return defaultGitHubHost, nil
 	}
 	if strings.HasPrefix(host, "-") || strings.ContainsAny(host, "/:@ \t\r\n") {
@@ -41,9 +38,7 @@ type githubEndpoints struct {
 // GHE.com tenant (<sub>.ghe.com, API on api.<sub>.ghe.com), or GitHub
 // Enterprise Server (API under /api/v3 and /api/graphql on the host itself).
 func endpointsForHost(host string) githubEndpoints {
-	if host == "" {
-		host = defaultGitHubHost
-	}
+	host = githubHostOrDefault(host)
 	web := "https://" + host
 	if host == defaultGitHubHost || strings.HasSuffix(host, gheCloudSuffix) {
 		api := "https://api." + host
@@ -81,10 +76,35 @@ func HostFromProviderHost(providerHost string) (string, error) {
 	return normalizeGitHubHost(raw)
 }
 
+// RepositoryGitHubHost returns the GitHub host of a GitHub repository row's
+// provider_host. An empty value is a row saved before provider hosts existed,
+// which the repositories migration treats as github.com; a malformed value is
+// an error.
+func RepositoryGitHubHost(providerHost string) (string, error) {
+	if strings.TrimSpace(providerHost) == "" {
+		return defaultGitHubHost, nil
+	}
+	return HostFromProviderHost(providerHost)
+}
+
 // githubHostOrDefault maps an empty stored or configured host to github.com.
 func githubHostOrDefault(host string) string {
 	if host == "" {
 		return defaultGitHubHost
 	}
 	return host
+}
+
+// applyWatchHost replaces a stored watch host with a validated update, when
+// the update names one.
+func applyWatchHost(stored *string, update *string) error {
+	if update == nil {
+		return nil
+	}
+	host, err := normalizeGitHubHost(*update)
+	if err != nil {
+		return err
+	}
+	*stored = host
+	return nil
 }

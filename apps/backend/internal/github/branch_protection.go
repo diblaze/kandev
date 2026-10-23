@@ -99,9 +99,9 @@ func (s *Service) fetchRequiredReviews(ctx context.Context, owner, repo, branch 
 }
 
 func (s *Service) fetchRequiredReviewsForWorkspace(
-	ctx context.Context, workspaceID, owner, repo, branch string,
+	ctx context.Context, workspaceID, host, owner, repo, branch string,
 ) *int {
-	resolved, err := s.resolveAutomationClient(ctx, workspaceID, owner, repo)
+	resolved, err := s.resolveAutomationClient(ctx, workspaceID, repoRef{host, owner, repo})
 	if err != nil {
 		return nil
 	}

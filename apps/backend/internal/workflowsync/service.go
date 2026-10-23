@@ -34,10 +34,10 @@ type Applier interface {
 // GitHubClientProvider exposes workspace-routed GitHub repository reads.
 type GitHubClientProvider interface {
 	ListRepoDirectoryForWorkspace(
-		ctx context.Context, workspaceID, owner, repo, path, ref string,
+		ctx context.Context, workspaceID, host, owner, repo, path, ref string,
 	) ([]github.RepoContentEntry, error)
 	GetRepoFileContentForWorkspace(
-		ctx context.Context, workspaceID, owner, repo, path, ref string,
+		ctx context.Context, workspaceID, host, owner, repo, path, ref string,
 	) ([]byte, error)
 }
 
@@ -331,7 +331,7 @@ func (s *Service) listGitHubEntries(ctx context.Context, cfg *Config) ([]dirEntr
 		return nil, nil, errGitHubClientNotConfigured
 	}
 	raw, err := s.githubClients.ListRepoDirectoryForWorkspace(
-		ctx, cfg.WorkspaceID, cfg.RepoOwner, cfg.RepoName, cfg.Path, cfg.Branch,
+		ctx, cfg.WorkspaceID, cfg.GitHubHost, cfg.RepoOwner, cfg.RepoName, cfg.Path, cfg.Branch,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to list %s/%s@%s:%s: %w", cfg.RepoOwner, cfg.RepoName, cfg.Branch, cfg.Path, err)
@@ -341,7 +341,9 @@ func (s *Service) listGitHubEntries(ctx context.Context, cfg *Config) ([]dirEntr
 		entries[i] = dirEntry{name: e.Name, path: e.Path, isFile: e.Type == "file"}
 	}
 	get := func(ctx context.Context, path string) ([]byte, error) {
-		return s.githubClients.GetRepoFileContentForWorkspace(ctx, cfg.WorkspaceID, cfg.RepoOwner, cfg.RepoName, path, cfg.Branch)
+		return s.githubClients.GetRepoFileContentForWorkspace(
+			ctx, cfg.WorkspaceID, cfg.GitHubHost, cfg.RepoOwner, cfg.RepoName, path, cfg.Branch,
+		)
 	}
 	return entries, get, nil
 }

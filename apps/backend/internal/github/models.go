@@ -4,6 +4,7 @@ package github
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -607,6 +608,7 @@ type PRWatch struct {
 	SessionID       string     `json:"session_id" db:"session_id"`
 	TaskID          string     `json:"task_id" db:"task_id"`
 	RepositoryID    string     `json:"repository_id,omitempty" db:"repository_id"`
+	GitHubHost      string     `json:"github_host" db:"github_host"`
 	Owner           string     `json:"owner" db:"owner"`
 	Repo            string     `json:"repo" db:"repo"`
 	PRNumber        int        `json:"pr_number" db:"pr_number"`
@@ -638,6 +640,7 @@ type TaskPR struct {
 	WorkspaceID                           string     `json:"workspace_id" db:"workspace_id"`
 	TaskID                                string     `json:"task_id" db:"task_id"`
 	RepositoryID                          string     `json:"repository_id,omitempty" db:"repository_id"`
+	GitHubHost                            string     `json:"github_host" db:"github_host"`
 	Owner                                 string     `json:"owner" db:"owner"`
 	Repo                                  string     `json:"repo" db:"repo"`
 	PRNumber                              int        `json:"pr_number" db:"pr_number"`
@@ -1022,8 +1025,24 @@ type TaskPRLifecyclePrompt struct {
 
 // RepoFilter identifies a GitHub repository for review watch filtering.
 type RepoFilter struct {
+	Host  string `json:"host,omitempty"`
 	Owner string `json:"owner"`
 	Name  string `json:"name"`
+}
+
+// MatchesHost reports whether the filter names host. An empty host on either
+// side means github.com.
+func (f RepoFilter) MatchesHost(host string) bool {
+	return strings.EqualFold(githubHostOrDefault(strings.TrimSpace(f.Host)), githubHostOrDefault(strings.TrimSpace(host)))
+}
+
+// DedupHostPrefix is "<host>/" for a host other than github.com and empty
+// otherwise, so keys built before hosts existed stay unchanged.
+func (f RepoFilter) DedupHostPrefix() string {
+	if f.MatchesHost(defaultGitHubHost) {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(f.Host)) + "/"
 }
 
 // ReviewScope controls which GitHub search qualifier is used for review-requested PRs.
@@ -1080,6 +1099,7 @@ type ReviewWatch struct {
 	WorkspaceID         string       `json:"workspace_id" db:"workspace_id"`
 	WorkflowID          string       `json:"workflow_id" db:"workflow_id"`
 	WorkflowStepID      string       `json:"workflow_step_id" db:"workflow_step_id"`
+	GitHubHost          string       `json:"github_host" db:"github_host"`
 	Repos               []RepoFilter `json:"repos" db:"-"`
 	ReposJSON           string       `json:"-" db:"repos"`
 	AgentProfileID      string       `json:"agent_profile_id" db:"agent_profile_id"`
@@ -1224,6 +1244,7 @@ type CreateReviewWatchRequest struct {
 	WorkspaceID         string       `json:"workspace_id"`
 	WorkflowID          string       `json:"workflow_id"`
 	WorkflowStepID      string       `json:"workflow_step_id"`
+	GitHubHost          string       `json:"github_host,omitempty"`
 	Repos               []RepoFilter `json:"repos"`
 	AgentProfileID      string       `json:"agent_profile_id"`
 	ExecutorProfileID   string       `json:"executor_profile_id"`
@@ -1238,6 +1259,7 @@ type CreateReviewWatchRequest struct {
 type UpdateReviewWatchRequest struct {
 	WorkflowID          *string       `json:"workflow_id,omitempty"`
 	WorkflowStepID      *string       `json:"workflow_step_id,omitempty"`
+	GitHubHost          *string       `json:"github_host,omitempty"`
 	Repos               *[]RepoFilter `json:"repos,omitempty"`
 	AgentProfileID      *string       `json:"agent_profile_id,omitempty"`
 	ExecutorProfileID   *string       `json:"executor_profile_id,omitempty"`
@@ -1373,6 +1395,7 @@ type IssueWatch struct {
 	WorkspaceID         string       `json:"workspace_id" db:"workspace_id"`
 	WorkflowID          string       `json:"workflow_id" db:"workflow_id"`
 	WorkflowStepID      string       `json:"workflow_step_id" db:"workflow_step_id"`
+	GitHubHost          string       `json:"github_host" db:"github_host"`
 	Repos               []RepoFilter `json:"repos" db:"-"`
 	ReposJSON           string       `json:"-" db:"repos"`
 	AgentProfileID      string       `json:"agent_profile_id" db:"agent_profile_id"`
@@ -1423,6 +1446,7 @@ type CreateIssueWatchRequest struct {
 	WorkspaceID         string       `json:"workspace_id"`
 	WorkflowID          string       `json:"workflow_id"`
 	WorkflowStepID      string       `json:"workflow_step_id"`
+	GitHubHost          string       `json:"github_host,omitempty"`
 	Repos               []RepoFilter `json:"repos"`
 	AgentProfileID      string       `json:"agent_profile_id"`
 	ExecutorProfileID   string       `json:"executor_profile_id"`
@@ -1437,6 +1461,7 @@ type CreateIssueWatchRequest struct {
 type UpdateIssueWatchRequest struct {
 	WorkflowID          *string       `json:"workflow_id,omitempty"`
 	WorkflowStepID      *string       `json:"workflow_step_id,omitempty"`
+	GitHubHost          *string       `json:"github_host,omitempty"`
 	Repos               *[]RepoFilter `json:"repos,omitempty"`
 	AgentProfileID      *string       `json:"agent_profile_id,omitempty"`
 	ExecutorProfileID   *string       `json:"executor_profile_id,omitempty"`
