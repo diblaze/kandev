@@ -28,7 +28,7 @@ var (
 type BrokerScopeAuthorizer interface {
 	AuthorizeGitHubRepository(
 		ctx context.Context,
-		workspaceID, taskID, sessionID, repositoryID, owner, repo string,
+		workspaceID, taskID, sessionID, repositoryID, host, owner, repo string,
 	) error
 }
 
@@ -39,7 +39,7 @@ type BrokerScopeAuthorizer interface {
 type BrokerScopeAuthorizerWithIdentity interface {
 	AuthorizeGitHubRepositoryWithIdentity(
 		ctx context.Context,
-		workspaceID, taskID, sessionID, repositoryID, owner, repo, providerID, parentProviderID string,
+		workspaceID, taskID, sessionID, repositoryID, host, owner, repo, providerID, parentProviderID string,
 	) error
 }
 
@@ -229,12 +229,12 @@ func (a gitHubScopeAuthorizer) AuthorizeGitCredential(ctx context.Context, scope
 	}
 	if identityAuthorizer, ok := a.authorizer.(BrokerScopeAuthorizerWithIdentity); ok {
 		return identityAuthorizer.AuthorizeGitHubRepositoryWithIdentity(
-			ctx, scope.WorkspaceID, scope.TaskID, scope.SessionID, scope.RepositoryID, owner, repo,
+			ctx, scope.WorkspaceID, scope.TaskID, scope.SessionID, scope.RepositoryID, scope.Host, owner, repo,
 			scope.IdentityProviderID, scope.ParentProviderID,
 		)
 	}
 	return a.authorizer.AuthorizeGitHubRepository(
-		ctx, scope.WorkspaceID, scope.TaskID, scope.SessionID, scope.RepositoryID, owner, repo,
+		ctx, scope.WorkspaceID, scope.TaskID, scope.SessionID, scope.RepositoryID, scope.Host, owner, repo,
 	)
 }
 

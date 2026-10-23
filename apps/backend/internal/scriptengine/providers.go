@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kandev/kandev/internal/githubauth"
+	"github.com/kandev/kandev/internal/repoclone"
 	"github.com/kandev/kandev/internal/task/models"
 )
 
@@ -360,48 +362,66 @@ func shellQuote(value string) string {
 }
 
 // GitHubAuthProvider returns placeholders for GitHub authentication setup.
-// It configures both the gh CLI and git credential helper to use the GitHub token.
+// It configures the gh CLI and a git credential helper for github.com and each
+// host in githubauth.GitHubHostsEnv. A host's helper reads only the profile
+// token variables bound to that host (githubauth.ProfileTokenEnvForHost), so a
+// token reaches only the host it is bound to.
 func GitHubAuthProvider(env map[string]string) PlaceholderProvider {
 	return func() map[string]string {
-		vars := map[string]string{
-			"github.auth_setup": "",
+		hosts := append([]string{"github.com"}, githubauth.EnterpriseHosts(env[githubauth.GitHubHostsEnv])...)
+		protocolLines := make([]string, 0, len(hosts))
+		helperLines := make([]string, 0, len(hosts))
+		for _, host := range hosts {
+			protocolLines = append(protocolLines, "gh config set git_protocol https --host "+host+" 2>/dev/null || true")
+			primary, fallback := githubauth.ProfileTokenEnvForHost(env["GH_HOST"], host)
+			if primary == "" || (env[primary] == "" && env[fallback] == "") {
+				continue
+			}
+			// --replace-all is required, not cosmetic. `gh auth setup-git` (run
+			// below, and by the no-token branch) leaves the key multi-valued: an
+			// empty entry that resets the helper chain plus gh's own helper. A
+			// plain `git config --global <key> <value>` refuses to overwrite a
+			// multi-valued key and exits 5, which aborts the whole prepare script
+			// under `set -euo pipefail`. On a host whose home directory persists
+			// between runs (SSH, unlike an ephemeral Docker container) exactly one
+			// launch would succeed and every later one fail.
+			helperLines = append(helperLines, fmt.Sprintf(
+				`git config --global --replace-all credential.https://%s.helper '!/bin/sh -c "echo username=x-access-token; echo password=${%s:-${%s}}"'`,
+				host, primary, fallback,
+			))
+		}
+		if len(helperLines) == 0 {
+			// No token: fallback commands that may work if gh is pre-authenticated.
+			lines := append([]string{
+				"# No GitHub token configured - trying fallback methods",
+				"gh auth setup-git 2>/dev/null || true",
+			}, protocolLines...)
+			return map[string]string{"github.auth_setup": strings.Join(lines, "\n")}
 		}
 
-		// Check for GitHub token in env (either GH_TOKEN or GITHUB_TOKEN)
-		token := env["GH_TOKEN"]
-		if token == "" {
-			token = env["GITHUB_TOKEN"]
-		}
-		if token == "" {
-			// No token - output fallback commands that may work if gh is pre-authenticated
-			vars["github.auth_setup"] = `# No GitHub token configured - trying fallback methods
-gh auth setup-git 2>/dev/null || true
-gh config set git_protocol https --host github.com 2>/dev/null || true`
-			return vars
-		}
-
-		// Build auth setup script that configures both gh CLI and git
-		// Use /bin/sh (not /bin/bash) for Alpine compatibility
-		// Use ${GH_TOKEN:-${GITHUB_TOKEN}} to support either env var being set
+		// Use /bin/sh (not /bin/bash) for Alpine compatibility.
 		lines := []string{
 			"# GitHub token authentication",
 			"# Configure git credential helper for GitHub HTTPS authentication",
-			// --replace-all is required, not cosmetic. `gh auth setup-git` (run
-			// below, and by the no-token branch above) leaves the key
-			// multi-valued: an empty entry that resets the helper chain plus
-			// gh's own helper. A plain `git config --global <key> <value>`
-			// refuses to overwrite a multi-valued key and exits 5, which aborts
-			// the whole prepare script under `set -euo pipefail`. That makes the
-			// no-token branch poison the with-token branch: on a host whose home
-			// directory persists between runs (SSH, unlike an ephemeral Docker
-			// container) exactly one launch succeeds and every later one fails.
-			`git config --global --replace-all credential.https://github.com.helper '!/bin/sh -c "echo username=x-access-token; echo password=${GH_TOKEN:-${GITHUB_TOKEN}}"'`,
-			"# Configure gh CLI to use HTTPS protocol",
-			"gh config set git_protocol https --host github.com 2>/dev/null || true",
+		}
+		lines = append(lines, helperLines...)
+		lines = append(lines, "# Configure gh CLI to use HTTPS protocol")
+		lines = append(lines, protocolLines...)
+		lines = append(lines,
 			"# Register gh as git credential helper (backup method)",
 			"gh auth setup-git 2>/dev/null || true",
-		}
-		vars["github.auth_setup"] = strings.Join(lines, "\n")
-		return vars
+		)
+		return map[string]string{"github.auth_setup": strings.Join(lines, "\n")}
 	}
+}
+
+// GitHubSSHPrefixes are the SSH remote forms of host that Git rewrites to
+// https://<host>/: git@<host>:, the tenant user form of a GHE.com host, and
+// ssh://git@<host>/.
+func GitHubSSHPrefixes(host string) []string {
+	prefixes := []string{"git@" + host + ":"}
+	if user := repoclone.SSHUser(host); user != "git" {
+		prefixes = append(prefixes, user+"@"+host+":")
+	}
+	return append(prefixes, "ssh://git@"+host+"/")
 }

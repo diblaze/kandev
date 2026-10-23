@@ -245,18 +245,18 @@ func (a *githubBrokerScopeAuthorizer) AuthorizeGitCredential(ctx context.Context
 	if _, err := a.authorizeTaskRepository(ctx, scope.TaskID, scope.RepositoryID); err != nil {
 		return err
 	}
-	if !strings.EqualFold(scope.ProviderID, gitCredentialGitHubProviderID) ||
-		!strings.EqualFold(scope.Host, gitCredentialGitHubHost) {
+	if !strings.EqualFold(scope.ProviderID, gitCredentialGitHubProviderID) {
 		return a.authorizeRepositoryIdentity(ctx, scope)
 	}
 	owner, repo, err := gitCredentialScopeOwnerRepo(scope.Path)
 	if err != nil {
 		return err
 	}
-	if err := a.AuthorizeGitHubRepositoryWithIdentity(
-		ctx, scope.WorkspaceID, scope.TaskID, scope.SessionID, scope.RepositoryID,
-		owner, repo, scope.IdentityProviderID, scope.ParentProviderID,
-	); err == nil {
+	if err := a.authorizeGitHubRepository(ctx, gitHubRepositoryScope{
+		workspaceID: scope.WorkspaceID, taskID: scope.TaskID, sessionID: scope.SessionID,
+		repositoryID: scope.RepositoryID, host: scope.Host, owner: owner, repo: repo,
+		providerID: scope.IdentityProviderID, parentProviderID: scope.ParentProviderID,
+	}, true); err == nil {
 		return nil
 	}
 	// Legacy GitHub rows may omit ProviderHost while their persisted clone URL

@@ -60,7 +60,7 @@ func selectedCheckoutAgentEnv(env map[string]string, metadata map[string]interfa
 	if !selectedCheckoutIsPullRequest(metadata) {
 		return result
 	}
-	for _, key := range append([]string{"GITHUB_TOKEN", "GH_TOKEN", githubauth.CredentialHelperPathEnv, githubauth.CredentialCLIShimDirEnv, githubauth.CredentialCLIBashEnvEnv, githubauth.CredentialParentBashEnv}, managedGitCredentialBrokerEnvKeys...) {
+	for _, key := range append([]string{"GITHUB_TOKEN", "GH_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", githubauth.CredentialHelperPathEnv, githubauth.CredentialCLIShimDirEnv, githubauth.CredentialCLIBashEnvEnv, githubauth.CredentialParentBashEnv}, managedGitCredentialBrokerEnvKeys...) {
 		delete(result, key)
 	}
 	return result
@@ -73,7 +73,7 @@ func selectedCheckoutCredentialScrubScript(metadata map[string]interface{}) stri
 	return selectedCheckoutCredentialScrubCommands
 }
 
-const selectedCheckoutCredentialScrubCommands = `unset GITHUB_TOKEN GH_TOKEN KANDEV_GITHUB_CREDENTIAL_BROKER_URL KANDEV_GITHUB_CREDENTIAL_LEASE KANDEV_GITHUB_CREDENTIAL_REISSUE_CAPABILITY KANDEV_GITHUB_CREDENTIAL_TASK_ID KANDEV_GITHUB_CREDENTIAL_SESSION_ID KANDEV_GITHUB_CREDENTIAL_REPOSITORY_ID KANDEV_GITHUB_CREDENTIAL_OWNER KANDEV_GITHUB_CREDENTIAL_REPO KANDEV_GITHUB_CREDENTIAL_HOST KANDEV_GITHUB_CREDENTIAL_SCOPES KANDEV_GITHUB_CREDENTIAL_HELPER_PATH KANDEV_GITHUB_CLI_SHIM_DIR KANDEV_GITHUB_CLI_BASH_ENV KANDEV_GITHUB_PARENT_BASH_ENV`
+const selectedCheckoutCredentialScrubCommands = `unset GITHUB_TOKEN GH_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN KANDEV_GITHUB_CREDENTIAL_BROKER_URL KANDEV_GITHUB_CREDENTIAL_LEASE KANDEV_GITHUB_CREDENTIAL_REISSUE_CAPABILITY KANDEV_GITHUB_CREDENTIAL_TASK_ID KANDEV_GITHUB_CREDENTIAL_SESSION_ID KANDEV_GITHUB_CREDENTIAL_REPOSITORY_ID KANDEV_GITHUB_CREDENTIAL_OWNER KANDEV_GITHUB_CREDENTIAL_REPO KANDEV_GITHUB_CREDENTIAL_HOST KANDEV_GITHUB_CREDENTIAL_SCOPES KANDEV_GITHUB_CREDENTIAL_HELPER_PATH KANDEV_GITHUB_CLI_SHIM_DIR KANDEV_GITHUB_CLI_BASH_ENV KANDEV_GITHUB_PARENT_BASH_ENV`
 
 // withBranchCheckout keeps explicit selection strict and contribution checkout independent.
 func withBranchCheckout(req *ExecutorCreateRequest, script string) string {

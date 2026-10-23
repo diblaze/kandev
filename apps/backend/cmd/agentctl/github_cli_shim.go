@@ -66,6 +66,9 @@ func runGitHubCLIShim(
 	if err != nil {
 		return err
 	}
+	if err := checkGitHubCLIHostname(args, client.request.Host); err != nil {
+		return err
+	}
 	credential, err := client.resolveWithReissue(ctx)
 	if err != nil {
 		return err
@@ -81,13 +84,56 @@ func runGitHubCLIShim(
 		return err
 	}
 	defer func() { _ = os.RemoveAll(configDir) }()
+	host := client.request.Host
+	tokenKey, _ := githubauth.TokenEnvForHost(host)
 	childEnv := replaceEnvironment(environ(), map[string]string{
-		"GH_TOKEN":            credential.Password,
+		"GH_HOST":             host,
+		tokenKey:              credential.Password,
 		"GH_CONFIG_DIR":       configDir,
 		"PATH":                realPath,
 		envGitHubCLIShimDepth: strconv.Itoa(depth + 1),
-	}, "GITHUB_TOKEN")
+	}, githubCLITokenVariables...)
 	return runner(ctx, executable, args, childEnv, stdin, stdout, stderr)
+}
+
+// githubCLITokenVariables are every token variable gh reads. The shim's child
+// receives only the one for the lease host, so no other credential reaches gh.
+var githubCLITokenVariables = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
+
+// checkGitHubCLIHostname refuses a --hostname, or a URL argument on a host,
+// other than the lease host or its subdomains: gh would send the lease
+// credential to that host.
+func checkGitHubCLIHostname(args []string, host string) error {
+	host = strings.ToLower(strings.TrimSpace(host))
+	for _, arg := range args {
+		if !strings.HasPrefix(strings.ToLower(arg), "http://") && !strings.HasPrefix(strings.ToLower(arg), "https://") {
+			continue
+		}
+		parsed, err := url.Parse(arg)
+		urlHost := ""
+		if err == nil {
+			urlHost = strings.ToLower(parsed.Hostname())
+		}
+		if urlHost != host && !strings.HasSuffix(urlHost, "."+host) {
+			return fmt.Errorf("gh URL %q is not on the credential host %q", arg, host)
+		}
+	}
+	for index, arg := range args {
+		if arg == "--" {
+			break
+		}
+		value, found := strings.CutPrefix(arg, "--hostname=")
+		if arg == "--hostname" {
+			value, found = "", true
+			if index+1 < len(args) {
+				value = args[index+1]
+			}
+		}
+		if found && !strings.EqualFold(strings.TrimSpace(value), host) {
+			return fmt.Errorf("gh --hostname %q does not match the credential host %q", value, host)
+		}
+	}
+	return nil
 }
 
 // githubCLIShimDepth parses the inherited shim depth; the bound is exclusive.

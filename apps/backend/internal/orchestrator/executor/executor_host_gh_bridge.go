@@ -159,7 +159,7 @@ func (e *Executor) probeHostGitHubHosts(
 func hostGitHubProbeCandidates(req *LaunchAgentRequest, profileEnvVars []models.ProfileEnvVar, hosts []string) []int {
 	candidates := make([]int, 0, len(hosts))
 	for index, host := range hosts {
-		if hasExplicitGitHubToken(req.Env, host) || hasExplicitGitHubTokenInProfile(profileEnvVars, host) {
+		if hasExplicitGitHubToken(req.Env, profileEnvVars, host) {
 			continue
 		}
 		candidates = append(candidates, index)
@@ -303,25 +303,6 @@ func isGitHubCredentialSelectionEnv(key string) bool {
 	}
 }
 
-func hasExplicitGitHubTokenInProfile(profileEnvVars []models.ProfileEnvVar, host string) bool {
-	for _, envVar := range profileEnvVars {
-		if envVar.SecretID == "" && strings.TrimSpace(envVar.Value) == "" {
-			continue
-		}
-		switch envVar.Key {
-		case envGHToken, envGitHubToken:
-			if strings.EqualFold(host, defaultGitHubHost) {
-				return true
-			}
-		case "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN":
-			if !strings.EqualFold(host, defaultGitHubHost) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func hostGitHubCredentialBridgeEligible(executorType string) bool {
 	switch models.ExecutorType(executorType) {
 	case models.ExecutorTypeLocal, models.ExecutorTypeWorktree:
@@ -383,12 +364,39 @@ func hostGitHubIdentityAllowed(repository *models.Repository, host string) bool 
 	return strings.EqualFold(host, defaultGitHubHost)
 }
 
-func hasExplicitGitHubToken(env map[string]string, host string) bool {
-	if strings.EqualFold(host, defaultGitHubHost) {
-		return nonEmptyEnvValue(env, envGHToken) || nonEmptyEnvValue(env, envGitHubToken)
+// hasExplicitGitHubToken reports whether the request env or the effective
+// profile sets a token bound to host (githubauth.ProfileTokenEnvForHost). The
+// profile, ordered weaker to stronger, overrides the request GH_HOST.
+func hasExplicitGitHubToken(env map[string]string, profileEnvVars []models.ProfileEnvVar, host string) bool {
+	ghHost := env["GH_HOST"]
+	for _, envVar := range profileEnvVars {
+		if envVar.Key != "GH_HOST" {
+			continue
+		}
+		if envVar.SecretID != "" {
+			// A secret-backed GH_HOST is unresolved here, so its token is bound to no host.
+			return false
+		}
+		if strings.TrimSpace(envVar.Value) != "" {
+			ghHost = envVar.Value
+		}
 	}
-	return nonEmptyEnvValue(env, "GH_ENTERPRISE_TOKEN") ||
-		nonEmptyEnvValue(env, "GITHUB_ENTERPRISE_TOKEN")
+	primary, fallback := githubauth.ProfileTokenEnvForHost(ghHost, host)
+	if primary == "" {
+		return false
+	}
+	if nonEmptyEnvValue(env, primary) || nonEmptyEnvValue(env, fallback) {
+		return true
+	}
+	for _, envVar := range profileEnvVars {
+		if envVar.SecretID == "" && strings.TrimSpace(envVar.Value) == "" {
+			continue
+		}
+		if envVar.Key == primary || envVar.Key == fallback {
+			return true
+		}
+	}
+	return false
 }
 
 func nonEmptyEnvValue(env map[string]string, key string) bool {

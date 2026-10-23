@@ -76,6 +76,11 @@ and the executor host bridge already bridges enterprise hosts (E12).
   migration backfills those rows as `https://github.com`, so
   `RepositoryGitHubHost` reads an empty value as `github.com` and still
   rejects a malformed one.
+- **A profile token is bound to its `GH_HOST`.** The GitHub CLI lets
+  `GH_TOKEN` answer `github.com` and every `*.ghe.com` tenant (E7), but Kandev
+  cannot tell which host a profile token was issued for. The token is bound to
+  the profile's `GH_HOST` (`github.com` when unset); every other host uses its
+  own connection.
 - **Connection key becomes (workspace, host).** It is the smallest model that
   lets one workspace hold several hosts: the host column, request field, and
   App host key already exist (E2, E3, E25). A second connection table would

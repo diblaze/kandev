@@ -195,12 +195,21 @@ only when every host fails.
   managed `gh` shim keeps its repository detection, sets `GH_HOST` to the
   target host, and passes the credential as `GH_TOKEN` for `github.com` and
   `.ghe.com` hosts or as `GH_ENTERPRISE_TOKEN` for other hosts.
-- **Executor mode:** the host bridge already covers attached GitHub hosts. The
-  explicit-token check follows the same variable rule as the shim.
+- **Executor mode:** the host bridge already covers attached GitHub hosts. An
+  explicit profile token suppresses the bridge only for the host it is bound
+  to (below); every other host keeps the bridge credential.
+- **Profile token binding:** a profile `GH_TOKEN` or `GITHUB_TOKEN` is bound to
+  the profile's `GH_HOST`, or to `github.com` when `GH_HOST` is unset. A
+  profile `GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN` is bound to the
+  Enterprise Server host `GH_HOST` names, or to every Enterprise Server host
+  when `GH_HOST` names none. A malformed `GH_HOST` binds the profile token to
+  no host. So does a secret-backed `GH_HOST` where Kandev decides before
+  secrets resolve (the host `gh` bridge); launch and prepare-script paths use
+  its resolved value. Kandev cannot tell which host a profile token was issued
+  for, so `GH_HOST` is the only binding it trusts.
 - **Remote executors with profile tokens:** Docker, Sprites, and SSH prepare
   scripts receive the list of attached GitHub hosts and add an HTTPS helper
-  and SSH-to-HTTPS rewrite for each host, reading the variable that applies to
-  that host.
+  and SSH-to-HTTPS rewrite for each host whose profile token is bound to it.
 - **Pull-request creation:** the executor publishes
   `KANDEV_GITHUB_HOSTS`, a comma-separated list of attached enterprise hosts.
   agentctl treats an origin on a listed host as GitHub and runs `gh pr create`
@@ -253,6 +262,9 @@ host.
 ## Security
 
 - The token for a host is sent only to that host's endpoints.
+- A profile token is offered only to the host its `GH_HOST` binds it to, never
+  to `github.com`, another GHE.com tenant, or an Enterprise Server host
+  because of the GitHub CLI's broader variable rule.
 - A URL host never selects a credential by itself: it selects a host, and the
   credential is the workspace connection for that host.
 - Repository classification and remote URL acceptance trust only hosts with a

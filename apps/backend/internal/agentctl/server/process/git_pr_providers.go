@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/kandev/kandev/internal/common/subproc"
+	"github.com/kandev/kandev/internal/githubauth"
 )
 
 var credentialURLPattern = regexp.MustCompile(`(?i)(https?://)[^\s/@]+@`)
@@ -39,6 +41,7 @@ const (
 	errAzureCLIMissing                        = "azure CLI (az) is not on PATH; install it and run: az extension add --name azure-devops"
 	errAzureDevOpsExtensionMissing            = "azure DevOps CLI extension is not installed; run: az extension add --name azure-devops"
 	gitLabHostEnv                             = "KANDEV_GITLAB_HOST"
+	gitHubHostsEnv                            = "KANDEV_GITHUB_HOSTS"
 	gitLabTokenEnv                            = "GITLAB_TOKEN"
 )
 
@@ -58,15 +61,15 @@ type azurePRCreateResponse struct {
 }
 
 func detectPRProvider(remoteURL string) prProvider {
-	return detectPRProviderWithGitLabHost(remoteURL, os.Getenv(gitLabHostEnv))
+	return detectPRProviderWithHosts(remoteURL, os.Getenv(gitLabHostEnv), os.Getenv(gitHubHostsEnv))
 }
 
-func detectPRProviderWithGitLabHost(remoteURL, configuredGitLabHost string) prProvider {
+func detectPRProviderWithHosts(remoteURL, configuredGitLabHost, configuredGitHubHosts string) prProvider {
 	host := remoteHostFromURL(remoteURL)
 	if isAzureReposHost(host) {
 		return prProviderAzureRepos
 	}
-	if isGitHubHost(host) {
+	if isGitHubHost(host, configuredGitHubHosts) {
 		return prProviderGitHub
 	}
 	if isGitLabHost(host, configuredGitLabHost) {
@@ -84,11 +87,12 @@ func isGitLabHost(host, configuredGitLabHost string) bool {
 }
 
 func (g *GitOperator) detectPRProvider(remoteURL string) prProvider {
-	return detectPRProviderWithGitLabHost(remoteURL, g.environmentValue(gitLabHostEnv))
+	return detectPRProviderWithHosts(remoteURL, g.environmentValue(gitLabHostEnv), g.environmentValue(gitHubHostsEnv))
 }
 
-func isGitHubHost(host string) bool {
-	return host == "github.com" || strings.HasSuffix(host, ".github.com")
+func isGitHubHost(host, configuredGitHubHosts string) bool {
+	return host == "github.com" || strings.HasSuffix(host, ".github.com") ||
+		slices.Contains(githubauth.EnterpriseHosts(configuredGitHubHosts), host)
 }
 
 func isAzureReposHost(host string) bool {

@@ -68,7 +68,7 @@ func (f fakeBrokerInstallationProvider) ResolveInstallation(
 
 func (a *fakeBrokerAuthorizer) AuthorizeGitHubRepository(
 	_ context.Context,
-	_, _, sessionID, _, _, _ string,
+	_, _, sessionID, _, _, _, _ string,
 ) error {
 	a.calls++
 	a.sessionIDs = append(a.sessionIDs, sessionID)
@@ -77,10 +77,10 @@ func (a *fakeBrokerAuthorizer) AuthorizeGitHubRepository(
 
 func (a *fakeBrokerAuthorizer) AuthorizeGitHubRepositoryWithIdentity(
 	ctx context.Context,
-	workspaceID, taskID, sessionID, repositoryID, owner, repo, providerID, parentProviderID string,
+	workspaceID, taskID, sessionID, repositoryID, host, owner, repo, providerID, parentProviderID string,
 ) error {
 	a.identityProviderIDs = append(a.identityProviderIDs, providerID+"/"+parentProviderID)
-	return a.AuthorizeGitHubRepository(ctx, workspaceID, taskID, sessionID, repositoryID, owner, repo)
+	return a.AuthorizeGitHubRepository(ctx, workspaceID, taskID, sessionID, repositoryID, host, owner, repo)
 }
 
 func newPATCredentialBroker(t *testing.T) (*CredentialBroker, *WorkspaceConnection, *fakeBrokerAuthorizer) {

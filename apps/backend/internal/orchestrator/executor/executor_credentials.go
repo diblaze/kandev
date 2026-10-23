@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -214,6 +215,7 @@ func (e *Executor) configureGitCredentialBrokerForRepositoriesWithProfileEnvAndB
 	if err := removeHostGitHubCredentialHelpers(req); err != nil {
 		return err
 	}
+	setGitHubHostsEnv(req.Env, infos)
 	if len(infos) == 0 {
 		return nil
 	}
@@ -231,6 +233,24 @@ func (e *Executor) configureGitCredentialBrokerForRepositoriesWithProfileEnvAndB
 		return e.configureExecutorGitCredentials(ctx, req, infos, profileEnvVars, hostBridgeProfileResolved)
 	}
 	return e.configureManagedGitCredentials(ctx, req, infos, profileEnvVars)
+}
+
+// setGitHubHostsEnv publishes the attached GitHub hosts other than
+// github.com, sorted, so agentctl and remote prepare steps can treat them as
+// GitHub. A launch without such a host carries no value.
+func setGitHubHostsEnv(env map[string]string, infos []*repoInfo) {
+	var hosts []string
+	for _, host := range resolveHostGitHubHosts(infos) {
+		if host = strings.ToLower(host); host != defaultGitHubHost {
+			hosts = append(hosts, host)
+		}
+	}
+	if len(hosts) == 0 {
+		delete(env, githubauth.GitHubHostsEnv)
+		return
+	}
+	slices.Sort(hosts)
+	env[githubauth.GitHubHostsEnv] = strings.Join(hosts, ",")
 }
 
 func (e *Executor) resolveTaskGitCredentialPolicy(ctx context.Context, workspaceID string) (TaskGitCredentialPolicy, error) {
@@ -689,8 +709,9 @@ func (e *Executor) issueGitHubContributionCredentialScope(
 	if binding.Provider != models.RemoteContributionProviderGitHub {
 		return nil, nil
 	}
-	if !strings.EqualFold(binding.SourceRepository.Host, defaultGitHubHost) {
-		return nil, fmt.Errorf("remote contribution source is not a GitHub repository")
+	host, err := attachedGitHubRepositoryHost(info)
+	if err != nil || !strings.EqualFold(binding.SourceRepository.Host, host) {
+		return nil, fmt.Errorf("remote contribution source is not on the repository's GitHub host")
 	}
 	parts := strings.Split(binding.SourceRepository.Path, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
@@ -705,7 +726,7 @@ func (e *Executor) issueGitHubContributionCredentialScope(
 		return nil, fmt.Errorf("remote contribution does not permit collaboration")
 	}
 	return e.issueGitHubCredentialScopeForIdentity(
-		ctx, req, info.RepositoryID, parts[0], parts[1], defaultGitHubHost, binding.SourceRepository.ProviderID, "", nil,
+		ctx, req, info.RepositoryID, parts[0], parts[1], host, binding.SourceRepository.ProviderID, "", nil,
 	)
 }
 
@@ -724,9 +745,10 @@ func (e *Executor) issueGitHubContributionDestinationCredentialScope(
 	if destination.Provider != models.ContributionDestinationProviderGitHub || info.Repository == nil {
 		return nil, nil
 	}
-	if !strings.EqualFold(destination.SourceRepository.Host, defaultGitHubHost) ||
-		!strings.EqualFold(destination.TargetRepository.Host, defaultGitHubHost) {
-		return nil, fmt.Errorf("contribution destination is not a GitHub repository")
+	host, err := attachedGitHubRepositoryHost(info)
+	if err != nil || !strings.EqualFold(destination.SourceRepository.Host, host) ||
+		!strings.EqualFold(destination.TargetRepository.Host, host) {
+		return nil, fmt.Errorf("contribution destination is not on the repository's GitHub host")
 	}
 	canonicalPath := strings.TrimSpace(info.Repository.ProviderOwner) + "/" + strings.TrimSpace(info.Repository.ProviderName)
 	if !strings.EqualFold(destination.SourceRepository.Path, canonicalPath) {
@@ -747,9 +769,16 @@ func (e *Executor) issueGitHubContributionDestinationCredentialScope(
 		return nil, nil
 	}
 	return e.issueGitHubCredentialScopeForIdentity(
-		ctx, req, info.RepositoryID, parts[0], parts[1], defaultGitHubHost,
+		ctx, req, info.RepositoryID, parts[0], parts[1], host,
 		destination.TargetRepository.ProviderID, destination.SourceRepository.ProviderID, destination.CredentialBinding,
 	)
+}
+
+// attachedGitHubRepositoryHost is the host of the attached repository's
+// canonical clone identity; contribution scopes are issued only on it.
+func attachedGitHubRepositoryHost(info *repoInfo) (string, error) {
+	host, _, _, _, err := gitCredentialCloneIdentity(info.Repository, info.RepositoryID)
+	return strings.ToLower(host), err
 }
 
 func (e *Executor) issueGitHubCredentialScopeForIdentity(
@@ -882,7 +911,7 @@ func hasExplicitGitHubTokenForRepository(
 	if err != nil {
 		return false
 	}
-	return hasExplicitGitHubToken(env, host) || hasExplicitGitHubTokenInProfile(profileEnvVars, host)
+	return hasExplicitGitHubToken(env, profileEnvVars, host)
 }
 
 func gitCredentialCloneIdentity(repository *models.Repository, repositoryID string) (string, string, string, string, error) {

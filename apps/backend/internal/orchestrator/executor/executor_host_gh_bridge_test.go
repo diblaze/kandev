@@ -413,27 +413,6 @@ func TestExecutorHostGHBridgeCleanupPreservesUserHelpersWhenReplacementUnavailab
 	}
 }
 
-func TestExplicitGitHubTokensAreScopedToTheirGitHubHost(t *testing.T) {
-	tests := []struct {
-		name string
-		host string
-		env  map[string]string
-		want bool
-	}{
-		{name: "public token for public host", host: "github.com", env: map[string]string{envGHToken: "public"}, want: true},
-		{name: "enterprise token for enterprise host", host: "ghe.example", env: map[string]string{"GH_ENTERPRISE_TOKEN": "enterprise"}, want: true},
-		{name: "public token does not bypass enterprise host", host: "ghe.example", env: map[string]string{envGHToken: "public"}},
-		{name: "enterprise token does not bypass public host", host: "github.com", env: map[string]string{"GH_ENTERPRISE_TOKEN": "enterprise"}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := hasExplicitGitHubToken(test.env, test.host); got != test.want {
-				t.Fatalf("hasExplicitGitHubToken(%q) = %v, want %v", test.host, got, test.want)
-			}
-		})
-	}
-}
-
 func TestExecutorHostGHBridgeEligibility(t *testing.T) {
 	t.Run("local and worktree only", func(t *testing.T) {
 		setupHostGHExecutable(t)

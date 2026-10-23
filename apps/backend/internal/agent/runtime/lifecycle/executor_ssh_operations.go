@@ -25,6 +25,7 @@ import (
 
 	agentctl "github.com/kandev/kandev/internal/agent/runtime/agentctl"
 	"github.com/kandev/kandev/internal/common/logger"
+	"github.com/kandev/kandev/internal/githubauth"
 	"github.com/kandev/kandev/internal/task/models"
 )
 
@@ -982,30 +983,33 @@ func remoteControlHTTPClient(client *ssh.Client, controlPort int) *http.Client {
 // (several also appear in the Docker/Sprites credential paths) so goconst stays
 // satisfied and the allowlist reads as intent rather than magic strings.
 const (
-	envKeyClaudeCodeOAuthToken = "CLAUDE_CODE_OAUTH_TOKEN"
-	envKeyAnthropicAPIKey      = "ANTHROPIC_API_KEY"
-	envKeyOpenAIAPIKey         = "OPENAI_API_KEY"
-	envKeyGeminiAPIKey         = "GEMINI_API_KEY"
-	envKeyGoogleAPIKey         = "GOOGLE_API_KEY"
-	envKeyGitHubToken          = "GITHUB_TOKEN"
-	envKeyGHToken              = "GH_TOKEN"
-	envKeyGitLabToken          = "GITLAB_TOKEN"
-	envKeyGitLabHost           = "GITLAB_HOST"
-	envKeyKandevGitLabHost     = "KANDEV_GITLAB_HOST"
-	envKeyMCPTimeout           = "MCP_TIMEOUT"
-	envKeyMCPToolTimeout       = "MCP_TOOL_TIMEOUT"
-	envKeyKandevAPIURL         = "KANDEV_API_URL"
-	envKeyKandevAPIKey         = "KANDEV_API_KEY"
-	envKeyKandevRunToken       = "KANDEV_RUN_TOKEN"
-	envKeyKandevCLI            = "KANDEV_CLI"
-	envKeyKandevAgentID        = "KANDEV_AGENT_ID"
-	envKeyKandevAgentName      = "KANDEV_AGENT_NAME"
-	envKeyKandevWorkspaceID    = "KANDEV_WORKSPACE_ID"
-	envKeyKandevRunID          = "KANDEV_RUN_ID"
-	envKeyKandevTaskID         = "KANDEV_TASK_ID"
-	envKeyKandevWakeReason     = "KANDEV_WAKE_REASON"
-	envKeyKandevWakeCommentID  = "KANDEV_WAKE_COMMENT_ID"
-	envKeyKandevWakePayload    = "KANDEV_WAKE_PAYLOAD_JSON"
+	envKeyClaudeCodeOAuthToken  = "CLAUDE_CODE_OAUTH_TOKEN"
+	envKeyAnthropicAPIKey       = "ANTHROPIC_API_KEY"
+	envKeyOpenAIAPIKey          = "OPENAI_API_KEY"
+	envKeyGeminiAPIKey          = "GEMINI_API_KEY"
+	envKeyGoogleAPIKey          = "GOOGLE_API_KEY"
+	envKeyGitHubToken           = "GITHUB_TOKEN"
+	envKeyGHToken               = "GH_TOKEN"
+	envKeyGHHost                = "GH_HOST"
+	envKeyGHEnterpriseToken     = "GH_ENTERPRISE_TOKEN"
+	envKeyGitHubEnterpriseToken = "GITHUB_ENTERPRISE_TOKEN"
+	envKeyGitLabToken           = "GITLAB_TOKEN"
+	envKeyGitLabHost            = "GITLAB_HOST"
+	envKeyKandevGitLabHost      = "KANDEV_GITLAB_HOST"
+	envKeyMCPTimeout            = "MCP_TIMEOUT"
+	envKeyMCPToolTimeout        = "MCP_TOOL_TIMEOUT"
+	envKeyKandevAPIURL          = "KANDEV_API_URL"
+	envKeyKandevAPIKey          = "KANDEV_API_KEY"
+	envKeyKandevRunToken        = "KANDEV_RUN_TOKEN"
+	envKeyKandevCLI             = "KANDEV_CLI"
+	envKeyKandevAgentID         = "KANDEV_AGENT_ID"
+	envKeyKandevAgentName       = "KANDEV_AGENT_NAME"
+	envKeyKandevWorkspaceID     = "KANDEV_WORKSPACE_ID"
+	envKeyKandevRunID           = "KANDEV_RUN_ID"
+	envKeyKandevTaskID          = "KANDEV_TASK_ID"
+	envKeyKandevWakeReason      = "KANDEV_WAKE_REASON"
+	envKeyKandevWakeCommentID   = "KANDEV_WAKE_COMMENT_ID"
+	envKeyKandevWakePayload     = "KANDEV_WAKE_PAYLOAD_JSON"
 )
 
 var sshRemoteAgentCredentialEnvKeys = []string{
@@ -1016,9 +1020,13 @@ var sshRemoteAgentCredentialEnvKeys = []string{
 	envKeyGoogleAPIKey,
 	envKeyGitHubToken,
 	envKeyGHToken,
+	envKeyGHHost,
 	envKeyGitLabToken,
 	envKeyGitLabHost,
 	envKeyKandevGitLabHost,
+	envKeyGHEnterpriseToken,
+	envKeyGitHubEnterpriseToken,
+	githubauth.GitHubHostsEnv,
 }
 
 // sshRemoteAgentRuntimeEnvKeys are resolved runtime contract values that must
