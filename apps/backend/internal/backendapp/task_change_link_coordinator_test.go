@@ -198,22 +198,24 @@ func TestTaskChangeURLsRequireCanonicalRepositoryIdentity(t *testing.T) {
 	if err != nil || gitlabURL != "https://gitlab.example.test/group/api/-/merge_requests/9" {
 		t.Fatalf("gitlabChangeURL() = %q, %v", gitlabURL, err)
 	}
-	if _, err := githubChangeURL("https://gitlab.example.test", "acme", "api", 7); err == nil {
-		t.Fatal("githubChangeURL accepted a non-GitHub host")
+	enterpriseURL, err := githubChangeURL("https://octo.ghe.com", "acme", "api", 7)
+	if err != nil || enterpriseURL != "https://octo.ghe.com/acme/api/pull/7" {
+		t.Fatalf("githubChangeURL() enterprise = %q, %v", enterpriseURL, err)
 	}
 	if _, err := gitlabChangeURL("", "group", "api", 9); err == nil {
 		t.Fatal("gitlabChangeURL accepted an incomplete repository identity")
 	}
 }
 
-func TestGitHubChangeURLRejectsSubstringHostSpoofing(t *testing.T) {
+func TestGitHubChangeURLRejectsMalformedHosts(t *testing.T) {
 	for _, host := range []string{
-		"https://github.com.evil.test",
-		"https://mygithub.com",
-		"github.com.evil.test",
+		"https://octo.ghe.com:8443",
+		"https://user@octo.ghe.com",
+		"https://octo.ghe.com/api",
+		"https://octo.ghe.com?x=1",
 	} {
 		if _, err := githubChangeURL(host, "acme", "api", 7); err == nil {
-			t.Fatalf("githubChangeURL accepted spoofed host %q", host)
+			t.Fatalf("githubChangeURL accepted malformed host %q", host)
 		}
 	}
 	if _, err := githubChangeURL("", "acme", "api", 7); err == nil {
@@ -247,6 +249,22 @@ func TestTaskChangeCoordinatorDispatchesGitHubLinkWithWorkspaceIdentity(t *testi
 	}
 	if len(links) != 1 || links[0].Provider != "github" {
 		t.Fatalf("links = %#v, want one GitHub link", links)
+	}
+}
+
+func TestTaskChangeCoordinatorRejectsGitHubLinkOnGitLabRepository(t *testing.T) {
+	taskSvc, repos := newTaskChangeCoordinatorHarness(t)
+	seedTaskChangeCoordinatorTask(t, repos, "ws-1", "task-1", "repo-1", "https://gitlab.example.test", "group", "project")
+	githubLinks := &fakeGitHubChangeLinks{}
+	coordinator := taskChangeLinkCoordinator{tasks: taskSvc, github: githubLinks}
+	ctx := authn.WithIdentity(context.Background(), authn.Identity{UserID: "user-1"})
+
+	_, err := coordinator.LinkTaskChange(ctx, mcphandlers.TaskChangeLinkRequest{
+		TaskID: "task-1",
+		Link:   mcphandlers.TaskChangeLink{Provider: "github", RepositoryID: "repo-1", Number: 42},
+	})
+	if err == nil || githubLinks.linkedURL != "" {
+		t.Fatalf("LinkTaskChange() = %v, linked %q; want a rejection before any GitHub call", err, githubLinks.linkedURL)
 	}
 }
 

@@ -58,7 +58,7 @@ func TestRetryChildPreservesGitHubPRAssociationIdentity(t *testing.T) {
 		"pr-42",
 	)
 
-	svc.associateAutomationPR(context.Background(), "retry-child-task", "repo-1", triggerData)
+	svc.associateAutomationPR(context.Background(), "workspace-1", "retry-child-task", "repo-1", triggerData)
 
 	require.Equal(t, 1, githubService.associateCalls)
 	require.Equal(t, 42, githubService.lastAssociatePRNumber)

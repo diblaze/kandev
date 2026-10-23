@@ -524,7 +524,8 @@ func githubComparisonRepositoryFromRepository(repo *models.Repository) (models.C
 }
 
 func normalizeGitHubComparisonRepository(repository models.ComparisonTargetRepository) (models.ComparisonTargetRepository, bool) {
-	if !isGitHubComparisonHost(repository.Host) {
+	host, ok := gitHubComparisonHost(repository.Host)
+	if !ok {
 		return models.ComparisonTargetRepository{}, false
 	}
 	parts := strings.Split(strings.Trim(strings.TrimSpace(repository.Path), "/"), "/")
@@ -532,27 +533,31 @@ func normalizeGitHubComparisonRepository(repository models.ComparisonTargetRepos
 		return models.ComparisonTargetRepository{}, false
 	}
 	owner, name := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-	repository.Host = defaultGitHubHost
+	repository.Host = host
 	repository.Path = owner + "/" + name
-	repository.RemoteURL = fmt.Sprintf("https://%s/%s/%s.git", defaultGitHubHost, owner, name)
+	repository.RemoteURL = fmt.Sprintf("https://%s/%s/%s.git", host, owner, name)
 	return repository, true
 }
 
-func isGitHubComparisonHost(raw string) bool {
+// gitHubComparisonHost returns the lowercase hostname of a bare host or an
+// http(s) origin without user info, port, path, query, or fragment.
+func gitHubComparisonHost(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return false
+		return "", false
 	}
 	if !strings.Contains(raw, "://") {
 		raw = "https://" + raw
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.User != nil || parsed.Port() != "" ||
+	if err != nil || parsed.User != nil || parsed.Port() != "" || parsed.Hostname() == "" ||
 		(parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return false
+		return "", false
 	}
-	return (strings.EqualFold(parsed.Scheme, "https") || strings.EqualFold(parsed.Scheme, "http")) &&
-		strings.EqualFold(parsed.Hostname(), defaultGitHubHost)
+	if !strings.EqualFold(parsed.Scheme, "https") && !strings.EqualFold(parsed.Scheme, "http") {
+		return "", false
+	}
+	return strings.ToLower(parsed.Hostname()), true
 }
 
 func hasProviderRepositoryIdentity(repo *models.Repository) bool {

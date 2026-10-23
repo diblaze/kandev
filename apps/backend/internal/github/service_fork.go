@@ -73,7 +73,7 @@ func (s *Service) ResolveContributionForkForWorkspace(
 	}
 	prepareCtx, cancel := context.WithTimeout(ctx, contributionForkPreparationTimeout)
 	defer cancel()
-	result, err := resolveContributionFork(prepareCtx, client, resolved.Principal, owner, repo, create)
+	result, err := resolveContributionFork(prepareCtx, client, resolved.Principal, repoRef{host, owner, repo}, create)
 	if err != nil || result.Destination == nil {
 		return result, err
 	}
@@ -152,12 +152,13 @@ func resolveContributionFork(
 	ctx context.Context,
 	client contributionForkClient,
 	principal AuthPrincipal,
-	owner, repo string,
+	ref repoRef,
 	create bool,
 ) (ContributionForkResolution, error) {
 	if client == nil {
 		return ContributionForkResolution{}, ErrContributionForkUnsupported
 	}
+	owner, repo := ref.owner, ref.name
 	canonical, err := client.GetRepository(ctx, owner, repo)
 	if err != nil {
 		return ContributionForkResolution{}, fmt.Errorf("verify canonical repository %s/%s: %w", owner, repo, err)
@@ -186,7 +187,7 @@ func resolveContributionFork(
 	if err != nil {
 		return fail(err)
 	}
-	result, err := findContributionFork(ctx, client, canonical, login, owner, repo)
+	result, err := findContributionFork(ctx, client, canonical, login, ref)
 	if err == nil {
 		return result, nil
 	}
@@ -208,7 +209,7 @@ func resolveContributionFork(
 	if err != nil {
 		return fail(err)
 	}
-	result, err = buildContributionForkResolution(canonical, fork, login, forkOwner, forkName)
+	result, err = buildContributionForkResolution(ref.host, canonical, fork, login, forkOwner, forkName)
 	if err != nil {
 		return fail(err)
 	}
@@ -221,27 +222,29 @@ func findContributionFork(
 	ctx context.Context,
 	client contributionForkClient,
 	canonical *GitHubRepository,
-	login, owner, repo string,
+	login string,
+	ref repoRef,
 ) (ContributionForkResolution, error) {
-	fork, err := client.GetRepository(ctx, login, repo)
+	fork, err := client.GetRepository(ctx, login, ref.name)
 	if err == nil {
-		return buildContributionForkResolution(canonical, fork, login, login, repo)
+		return buildContributionForkResolution(ref.host, canonical, fork, login, login, ref.name)
 	}
 	if !isContributionRepositoryNotFound(err) {
-		return ContributionForkResolution{}, fmt.Errorf("verify contribution fork %s/%s: %w", login, repo, err)
+		return ContributionForkResolution{}, fmt.Errorf("verify contribution fork %s/%s: %w", login, ref.name, err)
 	}
-	return findContributionForkInNetwork(ctx, client, canonical, login, owner, repo)
+	return findContributionForkInNetwork(ctx, client, canonical, login, ref)
 }
 
 func findContributionForkInNetwork(
 	ctx context.Context,
 	client contributionForkClient,
 	canonical *GitHubRepository,
-	login, owner, repo string,
+	login string,
+	ref repoRef,
 ) (ContributionForkResolution, error) {
-	forks, err := client.ListRepositoryForks(ctx, owner, repo)
+	forks, err := client.ListRepositoryForks(ctx, ref.owner, ref.name)
 	if err != nil {
-		return ContributionForkResolution{}, fmt.Errorf("list contribution forks for %s/%s: %w", owner, repo, err)
+		return ContributionForkResolution{}, fmt.Errorf("list contribution forks for %s/%s: %w", ref.owner, ref.name, err)
 	}
 	var candidateErr error
 	for _, candidate := range forks {
@@ -257,7 +260,7 @@ func findContributionForkInNetwork(
 			}
 			return ContributionForkResolution{}, fmt.Errorf("verify contribution fork %s/%s: %w", candidateOwner, candidateName, verifyErr)
 		}
-		result, validationErr := buildContributionForkResolution(canonical, verified, login, login, "")
+		result, validationErr := buildContributionForkResolution(ref.host, canonical, verified, login, login, "")
 		if validationErr == nil {
 			return result, nil
 		}
@@ -270,13 +273,14 @@ func findContributionForkInNetwork(
 }
 
 func buildContributionForkResolution(
+	host string,
 	canonical, fork *GitHubRepository,
 	actorLogin, expectedOwner, expectedRepo string,
 ) (ContributionForkResolution, error) {
 	if err := validateContributionFork(canonical, fork, expectedOwner, expectedRepo); err != nil {
 		return ContributionForkResolution{}, err
 	}
-	destination, err := makeContributionDestination(canonical, fork)
+	destination, err := makeContributionDestination(host, canonical, fork)
 	if err != nil {
 		return ContributionForkResolution{}, err
 	}
@@ -354,12 +358,12 @@ func bindContributionDestinationCredential(
 	return nil
 }
 
-func makeContributionDestination(canonical, fork *GitHubRepository) (*taskmodels.ContributionDestination, error) {
-	source, err := repositoryBinding(canonical)
+func makeContributionDestination(host string, canonical, fork *GitHubRepository) (*taskmodels.ContributionDestination, error) {
+	source, err := repositoryBinding(host, canonical)
 	if err != nil {
 		return nil, fmt.Errorf("build contribution source: %w", err)
 	}
-	target, err := repositoryBinding(fork)
+	target, err := repositoryBinding(host, fork)
 	if err != nil {
 		return nil, fmt.Errorf("build contribution target: %w", err)
 	}
@@ -375,7 +379,7 @@ func makeContributionDestination(canonical, fork *GitHubRepository) (*taskmodels
 	return destination, nil
 }
 
-func repositoryBinding(repository *GitHubRepository) (taskmodels.RemoteContributionRepository, error) {
+func repositoryBinding(host string, repository *GitHubRepository) (taskmodels.RemoteContributionRepository, error) {
 	if repository == nil || repository.ID <= 0 {
 		return taskmodels.RemoteContributionRepository{}, errors.New("provider repository identity is missing")
 	}
@@ -386,10 +390,10 @@ func repositoryBinding(repository *GitHubRepository) (taskmodels.RemoteContribut
 	}
 	remoteURL := strings.TrimSpace(repository.CloneURL)
 	if remoteURL == "" {
-		remoteURL = "https://github.com/" + fullName + ".git"
+		remoteURL = "https://" + host + "/" + fullName + ".git"
 	}
 	return taskmodels.RemoteContributionRepository{
-		Host:       "github.com",
+		Host:       host,
 		Path:       fullName,
 		ProviderID: strconv.FormatInt(repository.ID, 10),
 		RemoteURL:  remoteURL,

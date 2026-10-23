@@ -222,7 +222,7 @@ func validateRemoteContributionURL(parsed *url.URL, provider string, number int)
 	switch provider {
 	case RemoteContributionProviderGitHub:
 		parts := strings.Split(strings.Trim(path, "/"), "/")
-		if !strings.EqualFold(parsed.Host, "github.com") || len(parts) != 4 ||
+		if validateGitHubRepositoryHost(parsed.Host) != nil || len(parts) != 4 ||
 			!validRemoteContributionPath(parts[0]+"/"+parts[1]) || parts[2] != "pull" || parts[3] != strings.TrimPrefix(suffix, "/") {
 			return errors.New("does not identify the expected pull request")
 		}

@@ -31,8 +31,8 @@ func TestGitHubComparisonRepositoryFromRepositoryAcceptsCanonicalProviderHost(t 
 	}
 }
 
-func TestNormalizeGitHubComparisonRepositoryRejectsOtherHosts(t *testing.T) {
-	for _, host := range []string{"https://github.com.evil", "https://github.com:8443", "https://github.com/api"} {
+func TestNormalizeGitHubComparisonRepositoryRejectsMalformedHosts(t *testing.T) {
+	for _, host := range []string{"https://github.com:8443", "https://github.com/api", "https://user@octo.ghe.com", ""} {
 		t.Run(host, func(t *testing.T) {
 			if _, ok := normalizeGitHubComparisonRepository(models.ComparisonTargetRepository{
 				Host: host, Path: "test-owner/test-repo",
@@ -40,6 +40,17 @@ func TestNormalizeGitHubComparisonRepositoryRejectsOtherHosts(t *testing.T) {
 				t.Fatalf("normalizeGitHubComparisonRepository accepted host %q", host)
 			}
 		})
+	}
+}
+
+func TestNormalizeGitHubComparisonRepositoryKeepsEnterpriseHost(t *testing.T) {
+	got, ok := githubComparisonRepositoryFromRepository(&models.Repository{
+		Provider: "github", ProviderHost: "https://octo.ghe.com",
+		ProviderOwner: "org", ProviderName: "repo",
+	})
+	if !ok || got.Host != "octo.ghe.com" || got.Path != "org/repo" ||
+		got.RemoteURL != "https://octo.ghe.com/org/repo.git" {
+		t.Fatalf("normalized enterprise repository = %#v, %v", got, ok)
 	}
 }
 

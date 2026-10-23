@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/kandev/kandev/internal/repoclone"
 	"github.com/kandev/kandev/internal/task/models"
 )
 
@@ -17,7 +18,6 @@ const (
 	ErrorFetch           = "fetch_failed"
 	ErrorRefUnavailable  = "ref_unavailable"
 	ErrorOIDMismatch     = "oid_mismatch"
-	gitSSHUser           = "git"
 )
 
 // GitRunner executes one Git command in the caller's repository and credential
@@ -201,55 +201,60 @@ func comparisonRemoteURLForCheckoutTransport(
 	return target.TargetRepository.RemoteURL, nil
 }
 
+// githubSSHComparisonURL reuses an SSH origin on the target repository host
+// for the comparison remote, with the host's SSH user.
 func githubSSHComparisonURL(originURL, providerHost, repositoryPath string) string {
-	if !strings.EqualFold(strings.TrimSpace(providerHost), "github.com") || repositoryPath == "" {
+	host := strings.ToLower(strings.TrimSpace(providerHost))
+	if host == "" || repositoryPath == "" {
 		return ""
 	}
-	if parsed, ok := parseGitHubSSHURL(originURL); ok {
+	if parsed, ok := parseGitHubSSHURL(originURL, host); ok {
 		parsed.Path = "/" + strings.Trim(repositoryPath, "/") + ".git"
 		parsed.RawPath = ""
 		return parsed.String()
 	}
-	host, _, ok := parseGitHubSCPURL(originURL)
-	if !ok {
+	if _, ok := parseGitHubSCPURL(originURL, host); !ok {
 		return ""
 	}
-	return gitSSHUser + "@" + host + ":" + strings.Trim(repositoryPath, "/") + ".git"
+	return repoclone.SSHUser(host) + "@" + host + ":" + strings.Trim(repositoryPath, "/") + ".git"
 }
 
 func sameGitHubComparisonRepository(raw, providerHost, repositoryPath string) bool {
-	if !strings.EqualFold(strings.TrimSpace(providerHost), "github.com") || repositoryPath == "" {
+	host := strings.ToLower(strings.TrimSpace(providerHost))
+	if host == "" || repositoryPath == "" {
 		return false
 	}
-	host, path, ok := githubComparisonRemoteIdentity(raw)
+	path, ok := githubComparisonRemotePath(raw, host)
 	if !ok {
 		return false
 	}
 	path = strings.Trim(strings.TrimSuffix(path, ".git"), "/")
-	return strings.EqualFold(host, "github.com") && strings.EqualFold(path, strings.Trim(repositoryPath, "/"))
+	return strings.EqualFold(path, strings.Trim(repositoryPath, "/"))
 }
 
-func githubComparisonRemoteIdentity(raw string) (string, string, bool) {
+// githubComparisonRemotePath returns the repository path of an ssh, https, or
+// SCP remote URL on host.
+func githubComparisonRemotePath(raw, host string) (string, bool) {
 	value := strings.TrimSpace(raw)
 	switch {
 	case strings.HasPrefix(strings.ToLower(value), "ssh://"):
-		parsed, ok := parseGitHubSSHURL(value)
+		parsed, ok := parseGitHubSSHURL(value, host)
 		if !ok {
-			return "", "", false
+			return "", false
 		}
-		return parsed.Hostname(), parsed.Path, true
+		return parsed.Path, true
 	case strings.HasPrefix(strings.ToLower(value), "https://"):
-		return parseGitHubHTTPSURL(value)
+		return parseGitHubHTTPSURL(value, host)
 	default:
-		return parseGitHubSCPURL(value)
+		return parseGitHubSCPURL(value, host)
 	}
 }
 
-func parseGitHubSSHURL(value string) (*url.URL, bool) {
+func parseGitHubSSHURL(value, host string) (*url.URL, bool) {
 	parsed, err := url.Parse(value)
 	if err != nil || !strings.EqualFold(parsed.Scheme, "ssh") ||
-		!strings.EqualFold(parsed.Hostname(), "github.com") || parsed.User == nil ||
-		parsed.User.Username() != gitSSHUser || parsed.RawQuery != "" || parsed.Fragment != "" {
+		!strings.EqualFold(parsed.Hostname(), host) || parsed.User == nil ||
+		parsed.User.Username() != repoclone.SSHUser(host) || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, false
 	}
 	if _, hasPassword := parsed.User.Password(); hasPassword {
@@ -258,23 +263,23 @@ func parseGitHubSSHURL(value string) (*url.URL, bool) {
 	return parsed, true
 }
 
-func parseGitHubHTTPSURL(value string) (string, string, bool) {
+func parseGitHubHTTPSURL(value, host string) (string, bool) {
 	parsed, err := url.Parse(value)
 	if err != nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.User != nil ||
-		parsed.RawQuery != "" || parsed.Fragment != "" || !strings.EqualFold(parsed.Host, "github.com") {
-		return "", "", false
+		parsed.RawQuery != "" || parsed.Fragment != "" || !strings.EqualFold(parsed.Host, host) {
+		return "", false
 	}
-	return parsed.Host, parsed.Path, true
+	return parsed.Path, true
 }
 
-func parseGitHubSCPURL(value string) (string, string, bool) {
+func parseGitHubSCPURL(value, host string) (string, bool) {
 	user, hostAndPath, found := strings.Cut(value, "@")
-	if !found || user != gitSSHUser {
-		return "", "", false
+	if !found || user != repoclone.SSHUser(host) {
+		return "", false
 	}
-	host, path, found := strings.Cut(hostAndPath, ":")
-	if !found || !strings.EqualFold(host, "github.com") || strings.TrimSpace(path) == "" {
-		return "", "", false
+	scpHost, path, found := strings.Cut(hostAndPath, ":")
+	if !found || !strings.EqualFold(scpHost, host) || strings.TrimSpace(path) == "" {
+		return "", false
 	}
-	return host, path, true
+	return path, true
 }

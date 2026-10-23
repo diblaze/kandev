@@ -692,6 +692,16 @@ func TestCanonicalTaskPRURL(t *testing.T) {
 			wantURL: "https://github.com/kandev/kandev/pull/7",
 		},
 		{
+			name:    "enterprise host",
+			pr:      &github.TaskPR{GitHubHost: "octo.ghe.com", Owner: "org", Repo: "repo", PRNumber: 3},
+			wantURL: "https://octo.ghe.com/org/repo/pull/3",
+		},
+		{
+			name:    "malformed host is rejected",
+			pr:      &github.TaskPR{GitHubHost: "octo.ghe.com/evil", Owner: "org", Repo: "repo", PRNumber: 3},
+			wantErr: true,
+		},
+		{
 			name:    "PR number zero is rejected",
 			pr:      &github.TaskPR{Owner: "kandev", Repo: "kandev", PRNumber: 0},
 			wantErr: true,

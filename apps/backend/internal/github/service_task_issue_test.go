@@ -273,6 +273,7 @@ func TestParseIssueReference(t *testing.T) {
 		input        string
 		defaultOwner string
 		defaultRepo  string
+		wantHost     string
 		wantOwner    string
 		wantRepo     string
 		wantNumber   int
@@ -282,9 +283,13 @@ func TestParseIssueReference(t *testing.T) {
 		{name: "hash number with default repo", input: "#1470", defaultOwner: "kdlbs", defaultRepo: "kandev", wantOwner: "kdlbs", wantRepo: "kandev", wantNumber: 1470},
 		{name: "bare number with default repo", input: "1470", defaultOwner: "kdlbs", defaultRepo: "kandev", wantOwner: "kdlbs", wantRepo: "kandev", wantNumber: 1470},
 		{name: "number without default repo", input: "#1470", defaultOwner: "kdlbs", wantErr: true},
-		{name: "valid github url", input: "https://github.com/kdlbs/kandev/issues/1470", wantOwner: "kdlbs", wantRepo: "kandev", wantNumber: 1470},
-		{name: "www github url", input: "https://www.github.com/kdlbs/kandev/issues/1470?foo=bar", wantOwner: "kdlbs", wantRepo: "kandev", wantNumber: 1470},
-		{name: "non github host", input: "https://gitlab.com/kdlbs/kandev/issues/1470", wantErr: true},
+		{name: "valid github url", input: "https://github.com/kdlbs/kandev/issues/1470", wantHost: "github.com", wantOwner: "kdlbs", wantRepo: "kandev", wantNumber: 1470},
+		{name: "www github url", input: "https://www.github.com/kdlbs/kandev/issues/1470?foo=bar", wantHost: "github.com", wantOwner: "kdlbs", wantRepo: "kandev", wantNumber: 1470},
+		{name: "enterprise host url", input: "https://octo.ghe.com/org/repo/issues/7", wantHost: "octo.ghe.com", wantOwner: "org", wantRepo: "repo", wantNumber: 7},
+		{name: "gitlab host", input: "https://gitlab.com/kdlbs/kandev/issues/1470", wantErr: true},
+		{name: "gitlab issue path", input: "https://gitlab.example.com/group/project/-/issues/3", wantErr: true},
+		{name: "non https url", input: "http://octo.ghe.com/org/repo/issues/7", wantErr: true},
+		{name: "url with port", input: "https://octo.ghe.com:8443/org/repo/issues/7", wantErr: true},
 		{name: "pull request url", input: "https://github.com/kdlbs/kandev/pull/1470", wantErr: true},
 		{name: "missing issue number", input: "https://github.com/kdlbs/kandev/issues", wantErr: true},
 		{name: "invalid issue number", input: "https://github.com/kdlbs/kandev/issues/nope", wantErr: true},
@@ -292,7 +297,7 @@ func TestParseIssueReference(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			owner, repo, number, err := parseIssueReference(tt.input, tt.defaultOwner, tt.defaultRepo)
+			host, owner, repo, number, err := parseIssueReference(tt.input, tt.defaultOwner, tt.defaultRepo)
 			if tt.wantErr {
 				if !errors.Is(err, ErrInvalidIssueReference) {
 					t.Fatalf("err = %v, want ErrInvalidIssueReference", err)
@@ -302,8 +307,8 @@ func TestParseIssueReference(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseIssueReference: %v", err)
 			}
-			if owner != tt.wantOwner || repo != tt.wantRepo || number != tt.wantNumber {
-				t.Fatalf("got %s/%s#%d, want %s/%s#%d", owner, repo, number, tt.wantOwner, tt.wantRepo, tt.wantNumber)
+			if host != tt.wantHost || owner != tt.wantOwner || repo != tt.wantRepo || number != tt.wantNumber {
+				t.Fatalf("got %s %s/%s#%d, want %s %s/%s#%d", host, owner, repo, number, tt.wantHost, tt.wantOwner, tt.wantRepo, tt.wantNumber)
 			}
 		})
 	}

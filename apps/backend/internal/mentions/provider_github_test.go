@@ -9,31 +9,47 @@ import (
 	apiv1 "github.com/kandev/kandev/pkg/api/v1"
 )
 
+// fakeGitHubMentionService serves issues, prs, and err for github.com and
+// the host* maps for the other connected hosts.
 type fakeGitHubMentionService struct {
 	issues      []*github.Issue
 	prs         []*github.PR
 	settings    *github.WorkspaceSettings
 	err         error
+	hosts       []string
+	hostIssues  map[string][]*github.Issue
+	hostPRs     map[string][]*github.PR
+	hostErrs    map[string]error
 	workspaceID string
 	query       string
 	limit       int
 }
 
+func (s *fakeGitHubMentionService) WorkspaceGitHubHosts(context.Context, string) ([]string, error) {
+	return s.hosts, nil
+}
+
 func (s *fakeGitHubMentionService) SearchMentionIssuesForWorkspace(
 	_ context.Context,
-	workspaceID, _, query string,
+	workspaceID, host, query string,
 	limit int,
 ) ([]*github.Issue, error) {
 	s.workspaceID, s.query, s.limit = workspaceID, query, limit
+	if host != "github.com" {
+		return s.hostIssues[host], s.hostErrs[host]
+	}
 	return s.issues, s.err
 }
 
 func (s *fakeGitHubMentionService) SearchMentionPullRequestsForWorkspace(
 	_ context.Context,
-	workspaceID, _, query string,
+	workspaceID, host, query string,
 	limit int,
 ) ([]*github.PR, error) {
 	s.workspaceID, s.query, s.limit = workspaceID, query, limit
+	if host != "github.com" {
+		return s.hostPRs[host], s.hostErrs[host]
+	}
 	return s.prs, s.err
 }
 

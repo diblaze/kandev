@@ -29,19 +29,18 @@ func (c *remoteContributionCoordinator) Resolve(
 		return nil, false, err
 	}
 	path := strings.Trim(parsed.Path, "/")
-	parts := strings.Split(path, "/")
-	if strings.EqualFold(parsed.Hostname(), "github.com") && len(parts) == 4 && strings.EqualFold(parts[2], "pull") {
-		if c.github == nil {
-			return nil, true, errors.New("GitHub integration is not configured")
-		}
-		resolution, err := c.github.ResolveRemoteContributionForWorkspace(ctx, workspaceID, userID, rawURL)
-		return resolution, true, err
-	}
 	if strings.Contains(path, "/-/merge_requests/") {
 		if c.gitlab == nil {
 			return nil, true, errors.New("GitLab integration is not configured")
 		}
 		resolution, err := c.gitlab.ResolveRemoteContributionForWorkspace(ctx, workspaceID, rawURL)
+		return resolution, true, err
+	}
+	if parts := strings.Split(path, "/"); len(parts) == 4 && strings.EqualFold(parts[2], "pull") {
+		if c.github == nil {
+			return nil, true, errors.New("GitHub integration is not configured")
+		}
+		resolution, err := c.github.ResolveRemoteContributionForWorkspace(ctx, workspaceID, userID, rawURL)
 		return resolution, true, err
 	}
 	return nil, false, nil

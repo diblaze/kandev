@@ -3,7 +3,7 @@ package github
 import "testing"
 
 func TestGitHubComparisonTargetCandidateUsesExplicitForkAndBaseRepositories(t *testing.T) {
-	candidate, ok := githubComparisonTargetCandidate(&PR{
+	candidate, ok := githubComparisonTargetCandidate(defaultGitHubHost, &PR{
 		Number:        17,
 		HeadBranch:    "feature/fork",
 		BaseBranch:    "main",
@@ -29,7 +29,7 @@ func TestGitHubComparisonTargetCandidateUsesExplicitForkAndBaseRepositories(t *t
 }
 
 func TestGitHubComparisonTargetCandidateRejectsMissingHeadRepositoryIdentity(t *testing.T) {
-	if _, ok := githubComparisonTargetCandidate(&PR{
+	if _, ok := githubComparisonTargetCandidate(defaultGitHubHost, &PR{
 		Number:        17,
 		HeadBranch:    "feature/fork",
 		BaseBranch:    "main",
@@ -37,5 +37,20 @@ func TestGitHubComparisonTargetCandidateRejectsMissingHeadRepositoryIdentity(t *
 		BaseRepoName:  "widget",
 	}); ok {
 		t.Fatal("githubComparisonTargetCandidate() accepted a PR without explicit head identity")
+	}
+}
+
+func TestGitHubComparisonTargetCandidateUsesItemHost(t *testing.T) {
+	candidate, ok := githubComparisonTargetCandidate(enterpriseTestHost, &PR{
+		Number: 3, HeadBranch: "feature", BaseBranch: "main",
+		HeadRepoOwner: "contributor", HeadRepoName: "app", BaseRepoOwner: "octo", BaseRepoName: "app",
+	})
+	if !ok {
+		t.Fatal("githubComparisonTargetCandidate() rejected an enterprise PR identity")
+	}
+	head, target := candidate.HeadRepository, candidate.TargetRepository
+	if head.Host != enterpriseTestHost || head.RemoteURL != "https://octo.ghe.com/contributor/app.git" ||
+		target.Host != enterpriseTestHost || target.RemoteURL != "https://octo.ghe.com/octo/app.git" {
+		t.Fatalf("repositories = %#v / %#v, want both on %s", head, target, enterpriseTestHost)
 	}
 }

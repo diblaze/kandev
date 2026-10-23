@@ -77,7 +77,7 @@ func TestResolveContributionForkUsesDirectTargetWrite(t *testing.T) {
 
 	result, err := resolveContributionFork(
 		context.Background(), client, AuthPrincipal{Kind: AuthPrincipalHuman, Login: "alice"},
-		"kdlbs", "kandev", true,
+		repoRef{defaultGitHubHost, "kdlbs", "kandev"}, true,
 	)
 	if err != nil {
 		t.Fatalf("resolveContributionFork: %v", err)
@@ -106,7 +106,7 @@ func TestResolveContributionForkAcceptsOnlyExactWritableFork(t *testing.T) {
 
 	result, err := resolveContributionFork(
 		context.Background(), client, AuthPrincipal{Kind: AuthPrincipalHuman, Login: "alice"},
-		"kdlbs", "kandev", true,
+		repoRef{defaultGitHubHost, "kdlbs", "kandev"}, true,
 	)
 	if err != nil {
 		t.Fatalf("resolveContributionFork: %v", err)
@@ -142,7 +142,7 @@ func TestResolveContributionForkReusesRenamedForkFromForkNetwork(t *testing.T) {
 
 	result, err := resolveContributionFork(
 		context.Background(), client, AuthPrincipal{Kind: AuthPrincipalHuman, Login: "alice"},
-		"kdlbs", "kandev", true,
+		repoRef{defaultGitHubHost, "kdlbs", "kandev"}, true,
 	)
 	if err != nil {
 		t.Fatalf("resolveContributionFork: %v", err)
@@ -155,7 +155,7 @@ func TestResolveContributionForkReusesRenamedForkFromForkNetwork(t *testing.T) {
 	}
 	second, err := resolveContributionFork(
 		context.Background(), client, AuthPrincipal{Kind: AuthPrincipalHuman, Login: "alice"},
-		"kdlbs", "kandev", true,
+		repoRef{defaultGitHubHost, "kdlbs", "kandev"}, true,
 	)
 	if err != nil {
 		t.Fatalf("second resolveContributionFork: %v", err)
@@ -174,7 +174,7 @@ func TestBindContributionDestinationCredentialCapturesConnectionGeneration(t *te
 	fork.Fork = true
 	fork.ParentID = canonical.ID
 	fork.ParentFullName = canonical.FullName
-	destination, err := makeContributionDestination(canonical, fork)
+	destination, err := makeContributionDestination(defaultGitHubHost, canonical, fork)
 	if err != nil {
 		t.Fatalf("makeContributionDestination: %v", err)
 	}
@@ -246,7 +246,7 @@ func TestResolveContributionForkRejectsExistingNonWritableFork(t *testing.T) {
 
 	_, err := resolveContributionFork(
 		context.Background(), client, AuthPrincipal{Kind: AuthPrincipalHuman, Login: "alice"},
-		"kdlbs", "kandev", true,
+		repoRef{defaultGitHubHost, "kdlbs", "kandev"}, true,
 	)
 	if !errors.Is(err, ErrContributionForkNotWritable) {
 		t.Fatalf("error = %v, want ErrContributionForkNotWritable", err)
@@ -266,7 +266,7 @@ func TestResolveContributionForkRejectsWrongParent(t *testing.T) {
 
 	_, err := resolveContributionFork(
 		context.Background(), client, AuthPrincipal{Kind: AuthPrincipalHuman, Login: "alice"},
-		"kdlbs", "kandev", true,
+		repoRef{defaultGitHubHost, "kdlbs", "kandev"}, true,
 	)
 	if !errors.Is(err, ErrContributionForkConflict) {
 		t.Fatalf("error = %v, want ErrContributionForkConflict", err)
@@ -285,7 +285,7 @@ func TestResolveContributionForkBlocksAppWithoutDirectWrite(t *testing.T) {
 
 	_, err := resolveContributionFork(
 		context.Background(), client, AuthPrincipal{Kind: AuthPrincipalApp, Login: "kdlbs-app[bot]"},
-		"kdlbs", "kandev", true,
+		repoRef{defaultGitHubHost, "kdlbs", "kandev"}, true,
 	)
 	if !errors.Is(err, ErrContributionForkAppUnsupported) {
 		t.Fatalf("error = %v, want ErrContributionForkAppUnsupported", err)
@@ -307,7 +307,7 @@ func TestResolveContributionForkReportsCreatableWithoutCreating(t *testing.T) {
 
 	result, err := resolveContributionFork(
 		context.Background(), client, AuthPrincipal{Kind: AuthPrincipalHuman, Source: ConnectionSourceGHCLI, Login: "alice"},
-		"kdlbs", "kandev", false,
+		repoRef{defaultGitHubHost, "kdlbs", "kandev"}, false,
 	)
 	if err != nil {
 		t.Fatalf("resolveContributionFork: %v", err)
@@ -337,7 +337,7 @@ func TestResolveContributionForkCreatesAndVerifiesMissingHumanFork(t *testing.T)
 
 	result, err := resolveContributionFork(
 		context.Background(), client, AuthPrincipal{Kind: AuthPrincipalHuman, Source: ConnectionSourcePAT, Login: "alice"},
-		"kdlbs", "kandev", true,
+		repoRef{defaultGitHubHost, "kdlbs", "kandev"}, true,
 	)
 	if err != nil {
 		t.Fatalf("resolveContributionFork: %v", err)
@@ -365,7 +365,7 @@ func TestResolveContributionForkUsesCreatedRepositoryIdentityAndWaitsForReadines
 
 	result, err := resolveContributionFork(
 		context.Background(), client, AuthPrincipal{Kind: AuthPrincipalHuman, Source: ConnectionSourcePAT, Login: "alice"},
-		"kdlbs", "kandev", true,
+		repoRef{defaultGitHubHost, "kdlbs", "kandev"}, true,
 	)
 	if err != nil {
 		t.Fatalf("resolveContributionFork: %v", err)

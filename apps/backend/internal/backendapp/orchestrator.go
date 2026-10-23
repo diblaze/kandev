@@ -412,14 +412,16 @@ func (r githubPRBaseResolver) ResolvePRBase(
 		}
 		return taskmodels.PRBase{}, err
 	}
-	base, err := githubPRBaseFromPR(pr, owner, repo, lookup.Number, lookup.CheckoutBranch)
+	base, err := githubPRBaseFromPR(pr, host, owner, repo, lookup.Number, lookup.CheckoutBranch)
 	if err != nil {
 		return taskmodels.PRBase{}, executorpkg.NewPRBaseResolutionError(err, knownCrossRepository, true)
 	}
 	return base, nil
 }
 
-func githubPRBaseFromPR(pr *githubpkg.PR, owner, repo string, number int, checkoutBranch string) (taskmodels.PRBase, error) {
+// githubPRBaseFromPR builds the base of a pull request read from host; both
+// repositories of a GitHub pull request are on that host.
+func githubPRBaseFromPR(pr *githubpkg.PR, host, owner, repo string, number int, checkoutBranch string) (taskmodels.PRBase, error) {
 	if err := validateGitHubPRBaseLookup(pr, owner, repo, number, checkoutBranch); err != nil {
 		return taskmodels.PRBase{}, err
 	}
@@ -430,8 +432,8 @@ func githubPRBaseFromPR(pr *githubpkg.PR, owner, repo string, number int, checko
 		Number:           number,
 		HeadBranch:       pr.HeadBranch,
 		TargetBranch:     pr.BaseBranch,
-		HeadRepository:   githubComparisonRepository(headOwner, headName, pr.HeadRepoID),
-		TargetRepository: githubComparisonRepository(owner, repo, pr.BaseRepoID),
+		HeadRepository:   githubComparisonRepository(host, headOwner, headName, pr.HeadRepoID),
+		TargetRepository: githubComparisonRepository(host, owner, repo, pr.BaseRepoID),
 	}
 	target, err := candidate.Build()
 	if err != nil {
@@ -492,7 +494,11 @@ func (r githubPRBaseResolver) prBaseRepository(
 		return "", "", "", err
 	}
 	if linked != nil {
-		return linked.GitHubHost, linked.Owner, linked.Repo, nil
+		host, err := githubpkg.RepositoryGitHubHost(linked.GitHubHost)
+		if err != nil {
+			return "", "", "", err
+		}
+		return host, linked.Owner, linked.Repo, nil
 	}
 	if lookup.AttachedOwner == "" || lookup.AttachedRepository == "" {
 		return "", "", "", fmt.Errorf("task repository %q has no GitHub repository identity", lookup.TaskRepositoryID)
@@ -546,14 +552,14 @@ func splitGitHubRepositoryPath(path string) (string, string, bool) {
 	return parts[0], parts[1], true
 }
 
-func githubComparisonRepository(owner, repo string, id int64) taskmodels.ComparisonTargetRepository {
+func githubComparisonRepository(host, owner, repo string, id int64) taskmodels.ComparisonTargetRepository {
 	providerID := ""
 	if id > 0 {
 		providerID = strconv.FormatInt(id, 10)
 	}
 	return taskmodels.ComparisonTargetRepository{
-		Host: "github.com", Path: owner + "/" + repo, ProviderID: providerID,
-		RemoteURL: fmt.Sprintf("https://github.com/%s/%s.git", owner, repo),
+		Host: host, Path: owner + "/" + repo, ProviderID: providerID,
+		RemoteURL: fmt.Sprintf("https://%s/%s/%s.git", host, owner, repo),
 	}
 }
 

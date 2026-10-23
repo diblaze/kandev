@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kandev/kandev/internal/repoclone"
 	"github.com/kandev/kandev/internal/task/models"
 	"github.com/kandev/kandev/internal/task/recoveryoperation"
 )
@@ -802,17 +803,19 @@ func parseManagedGitOriginURL(origin string) (string, string, error) {
 	if scheme != gitProtocolHTTPS && scheme != gitProtocolHTTP && scheme != gitProtocolSSH {
 		return "", "", fmt.Errorf("git origin scheme is unsupported")
 	}
-	if !managedGitOriginUserAllowed(scheme, parsed.User) {
+	if !managedGitOriginUserAllowed(scheme, parsed.User, parsed.Hostname()) {
 		return "", "", fmt.Errorf("git origin credentials or SSH identity are unsupported")
 	}
 	return parsed.Host, parsed.Path, nil
 }
 
-func managedGitOriginUserAllowed(scheme string, user *url.Userinfo) bool {
+// managedGitOriginUserAllowed accepts no user info, or over SSH the host's
+// SSH user without a password.
+func managedGitOriginUserAllowed(scheme string, user *url.Userinfo, host string) bool {
 	if user == nil {
 		return true
 	}
-	if scheme != gitProtocolSSH || user.Username() != "git" {
+	if scheme != gitProtocolSSH || user.Username() != repoclone.SSHUser(host) {
 		return false
 	}
 	password, hasPassword := user.Password()
@@ -825,7 +828,7 @@ func parseManagedGitOriginSCP(origin string) (string, string, error) {
 	if at < 0 || colon <= at || strings.Contains(origin[:at], "/") {
 		return "", "", fmt.Errorf("git origin syntax is unsupported")
 	}
-	if origin[:at] != "git" {
+	if origin[:at] != repoclone.SSHUser(origin[at+1:colon]) {
 		return "", "", fmt.Errorf("git origin SSH identity is unsupported")
 	}
 	return origin[at+1 : colon], origin[colon+1:], nil

@@ -50,3 +50,22 @@ func TestGitHubPRBaseResolverHostsRejectMalformedRepositoryHost(t *testing.T) {
 		t.Fatalf("error = %v, lookups %v; want a host error and no lookup", err, service.getHosts)
 	}
 }
+
+func TestGitHubPRBaseResolverHostsBuildForkBaseOnTheItemHost(t *testing.T) {
+	pr := &githubpkg.PR{Number: 42, RepoOwner: "upstream", RepoName: "widgets", BaseRepoOwner: "upstream",
+		BaseRepoName: "widgets", HeadRepoOwner: "fork-owner", HeadRepoName: "widgets", HeadBranch: "feature",
+		BaseBranch: "main", BaseSHA: "0123456789abcdef0123456789abcdef01234567"}
+	service := &githubPRBaseLookupServiceStub{pr: pr}
+	lookup := executorpkg.PRBaseLookup{TaskRepositoryID: "task-repo-1", Number: 42, CheckoutBranch: "feature",
+		ProviderHost: "https://octo.ghe.com", AttachedOwner: "upstream", AttachedRepository: "widgets"}
+
+	base, err := githubPRBaseResolver{service: service}.ResolvePRBase(context.Background(), "workspace-1", lookup)
+	if err != nil {
+		t.Fatalf("ResolvePRBase() error: %v", err)
+	}
+	head, target := base.Target.HeadRepository, base.Target.TargetRepository
+	if head.Host != "octo.ghe.com" || head.RemoteURL != "https://octo.ghe.com/fork-owner/widgets.git" ||
+		target.Host != "octo.ghe.com" || target.RemoteURL != "https://octo.ghe.com/upstream/widgets.git" {
+		t.Fatalf("repositories = %#v / %#v, want both on octo.ghe.com", head, target)
+	}
+}

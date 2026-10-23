@@ -282,6 +282,7 @@ func TestParsePRURL(t *testing.T) {
 	tests := []struct {
 		name       string
 		url        string
+		wantHost   string
 		wantOwner  string
 		wantRepo   string
 		wantNumber int
@@ -290,6 +291,7 @@ func TestParsePRURL(t *testing.T) {
 		{
 			name:       "standard URL",
 			url:        "https://github.com/owner/repo/pull/123",
+			wantHost:   "github.com",
 			wantOwner:  "owner",
 			wantRepo:   "repo",
 			wantNumber: 123,
@@ -330,6 +332,24 @@ func TestParsePRURL(t *testing.T) {
 			wantNumber: 5,
 		},
 		{
+			name:       "enterprise host",
+			url:        "https://octo.ghe.com/org/repo/pull/3",
+			wantHost:   "octo.ghe.com",
+			wantOwner:  "org",
+			wantRepo:   "repo",
+			wantNumber: 3,
+		},
+		{
+			name:    "non https URL",
+			url:     "http://octo.ghe.com/org/repo/pull/3",
+			wantErr: true,
+		},
+		{
+			name:    "URL with port",
+			url:     "https://octo.ghe.com:8443/org/repo/pull/3",
+			wantErr: true,
+		},
+		{
 			name:    "no pull segment",
 			url:     "https://github.com/owner/repo/issues/1",
 			wantErr: true,
@@ -363,7 +383,7 @@ func TestParsePRURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			owner, repo, number, err := parsePRURL(tt.url)
+			host, owner, repo, number, err := parsePRURL(tt.url)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("expected error, got nil")
@@ -372,6 +392,9 @@ func TestParsePRURL(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantHost != "" && host != tt.wantHost {
+				t.Errorf("host = %q, want %q", host, tt.wantHost)
 			}
 			if owner != tt.wantOwner {
 				t.Errorf("owner = %q, want %q", owner, tt.wantOwner)

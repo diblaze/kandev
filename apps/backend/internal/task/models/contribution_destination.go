@@ -93,8 +93,8 @@ func validateContributionDestinationRepository(label string, repository Contribu
 	if err := validateRemoteContributionRepository(repository); err != nil {
 		return fmt.Errorf("contribution destination %s: %w", label, err)
 	}
-	if !strings.EqualFold(repository.Host, "github.com") {
-		return fmt.Errorf("contribution destination %s host %q is not GitHub", label, repository.Host)
+	if err := validateGitHubRepositoryHost(repository.Host); err != nil {
+		return fmt.Errorf("contribution destination %s: %w", label, err)
 	}
 	parts := strings.Split(repository.Path, "/")
 	if len(parts) != 2 || !validRemoteContributionPath(parts[0]) || !validRemoteContributionPath(parts[1]) {

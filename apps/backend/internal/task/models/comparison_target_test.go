@@ -61,7 +61,13 @@ func TestComparisonTargetValidationFailsClosed(t *testing.T) {
 		{name: "credential-bearing URL", mutate: func(v *ComparisonTarget) {
 			v.TargetRepository.RemoteURL = "https://user:secret@github.com/upstream/widget.git"
 		}, want: "credentials"},
-		{name: "provider mismatch", mutate: func(v *ComparisonTarget) { v.TargetRepository.Host = "gitlab.example.test" }, want: "provider"},
+		{name: "mixed provider hosts", mutate: func(v *ComparisonTarget) {
+			v.TargetRepository.Host = "octo.ghe.com"
+			v.TargetRepository.RemoteURL = "https://octo.ghe.com/upstream/widget.git"
+		}, want: "same provider host"},
+		{name: "GitHub host with port", mutate: func(v *ComparisonTarget) {
+			*v = enterpriseComparisonTarget("octo.ghe.com:8443")
+		}, want: "GitHub repository host"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -71,6 +77,22 @@ func TestComparisonTargetValidationFailsClosed(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want substring %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func enterpriseComparisonTarget(host string) ComparisonTarget {
+	target := testComparisonTarget()
+	target.HeadRepository.Host = host
+	target.HeadRepository.RemoteURL = "https://" + host + "/contributor/widget.git"
+	target.TargetRepository.Host = host
+	target.TargetRepository.RemoteURL = "https://" + host + "/upstream/widget.git"
+	return target
+}
+
+func TestComparisonTargetAcceptsEnterpriseGitHubHost(t *testing.T) {
+	target := enterpriseComparisonTarget("octo.ghe.com")
+	if err := target.Validate(); err != nil {
+		t.Fatalf("Validate() rejected an enterprise GitHub pair: %v", err)
 	}
 }
 

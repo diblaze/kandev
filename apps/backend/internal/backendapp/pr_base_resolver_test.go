@@ -54,7 +54,7 @@ func TestPRBaseIdentityConversions(t *testing.T) {
 		HeadBranch: "feature", BaseBranch: "release", BaseSHA: oid,
 		HeadRepoOwner: "fork-owner", HeadRepoName: "widgets",
 		BaseRepoOwner: "upstream", BaseRepoName: "widgets",
-	}, "upstream", "widgets", 42, "feature")
+	}, "github.com", "upstream", "widgets", 42, "feature")
 	if err != nil {
 		t.Fatalf("githubPRBaseFromPR() error: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestPRBaseIdentityConversionRejectsMismatchedProviderIdentity(t *testing.T)
 		t.Run(tt.name, func(t *testing.T) {
 			pr := *basePR
 			tt.mutate(&pr)
-			if _, err := githubPRBaseFromPR(&pr, "upstream", "widgets", 42, "feature"); err == nil {
+			if _, err := githubPRBaseFromPR(&pr, "github.com", "upstream", "widgets", 42, "feature"); err == nil {
 				t.Fatal("githubPRBaseFromPR() succeeded with mismatched provider identity")
 			}
 		})

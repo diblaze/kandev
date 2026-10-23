@@ -240,6 +240,9 @@ func (c taskChangeLinkCoordinator) link(ctx context.Context, taskID string, link
 		if c.github == nil {
 			return fmt.Errorf("GitHub PR links are not available")
 		}
+		if repo.Provider != "" && !strings.EqualFold(repo.Provider, taskChangeProviderGitHub) {
+			return fmt.Errorf("repository is not a GitHub repository")
+		}
 		url, err := githubChangeURL(repo.ProviderHost, repo.ProviderOwner, repo.ProviderName, link.Number)
 		if err != nil {
 			return err
@@ -433,11 +436,7 @@ func normalizedGitHubHost(host string) (string, error) {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" || parsed.Port() != "" {
 		return "", fmt.Errorf("repository has invalid GitHub host")
 	}
-	normalizedHost := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
-	if normalizedHost != "github.com" && !strings.HasSuffix(normalizedHost, ".github.com") {
-		return "", fmt.Errorf("repository is not a GitHub repository")
-	}
-	return normalizedHost, nil
+	return strings.ToLower(strings.TrimSuffix(parsed.Hostname(), ".")), nil
 }
 
 func gitlabChangeURL(host, owner, name string, number int) (string, error) {

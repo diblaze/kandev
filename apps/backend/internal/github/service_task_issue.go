@@ -19,6 +19,7 @@ const (
 	taskMetaIssueLinked   = "github_issue_linked"
 	githubProviderName    = "github"
 	githubIssuePathMarker = "/issues/"
+	gitlabDotComHost      = "gitlab.com"
 )
 
 // TaskIssueStore is the task-facing dependency used by GitHub task links.
@@ -34,6 +35,7 @@ type TaskIssueStore interface {
 
 type LinkTaskIssueRequest struct {
 	Issue  string `json:"issue"`
+	Host   string `json:"host,omitempty"`
 	Owner  string `json:"owner"`
 	Repo   string `json:"repo"`
 	Number int    `json:"number"`
@@ -84,18 +86,18 @@ func (s *Service) LinkTaskIssueForUser(
 	if task == nil || strings.TrimSpace(task.WorkspaceID) == "" {
 		return nil, ErrGitHubWorkspaceRequired
 	}
-	owner, repo, number, err := resolveIssueReference(req)
+	ref, number, err := resolveIssueReference(req)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, task.WorkspaceID, defaultGitHubHost, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, task.WorkspaceID, ref.host, ref.owner, ref.name); err != nil {
 		return nil, err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, task.WorkspaceID, userID, repoRef{defaultGitHubHost, owner, repo})
+	resolved, err := s.resolvePersonalReadClient(ctx, task.WorkspaceID, userID, ref)
 	if err != nil {
 		return nil, err
 	}
-	return s.linkTaskIssueResolved(ctx, resolved.Client, store, task, taskID, owner, repo, number)
+	return s.linkTaskIssueResolved(ctx, resolved.Client, store, task, taskID, ref, number)
 }
 
 func (s *Service) linkTaskIssueWithClient(
@@ -105,7 +107,7 @@ func (s *Service) linkTaskIssueWithClient(
 	if store == nil {
 		return nil, errStoreUnavailable
 	}
-	owner, repo, number, err := resolveIssueReference(req)
+	ref, number, err := resolveIssueReference(req)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +115,7 @@ func (s *Service) linkTaskIssueWithClient(
 	if err != nil {
 		return nil, err
 	}
-	return s.linkTaskIssueResolved(ctx, client, store, task, taskID, owner, repo, number)
+	return s.linkTaskIssueResolved(ctx, client, store, task, taskID, ref, number)
 }
 
 func (s *Service) linkTaskIssueResolved(
@@ -122,15 +124,14 @@ func (s *Service) linkTaskIssueResolved(
 	store TaskIssueStore,
 	task *taskmodels.Task,
 	taskID string,
-	owner string,
-	repo string,
+	ref repoRef,
 	number int,
 ) (*TaskIssueLinkResponse, error) {
-	issue, err := client.GetIssue(ctx, owner, repo, number)
+	issue, err := client.GetIssue(ctx, ref.owner, ref.name, number)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.validateIssueTaskRepository(ctx, store, taskID, issue.RepoOwner, issue.RepoName); err != nil {
+	if err := s.validateIssueTaskRepository(ctx, store, taskID, repoRef{ref.host, issue.RepoOwner, issue.RepoName}); err != nil {
 		return nil, err
 	}
 	link := &taskmodels.TaskGitHubIssueLink{
@@ -174,47 +175,62 @@ func (s *Service) UnlinkTaskIssue(ctx context.Context, taskID string) error {
 	return err
 }
 
-func resolveIssueReference(req LinkTaskIssueRequest) (string, string, int, error) {
+// resolveIssueReference returns the issue repository and number; an issue URL
+// names its own host, any other reference is on the request host.
+func resolveIssueReference(req LinkTaskIssueRequest) (repoRef, int, error) {
+	host, owner, repo, number := "", req.Owner, req.Repo, req.Number
 	if req.Issue != "" {
-		return parseIssueReference(req.Issue, req.Owner, req.Repo)
+		var err error
+		if host, owner, repo, number, err = parseIssueReference(req.Issue, req.Owner, req.Repo); err != nil {
+			return repoRef{}, 0, err
+		}
+	} else if owner == "" || repo == "" || number <= 0 {
+		return repoRef{}, 0, ErrInvalidIssueReference
 	}
-	if req.Owner == "" || req.Repo == "" || req.Number <= 0 {
-		return "", "", 0, ErrInvalidIssueReference
+	if host == "" {
+		normalized, err := normalizeGitHubHost(req.Host)
+		if err != nil {
+			return repoRef{}, 0, fmt.Errorf("%w: %w", ErrInvalidIssueReference, err)
+		}
+		host = normalized
 	}
-	return req.Owner, req.Repo, req.Number, nil
+	return repoRef{host, owner, repo}, number, nil
 }
 
-func parseIssueReference(input, defaultOwner, defaultRepo string) (string, string, int, error) {
+// parseIssueReference returns the issue of a bare number on the default
+// repository (host empty) or of an https://<host>/<owner>/<repo>/issues/<n>
+// URL on a GitHub host.
+func parseIssueReference(input, defaultOwner, defaultRepo string) (string, string, string, int, error) {
 	trimmed := strings.TrimSpace(input)
 	if trimmed == "" {
-		return "", "", 0, ErrInvalidIssueReference
+		return "", "", "", 0, ErrInvalidIssueReference
 	}
 	if n, err := strconv.Atoi(strings.TrimPrefix(trimmed, "#")); err == nil && n > 0 {
 		if defaultOwner == "" || defaultRepo == "" {
-			return "", "", 0, fmt.Errorf("%w: owner and repo are required for issue numbers", ErrInvalidIssueReference)
+			return "", "", "", 0, fmt.Errorf("%w: owner and repo are required for issue numbers", ErrInvalidIssueReference)
 		}
-		return defaultOwner, defaultRepo, n, nil
+		return "", defaultOwner, defaultRepo, n, nil
+	}
+	host, err := WebHostFromURL(trimmed)
+	if err != nil || host == gitlabDotComHost {
+		return "", "", "", 0, fmt.Errorf("%w: expected a GitHub issue URL", ErrInvalidIssueReference)
 	}
 	u, err := url.Parse(trimmed)
-	if err != nil || u.Host == "" {
-		return "", "", 0, fmt.Errorf("%w: expected a GitHub issue URL", ErrInvalidIssueReference)
-	}
-	host := strings.TrimPrefix(strings.ToLower(u.Host), "www.")
-	if host != "github.com" || !strings.Contains(u.Path, githubIssuePathMarker) {
-		return "", "", 0, fmt.Errorf("%w: expected a GitHub issue URL", ErrInvalidIssueReference)
+	if err != nil || !strings.Contains(u.Path, githubIssuePathMarker) {
+		return "", "", "", 0, fmt.Errorf("%w: expected a GitHub issue URL", ErrInvalidIssueReference)
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 	if len(parts) < 4 || parts[2] != "issues" {
-		return "", "", 0, fmt.Errorf("%w: expected /owner/repo/issues/number", ErrInvalidIssueReference)
+		return "", "", "", 0, fmt.Errorf("%w: expected /owner/repo/issues/number", ErrInvalidIssueReference)
 	}
 	number, err := strconv.Atoi(parts[3])
 	if err != nil || number <= 0 {
-		return "", "", 0, fmt.Errorf("%w: invalid issue number", ErrInvalidIssueReference)
+		return "", "", "", 0, fmt.Errorf("%w: invalid issue number", ErrInvalidIssueReference)
 	}
-	return parts[0], parts[1], number, nil
+	return host, parts[0], parts[1], number, nil
 }
 
-func (s *Service) validateIssueTaskRepository(ctx context.Context, store TaskIssueStore, taskID, owner, repo string) error {
+func (s *Service) validateIssueTaskRepository(ctx context.Context, store TaskIssueStore, taskID string, ref repoRef) error {
 	taskRepos, err := store.ListTaskRepositories(ctx, taskID)
 	if err != nil {
 		return err
@@ -230,9 +246,13 @@ func (s *Service) validateIssueTaskRepository(ctx context.Context, store TaskIss
 		if entity == nil {
 			continue
 		}
-		if strings.EqualFold(entity.Provider, githubProviderName) &&
-			strings.EqualFold(entity.ProviderOwner, owner) &&
-			strings.EqualFold(entity.ProviderName, repo) {
+		if !strings.EqualFold(entity.Provider, githubProviderName) {
+			continue
+		}
+		host, hostErr := RepositoryGitHubHost(entity.ProviderHost)
+		if hostErr == nil && host == ref.host &&
+			strings.EqualFold(entity.ProviderOwner, ref.owner) &&
+			strings.EqualFold(entity.ProviderName, ref.name) {
 			return nil
 		}
 	}
@@ -252,7 +272,7 @@ func taskIssueLinkFromMetadata(row taskIssueMetadataRow) (TaskIssueLinkResponse,
 	if !ok {
 		return TaskIssueLinkResponse{}, false
 	}
-	owner, repo, issueNumber, err := parseIssueReference(issueURL, "", "")
+	_, owner, repo, issueNumber, err := parseIssueReference(issueURL, "", "")
 	if err != nil || issueNumber != metadataNumber {
 		return TaskIssueLinkResponse{}, false
 	}

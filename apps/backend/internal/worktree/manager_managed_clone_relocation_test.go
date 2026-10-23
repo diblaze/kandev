@@ -918,6 +918,9 @@ func TestParseManagedGitOrigin(t *testing.T) {
 		{name: "scp github", origin: "git@github.com:acme/widget.git", provider: "github", host: "github.com", owner: "acme", repo: "widget"},
 		{name: "ssh nested gitlab", origin: "ssh://git@gitlab.example.test:2222/groups/team/widget.git", provider: "", host: "gitlab.example.test:2222", owner: "groups/team", repo: "widget"},
 		{name: "embedded credentials", origin: "https://token@example.test/acme/widget.git", wantErr: true},
+		{name: "scp ghe tenant", origin: "octo@octo.ghe.com:org/widget.git", host: "octo.ghe.com", owner: "org", repo: "widget"},
+		{name: "ssh ghe tenant", origin: "ssh://octo@octo.ghe.com/org/widget.git", host: "octo.ghe.com", owner: "org", repo: "widget"},
+		{name: "scp foreign ssh user", origin: "evil@octo.ghe.com:org/widget.git", wantErr: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

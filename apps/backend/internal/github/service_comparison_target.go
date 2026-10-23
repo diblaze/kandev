@@ -25,19 +25,21 @@ func (s *Service) SetComparisonTargetObserver(observer ComparisonTargetObserver)
 	s.comparisonTargetObserver = observer
 }
 
-func (s *Service) reconcileComparisonTarget(ctx context.Context, taskID string, pr *PR) {
-	s.reconcileComparisonTargetMode(ctx, taskID, pr, true)
+// reconcileComparisonTarget reconciles the comparison target of a pull
+// request read from host; an empty host is github.com.
+func (s *Service) reconcileComparisonTarget(ctx context.Context, host, taskID string, pr *PR) {
+	s.reconcileComparisonTargetMode(ctx, host, taskID, pr, true)
 }
 
-func (s *Service) reconcileComparisonTargetFromSync(ctx context.Context, taskID string, pr *PR) {
-	s.reconcileComparisonTargetMode(ctx, taskID, pr, false)
+func (s *Service) reconcileComparisonTargetFromSync(ctx context.Context, host, taskID string, pr *PR) {
+	s.reconcileComparisonTargetMode(ctx, host, taskID, pr, false)
 }
 
-func (s *Service) reconcileComparisonTargetMode(ctx context.Context, taskID string, pr *PR, allowReplacement bool) {
+func (s *Service) reconcileComparisonTargetMode(ctx context.Context, host, taskID string, pr *PR, allowReplacement bool) {
 	if s.comparisonTargetObserver == nil || strings.TrimSpace(taskID) == "" {
 		return
 	}
-	candidate, ok := githubComparisonTargetCandidate(pr)
+	candidate, ok := githubComparisonTargetCandidate(githubHostOrDefault(host), pr)
 	if !ok {
 		if s.logger != nil {
 			s.logger.Debug("comparison target reconciliation skipped: PR identity incomplete",
@@ -71,7 +73,7 @@ func (s *Service) reconcileComparisonTargetMode(ctx context.Context, taskID stri
 	}
 }
 
-func githubComparisonTargetCandidate(pr *PR) (taskmodels.ComparisonTargetCandidate, bool) {
+func githubComparisonTargetCandidate(host string, pr *PR) (taskmodels.ComparisonTargetCandidate, bool) {
 	if pr == nil || pr.Number <= 0 {
 		return taskmodels.ComparisonTargetCandidate{}, false
 	}
@@ -104,16 +106,16 @@ func githubComparisonTargetCandidate(pr *PR) (taskmodels.ComparisonTargetCandida
 		HeadBranch:   headBranch,
 		TargetBranch: targetBranch,
 		HeadRepository: taskmodels.ComparisonTargetRepository{
-			Host:       "github.com",
+			Host:       host,
 			Path:       headOwner + "/" + headName,
 			ProviderID: githubHeadProviderID(pr),
-			RemoteURL:  fmt.Sprintf("https://github.com/%s/%s.git", headOwner, headName),
+			RemoteURL:  fmt.Sprintf("https://%s/%s/%s.git", host, headOwner, headName),
 		},
 		TargetRepository: taskmodels.ComparisonTargetRepository{
-			Host:       "github.com",
+			Host:       host,
 			Path:       targetOwner + "/" + targetName,
 			ProviderID: positiveID(pr.BaseRepoID),
-			RemoteURL:  fmt.Sprintf("https://github.com/%s/%s.git", targetOwner, targetName),
+			RemoteURL:  fmt.Sprintf("https://%s/%s/%s.git", host, targetOwner, targetName),
 		},
 	}, true
 }

@@ -605,10 +605,10 @@ func (s *Service) associatePRWithTaskForSession(
 					s.logger.Debug("failed to publish restored task PR event", zap.Error(err))
 				}
 			}
-			s.reconcileComparisonTarget(ctx, taskID, pr)
+			s.reconcileComparisonTarget(ctx, host, taskID, pr)
 			return restored, nil
 		}
-		s.reconcileComparisonTarget(ctx, taskID, pr)
+		s.reconcileComparisonTarget(ctx, host, taskID, pr)
 		return existing, nil
 	}
 	tp := &TaskPR{
@@ -657,7 +657,7 @@ func (s *Service) associatePRWithTaskForSession(
 			s.logger.Debug("failed to publish task PR updated event", zap.Error(err))
 		}
 	}
-	s.reconcileComparisonTarget(ctx, taskID, pr)
+	s.reconcileComparisonTarget(ctx, host, taskID, pr)
 
 	s.logger.Info("associated PR with task",
 		zap.String("task_id", taskID),
@@ -681,7 +681,7 @@ func (s *Service) AssociateExistingPRByURL(ctx context.Context, taskID, reposito
 	if s.client == nil {
 		return nil, fmt.Errorf("github client not available")
 	}
-	owner, repo, prNumber, err := parsePRURL(prURL)
+	_, owner, repo, prNumber, err := parsePRURL(prURL)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidPRURL, err)
 	}
@@ -704,17 +704,17 @@ func (s *Service) AssociateExistingPRByURL(ctx context.Context, taskID, reposito
 func (s *Service) AssociateExistingPRByURLForWorkspace(
 	ctx context.Context, workspaceID, userID, taskID, repositoryID, prURL string,
 ) (*TaskPR, error) {
-	owner, repo, prNumber, err := parsePRURL(prURL)
+	host, owner, repo, prNumber, err := parsePRURL(prURL)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidPRURL, err)
 	}
 	if err := s.validateTaskRepositoryID(ctx, taskID, repositoryID); err != nil {
 		return nil, err
 	}
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, defaultGitHubHost, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return nil, err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{defaultGitHubHost, owner, repo})
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return nil, err
 	}
@@ -722,7 +722,7 @@ func (s *Service) AssociateExistingPRByURLForWorkspace(
 	if err != nil {
 		return nil, fmt.Errorf("fetch PR: %w", err)
 	}
-	tp, err := s.associatePRWithTask(ctx, workspaceID, defaultGitHubHost, taskID, repositoryID, pr, true, true, TaskPRSourceURLLink)
+	tp, err := s.associatePRWithTask(ctx, workspaceID, host, taskID, repositoryID, pr, true, true, TaskPRSourceURLLink)
 	if err != nil {
 		return nil, fmt.Errorf("associate PR with task: %w", err)
 	}
@@ -739,7 +739,7 @@ func (s *Service) AssociatePRByURL(ctx context.Context, sessionID, taskID, repos
 	if s.client == nil {
 		return
 	}
-	owner, repo, prNumber, err := parsePRURL(prURL)
+	_, owner, repo, prNumber, err := parsePRURL(prURL)
 	if err != nil {
 		s.logger.Error("failed to parse PR URL", zap.String("url", prURL), zap.Error(err))
 		return
@@ -781,17 +781,17 @@ func (s *Service) AssociatePRByURL(ctx context.Context, sessionID, taskID, repos
 func (s *Service) AssociatePRByURLForWorkspace(
 	ctx context.Context, workspaceID, userID, sessionID, taskID, repositoryID, prURL, branch string,
 ) error {
-	owner, repo, prNumber, err := parsePRURL(prURL)
+	host, owner, repo, prNumber, err := parsePRURL(prURL)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidPRURL, err)
 	}
 	if err := s.validateTaskRepositoryID(ctx, taskID, repositoryID); err != nil {
 		return err
 	}
-	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, defaultGitHubHost, owner, repo); err != nil {
+	if err := s.ensureRepositoryInWorkspaceScope(ctx, workspaceID, host, owner, repo); err != nil {
 		return err
 	}
-	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{defaultGitHubHost, owner, repo})
+	resolved, err := s.resolvePersonalReadClient(ctx, workspaceID, userID, repoRef{host, owner, repo})
 	if err != nil {
 		return err
 	}
@@ -808,27 +808,31 @@ func (s *Service) AssociatePRByURLForWorkspace(
 	// row never syncs.
 	effectiveTaskID := s.resolveEffectiveAssociationTaskIDForSession(ctx, sessionID, taskID, repositoryID)
 	if _, err := s.CreatePRWatchForWorkspace(
-		ctx, workspaceID, defaultGitHubHost, sessionID, effectiveTaskID, repositoryID, owner, repo, prNumber, branch,
+		ctx, workspaceID, host, sessionID, effectiveTaskID, repositoryID, owner, repo, prNumber, branch,
 	); err != nil {
 		return fmt.Errorf("create PR watch: %w", err)
 	}
-	if _, err := s.associatePRWithTaskForSession(ctx, workspaceID, defaultGitHubHost, sessionID, taskID, repositoryID, pr, true, true, TaskPRSourceWatch); err != nil {
+	if _, err := s.associatePRWithTaskForSession(ctx, workspaceID, host, sessionID, taskID, repositoryID, pr, true, true, TaskPRSourceWatch); err != nil {
 		return fmt.Errorf("associate PR with task: %w", err)
 	}
 	return nil
 }
 
-// parsePRURL extracts owner, repo, and PR number from a GitHub PR URL.
-// Expected format: https://github.com/{owner}/{repo}/pull/{number}
+// parsePRURL extracts host, owner, repo, and PR number from a GitHub PR URL.
+// Expected format: https://{host}/{owner}/{repo}/pull/{number}
 // Handles trailing slashes, query parameters, and URL fragments.
-func parsePRURL(prURL string) (owner, repo string, number int, err error) {
+func parsePRURL(prURL string) (host, owner, repo string, number int, err error) {
 	// Strip trailing whitespace/newlines
 	prURL = strings.TrimSpace(prURL)
+	host, err = WebHostFromURL(prURL)
+	if err != nil {
+		return "", "", "", 0, err
+	}
 
 	// Find the /pull/ segment
 	idx := strings.Index(prURL, "/pull/")
 	if idx < 0 {
-		return "", "", 0, fmt.Errorf("URL does not contain /pull/: %s", prURL)
+		return "", "", "", 0, fmt.Errorf("URL does not contain /pull/: %s", prURL)
 	}
 
 	// Parse PR number after /pull/, stripping query params, fragments, and trailing slashes
@@ -839,10 +843,10 @@ func parsePRURL(prURL string) (owner, repo string, number int, err error) {
 	numStr = strings.TrimRight(numStr, "/")
 	number, err = strconv.Atoi(numStr)
 	if err != nil {
-		return "", "", 0, fmt.Errorf("invalid PR number in URL %s: %w", prURL, err)
+		return "", "", "", 0, fmt.Errorf("invalid PR number in URL %s: %w", prURL, err)
 	}
 	if number <= 0 {
-		return "", "", 0, fmt.Errorf("invalid PR number in URL %s: must be greater than zero", prURL)
+		return "", "", "", 0, fmt.Errorf("invalid PR number in URL %s: must be greater than zero", prURL)
 	}
 
 	// Parse owner/repo from path before /pull/
@@ -850,14 +854,14 @@ func parsePRURL(prURL string) (owner, repo string, number int, err error) {
 	// Remove scheme+host prefix (find last two path segments)
 	parts := strings.Split(strings.TrimRight(pathBefore, "/"), "/")
 	if len(parts) < 2 {
-		return "", "", 0, fmt.Errorf("cannot extract owner/repo from URL: %s", prURL)
+		return "", "", "", 0, fmt.Errorf("cannot extract owner/repo from URL: %s", prURL)
 	}
 	repo = parts[len(parts)-1]
 	owner = parts[len(parts)-2]
 	if owner == "" || repo == "" {
-		return "", "", 0, fmt.Errorf("empty owner or repo in URL: %s", prURL)
+		return "", "", "", 0, fmt.Errorf("empty owner or repo in URL: %s", prURL)
 	}
-	return owner, repo, number, nil
+	return host, owner, repo, number, nil
 }
 
 // GetTaskPR returns the PR association for a task.
@@ -1754,7 +1758,7 @@ func (s *Service) persistAndPublishTaskPRSync(
 	// Provider payloads carry the authoritative head/base repository identity
 	// and branch. Reconcile after the TaskPR write so a malformed or
 	// unmatchable payload never prevents the review association from persisting.
-	s.reconcileComparisonTargetFromSync(ctx, taskID, pr)
+	s.reconcileComparisonTargetFromSync(ctx, tp.GitHubHost, taskID, pr)
 
 	if changed && s.eventBus != nil {
 		published, err := s.store.GetTaskPRByID(ctx, tp.ID)

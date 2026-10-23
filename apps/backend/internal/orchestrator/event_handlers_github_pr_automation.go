@@ -221,7 +221,11 @@ func canonicalTaskPRURL(pr *github.TaskPR) (string, error) {
 	if pr == nil || !githubOwnerPattern.MatchString(pr.Owner) || !githubRepoPattern.MatchString(pr.Repo) || pr.PRNumber <= 0 {
 		return "", fmt.Errorf("invalid GitHub pull request identity")
 	}
-	return fmt.Sprintf("https://github.com/%s/%s/pull/%d", pr.Owner, pr.Repo, pr.PRNumber), nil
+	host, err := github.RepositoryGitHubHost(pr.GitHubHost)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("https://%s/%s/%s/pull/%d", host, pr.Owner, pr.Repo, pr.PRNumber), nil
 }
 
 func taskPRAgentPromptMetadata(pr *github.TaskPR, event, prURL string) map[string]interface{} {

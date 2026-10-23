@@ -184,7 +184,9 @@ organization scopes name owners only and apply to every host.
 Pull-request, issue, profile, mention, and file links are built on the item
 host. The web host for a pull request or issue comes from its URL; the web host
 for a repository comes from `provider_host`. Mention scopes become
-`<host>/<owner>/<repo>`; `github.com` scopes keep their current form.
+`<host>/<owner>/<repo>`; `github.com` scopes keep their current form. Mention
+search queries `github.com` and then every other connected host, and fails
+only when every host fails.
 
 ### Task credentials
 

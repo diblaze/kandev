@@ -30,7 +30,7 @@ func TestForkPRBasePreparationEndToEnd(t *testing.T) {
 		HeadRepoOwner: "fork-owner", HeadRepoName: "widget", HeadBranch: "feature/pr-42",
 		BaseBranch: "release/next", BaseSHA: upstreamBaseOID,
 	}
-	base, err := githubPRBaseFromPR(providerPR, "upstream", "widget", 42, "feature/pr-42")
+	base, err := githubPRBaseFromPR(providerPR, "github.com", "upstream", "widget", 42, "feature/pr-42")
 	if err != nil {
 		t.Fatalf("convert provider PR response: %v", err)
 	}

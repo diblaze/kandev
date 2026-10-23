@@ -1,6 +1,7 @@
 package mentions
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 )
 
 const (
+	githubDotComHost      = "github.com"
 	githubProviderID      = "github"
 	githubIssueKind       = mentionKindIssue
 	githubPullRequestKind = "pull_request"
@@ -32,6 +34,7 @@ type GitHubMentionService interface {
 		limit int,
 	) ([]*github.PR, error)
 	GetWorkspaceSettings(ctx context.Context, workspaceID string) (*github.WorkspaceSettings, error)
+	WorkspaceGitHubHosts(ctx context.Context, workspaceID string) ([]string, error)
 }
 
 type githubProvider struct {
@@ -69,33 +72,70 @@ func (p *githubProvider) Search(ctx context.Context, request SearchRequest) ([]C
 	if strings.TrimSpace(request.WorkspaceID) == "" {
 		return nil, NewProviderError(StatusUnsupportedScope, github.ErrMentionWorkspaceRequired)
 	}
-	limit := clampGitHubMentionLimit(request.Limit)
-	if p.kind == githubPullRequestKind {
-		prs, err := p.service.SearchMentionPullRequestsForWorkspace(
-			ctx, request.WorkspaceID, "", request.Query, limit,
-		)
-		if err != nil {
-			return nil, classifyGitHubMentionError(err)
-		}
-		return githubPullRequestCandidates(prs, limit), nil
-	}
-	issues, err := p.service.SearchMentionIssuesForWorkspace(
-		ctx, request.WorkspaceID, "", request.Query, limit,
-	)
+	hosts, err := p.searchHosts(ctx, request.WorkspaceID)
 	if err != nil {
 		return nil, classifyGitHubMentionError(err)
 	}
-	return githubIssueCandidates(issues, limit), nil
+	limit := clampGitHubMentionLimit(request.Limit)
+	candidates := make([]Candidate, 0, limit)
+	var firstErr error
+	searched := 0
+	for _, host := range hosts {
+		if len(candidates) == limit {
+			break
+		}
+		found, err := p.searchHost(ctx, request, host, limit-len(candidates))
+		if err != nil {
+			firstErr = cmp.Or(firstErr, err)
+			continue
+		}
+		searched++
+		candidates = append(candidates, found...)
+	}
+	if searched == 0 && firstErr != nil {
+		return nil, classifyGitHubMentionError(firstErr)
+	}
+	return candidates, nil
 }
 
-func githubIssueCandidates(issues []*github.Issue, limit int) []Candidate {
+// searchHosts is github.com followed by every other connected host.
+func (p *githubProvider) searchHosts(ctx context.Context, workspaceID string) ([]string, error) {
+	connected, err := p.service.WorkspaceGitHubHosts(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	hosts := []string{githubDotComHost}
+	for _, host := range connected {
+		if host != githubDotComHost {
+			hosts = append(hosts, host)
+		}
+	}
+	return hosts, nil
+}
+
+func (p *githubProvider) searchHost(ctx context.Context, request SearchRequest, host string, limit int) ([]Candidate, error) {
+	if p.kind == githubPullRequestKind {
+		prs, err := p.service.SearchMentionPullRequestsForWorkspace(ctx, request.WorkspaceID, host, request.Query, limit)
+		if err != nil {
+			return nil, err
+		}
+		return githubPullRequestCandidates(host, prs, limit), nil
+	}
+	issues, err := p.service.SearchMentionIssuesForWorkspace(ctx, request.WorkspaceID, host, request.Query, limit)
+	if err != nil {
+		return nil, err
+	}
+	return githubIssueCandidates(host, issues, limit), nil
+}
+
+func githubIssueCandidates(host string, issues []*github.Issue, limit int) []Candidate {
 	candidates := make([]Candidate, 0, min(len(issues), limit))
 	for _, issue := range issues {
 		if issue == nil || issue.Number <= 0 {
 			continue
 		}
 		candidate, ok := githubCandidate(
-			issue.ID, issue.NodeID, issue.Number, issue.Title, issue.RepoOwner, issue.RepoName, githubIssueKind,
+			host, issue.ID, issue.NodeID, issue.Number, issue.Title, issue.RepoOwner, issue.RepoName, githubIssueKind,
 		)
 		if ok {
 			candidates = append(candidates, candidate)
@@ -107,14 +147,14 @@ func githubIssueCandidates(issues []*github.Issue, limit int) []Candidate {
 	return candidates
 }
 
-func githubPullRequestCandidates(prs []*github.PR, limit int) []Candidate {
+func githubPullRequestCandidates(host string, prs []*github.PR, limit int) []Candidate {
 	candidates := make([]Candidate, 0, min(len(prs), limit))
 	for _, pr := range prs {
 		if pr == nil || pr.Number <= 0 {
 			continue
 		}
 		candidate, ok := githubCandidate(
-			pr.ID, pr.NodeID, pr.Number, pr.Title, pr.RepoOwner, pr.RepoName, githubPullRequestKind,
+			host, pr.ID, pr.NodeID, pr.Number, pr.Title, pr.RepoOwner, pr.RepoName, githubPullRequestKind,
 		)
 		if ok {
 			candidates = append(candidates, candidate)
@@ -126,7 +166,9 @@ func githubPullRequestCandidates(prs []*github.PR, limit int) []Candidate {
 	return candidates
 }
 
+// githubCandidate builds a mention on host; its scope is <host>/<owner>/<repo>.
 func githubCandidate(
+	host string,
 	restID int64,
 	nodeID string,
 	number int,
@@ -152,8 +194,8 @@ func githubCandidate(
 		ID:    id,
 		Key:   repository + "#" + strconv.Itoa(number),
 		Title: title,
-		URL:   "https://github.com/" + repository + "/" + route + "/" + strconv.Itoa(number),
-		Scope: "github.com/" + repository,
+		URL:   "https://" + host + "/" + repository + "/" + route + "/" + strconv.Itoa(number),
+		Scope: host + "/" + repository,
 	}, true
 }
 
@@ -220,8 +262,8 @@ func (p *githubProvider) AuthorizeReference(ctx context.Context, request Referen
 		}
 		return ErrReferenceUnauthorized
 	}
-	owner, repo, ok := repositoryFromGitHubScope(request.Reference.Scope)
-	if !ok || !githubSettingsAllowRepository(settings, request.WorkspaceID, owner, repo) {
+	host, owner, repo, ok := repositoryFromGitHubScope(request.Reference.Scope)
+	if !ok || !githubSettingsAllowRepository(settings, request.WorkspaceID, host, owner, repo) {
 		return ErrReferenceUnauthorized
 	}
 	return nil
@@ -233,7 +275,7 @@ func validGitHubReference(reference apiv1.EntityReference, kind string) bool {
 		reference.Ref != canonicalRef(githubProviderID, kind, reference.Scope, reference.ID) {
 		return false
 	}
-	owner, repo, ok := repositoryFromGitHubScope(reference.Scope)
+	host, owner, repo, ok := repositoryFromGitHubScope(reference.Scope)
 	if !ok {
 		return false
 	}
@@ -251,24 +293,29 @@ func validGitHubReference(reference apiv1.EntityReference, kind string) bool {
 	if kind == githubPullRequestKind {
 		route = "pull"
 	}
-	wantURL := fmt.Sprintf("https://github.com/%s/%s/%d", repository, route, number)
+	wantURL := fmt.Sprintf("https://%s/%s/%s/%d", host, repository, route, number)
 	return reference.URL == wantURL
 }
 
-func repositoryFromGitHubScope(scope string) (string, string, bool) {
-	const prefix = "github.com/"
-	if !strings.HasPrefix(scope, prefix) || strings.ToLower(scope) != scope {
-		return "", "", false
+// repositoryFromGitHubScope parses a lowercase <host>/<owner>/<repo> scope on
+// a valid GitHub host.
+func repositoryFromGitHubScope(scope string) (string, string, string, bool) {
+	if strings.ToLower(scope) != scope {
+		return "", "", "", false
 	}
-	parts := strings.Split(strings.TrimPrefix(scope, prefix), "/")
-	if len(parts) != 2 {
-		return "", "", false
+	parts := strings.Split(scope, "/")
+	if len(parts) != 3 {
+		return "", "", "", false
 	}
-	owner, repo, ok := normalizeGitHubRepository(parts[0], parts[1])
-	if !ok || scope != prefix+owner+"/"+repo {
-		return "", "", false
+	host, err := github.HostFromProviderHost(parts[0])
+	if err != nil || host != parts[0] {
+		return "", "", "", false
 	}
-	return owner, repo, true
+	owner, repo, ok := normalizeGitHubRepository(parts[1], parts[2])
+	if !ok || scope != host+"/"+owner+"/"+repo {
+		return "", "", "", false
+	}
+	return host, owner, repo, true
 }
 
 func normalizeGitHubRepository(owner, repo string) (string, string, bool) {
@@ -296,7 +343,7 @@ func validGitHubPathSegment(value string) bool {
 
 func githubSettingsAllowRepository(
 	settings *github.WorkspaceSettings,
-	workspaceID, owner, repo string,
+	workspaceID, host, owner, repo string,
 ) bool {
 	if settings == nil || strings.TrimSpace(settings.WorkspaceID) != workspaceID {
 		return false
@@ -312,7 +359,7 @@ func githubSettingsAllowRepository(
 		}
 	case github.RepoScopeModeRepos:
 		for _, candidate := range settings.RepoScopeRepos {
-			if strings.EqualFold(strings.TrimSpace(candidate.Owner), owner) &&
+			if candidate.MatchesHost(host) && strings.EqualFold(strings.TrimSpace(candidate.Owner), owner) &&
 				strings.EqualFold(strings.TrimSpace(candidate.Name), repo) {
 				return true
 			}

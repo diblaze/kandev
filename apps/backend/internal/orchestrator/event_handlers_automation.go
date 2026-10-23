@@ -705,7 +705,7 @@ func (s *Service) createAutomationTaskLocked(ctx context.Context, evt *automatio
 	// Associate PR with task for github_pr triggers (same as PR Watcher).
 	if evt.TriggerType == automation.TriggerTypeGitHubPR {
 		if repositories, _ := s.resolveAutomationRepository(ctx, a, evt); len(repositories) > 0 {
-			s.associateAutomationPR(ctx, task.ID, repositories[0].RepositoryID, evt.TriggerData)
+			s.associateAutomationPR(ctx, a.WorkspaceID, task.ID, repositories[0].RepositoryID, evt.TriggerData)
 		}
 	}
 
@@ -1928,6 +1928,7 @@ func (s *Service) resolveGitHubPRTriggerRepository(
 	}
 	var data struct {
 		Repo       string `json:"repo"`
+		HTMLURL    string `json:"html_url"`
 		HeadBranch string `json:"head_branch"`
 		BaseBranch string `json:"base_branch"`
 	}
@@ -1938,9 +1939,15 @@ func (s *Service) resolveGitHubPRTriggerRepository(
 	if len(parts) != 2 {
 		return nil
 	}
+	host, err := githubPRTriggerHost(data.HTMLURL)
+	if err != nil {
+		s.logger.Warn("skip PR trigger repository with an invalid pull request URL",
+			zap.String("repo", data.Repo), zap.Error(err))
+		return nil
+	}
 	owner, name := parts[0], parts[1]
 	repoID, baseBranch, err := s.repositoryResolver.ResolveForReview(
-		ctx, workspaceID, "github", "", owner, name, data.BaseBranch,
+		ctx, workspaceID, "github", host, owner, name, data.BaseBranch,
 	)
 	if err != nil || repoID == "" {
 		s.logger.Warn("failed to resolve PR trigger repository",
@@ -1959,8 +1966,19 @@ func (s *Service) resolveAutomationTaskTitle(a *automation.Automation, evt *auto
 	return automation.RenderRunDisplayTitle(a, evt.TriggerType, evt.TriggerData)
 }
 
+// githubPRTriggerHost is the GitHub host of a PR trigger's html_url; trigger
+// data without one names a github.com pull request.
+func githubPRTriggerHost(htmlURL string) (string, error) {
+	if htmlURL == "" {
+		return "", nil
+	}
+	return github.WebHostFromURL(htmlURL)
+}
+
 // associateAutomationPR links a task to a GitHub PR using trigger data.
-func (s *Service) associateAutomationPR(ctx context.Context, taskID, repositoryID string, triggerData json.RawMessage) {
+func (s *Service) associateAutomationPR(
+	ctx context.Context, workspaceID, taskID, repositoryID string, triggerData json.RawMessage,
+) {
 	if s.githubService == nil {
 		return
 	}
@@ -1983,6 +2001,12 @@ func (s *Service) associateAutomationPR(ctx context.Context, taskID, repositoryI
 	if len(parts) != 2 {
 		return
 	}
+	host, err := githubPRTriggerHost(data.HTMLURL)
+	if err != nil {
+		s.logger.Warn("skip automation PR association with an invalid pull request URL",
+			zap.String("task_id", taskID), zap.Error(err))
+		return
+	}
 	pr := &github.PR{
 		Number:      int(data.Number),
 		Title:       data.Title,
@@ -1996,7 +2020,7 @@ func (s *Service) associateAutomationPR(ctx context.Context, taskID, repositoryI
 		Draft:       data.Draft,
 		State:       data.State,
 	}
-	if _, err := s.githubService.AssociatePRWithTask(ctx, taskID, repositoryID, pr); err != nil {
+	if _, err := s.githubService.AssociatePRWithTaskForWorkspace(ctx, workspaceID, host, taskID, repositoryID, pr); err != nil {
 		s.logger.Error("failed to associate PR with automation task",
 			zap.String("task_id", taskID),
 			zap.Int("pr_number", pr.Number),

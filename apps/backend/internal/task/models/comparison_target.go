@@ -145,8 +145,17 @@ func validateComparisonTargetProviderHost(provider, host string) error {
 	if strings.TrimSpace(host) == "" {
 		return errors.New("repository host is required")
 	}
-	if provider == ComparisonTargetProviderGitHub && !strings.EqualFold(host, "github.com") {
-		return fmt.Errorf("GitHub repository host %q is unsupported", host)
+	if provider == ComparisonTargetProviderGitHub {
+		return validateGitHubRepositoryHost(host)
+	}
+	return nil
+}
+
+// validateGitHubRepositoryHost accepts a bare hostname; GitHub hosts carry no
+// port, user info, or path.
+func validateGitHubRepositoryHost(host string) error {
+	if strings.Contains(host, ":") || validateRemoteContributionAuthority(host) != nil {
+		return fmt.Errorf("GitHub repository host %q is invalid", host)
 	}
 	return nil
 }

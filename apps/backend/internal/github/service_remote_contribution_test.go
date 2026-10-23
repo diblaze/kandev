@@ -14,7 +14,7 @@ func TestParseGitHubContributionURLRejectsAmbiguousURLs(t *testing.T) {
 		"https://github.com/acme/widget/issues/7",
 		"https://user:pass@github.com/acme/widget/pull/7",
 	} {
-		if _, _, _, err := parseGitHubContributionURL(raw); err == nil {
+		if _, _, _, _, err := parseGitHubContributionURL(raw); err == nil {
 			t.Errorf("parseGitHubContributionURL(%q) returned nil error", raw)
 		}
 	}
@@ -41,7 +41,7 @@ func TestBuildGitHubRemoteContributionUsesValidatedForkIdentity(t *testing.T) {
 		Title:               "untrusted title must not persist",
 		Body:                "untrusted body must not persist",
 	}
-	resolution, err := buildGitHubRemoteContribution("https://github.com/acme/widget/pull/7", "acme", "widget", 7, pr)
+	resolution, err := buildGitHubRemoteContribution(defaultGitHubHost, "acme", "widget", 7, pr)
 	if err != nil {
 		t.Fatalf("buildGitHubRemoteContribution() error = %v", err)
 	}
@@ -77,7 +77,7 @@ func TestBuildGitHubRemoteContributionRejectsNonEditableFork(t *testing.T) {
 		HeadSHA:       strings.Repeat("a", 40),
 		BaseBranch:    "main",
 	}
-	if _, err := buildGitHubRemoteContribution("https://github.com/acme/widget/pull/7", "acme", "widget", 7, pr); err == nil {
+	if _, err := buildGitHubRemoteContribution(defaultGitHubHost, "acme", "widget", 7, pr); err == nil {
 		t.Fatal("buildGitHubRemoteContribution() accepted a non-editable fork")
 	}
 }
@@ -93,7 +93,7 @@ func TestBuildGitHubRemoteContributionRejectsMissingRepositoryIdentity(t *testin
 		BaseBranch:          "main",
 		MaintainerCanModify: true,
 	}
-	if _, err := buildGitHubRemoteContribution("https://github.com/acme/widget/pull/7", "acme", "widget", 7, pr); err == nil {
+	if _, err := buildGitHubRemoteContribution(defaultGitHubHost, "acme", "widget", 7, pr); err == nil {
 		t.Fatal("buildGitHubRemoteContribution() accepted a response without live repository identity")
 	}
 }
