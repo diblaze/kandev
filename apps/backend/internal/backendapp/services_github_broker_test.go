@@ -252,14 +252,14 @@ func TestGitHubBrokerScopeAuthorizerValidatesSessionOwnershipAndState(t *testing
 	authorizer := &githubBrokerScopeAuthorizer{repo: repo}
 
 	if err := authorizer.AuthorizeGitHubRepository(
-		context.Background(), "workspace-1", "task-1", "session-1", "repository-1", "kdlbs", kandevName,
+		context.Background(), "workspace-1", "task-1", "session-1", "repository-1", "github.com", "kdlbs", kandevName,
 	); err != nil {
 		t.Fatalf("AuthorizeGitHubRepository() error = %v", err)
 	}
 
 	repo.session.TaskID = "another-task"
 	if err := authorizer.AuthorizeGitHubRepository(
-		context.Background(), "workspace-1", "task-1", "session-1", "repository-1", "kdlbs", kandevName,
+		context.Background(), "workspace-1", "task-1", "session-1", "repository-1", "github.com", "kdlbs", kandevName,
 	); err == nil || !strings.Contains(err.Error(), "session does not belong") {
 		t.Fatalf("session mismatch error = %v", err)
 	}
@@ -267,7 +267,7 @@ func TestGitHubBrokerScopeAuthorizerValidatesSessionOwnershipAndState(t *testing
 	repo.session.TaskID = "task-1"
 	repo.session.State = taskmodels.TaskSessionStateCompleted
 	if err := authorizer.AuthorizeGitHubRepository(
-		context.Background(), "workspace-1", "task-1", "session-1", "repository-1", "kdlbs", kandevName,
+		context.Background(), "workspace-1", "task-1", "session-1", "repository-1", "github.com", "kdlbs", kandevName,
 	); err == nil || !strings.Contains(err.Error(), "session is terminal") {
 		t.Fatalf("terminal session error = %v", err)
 	}
@@ -302,12 +302,12 @@ func TestGitHubBrokerScopeAuthorizerAllowsOnlyTheBoundContributionFork(t *testin
 	authorizer := &githubBrokerScopeAuthorizer{repo: repo}
 
 	if err := authorizer.AuthorizeGitHubRepository(
-		context.Background(), "workspace-fork", "task-fork", "session-fork", "repository-fork", "contributor", "widget-fork",
+		context.Background(), "workspace-fork", "task-fork", "session-fork", "repository-fork", "github.com", "contributor", "widget-fork",
 	); err != nil {
 		t.Fatalf("bound fork was denied: %v", err)
 	}
 	if err := authorizer.AuthorizeGitHubRepository(
-		context.Background(), "workspace-fork", "task-fork", "session-fork", "repository-fork", "contributor", "other-fork",
+		context.Background(), "workspace-fork", "task-fork", "session-fork", "repository-fork", "github.com", "contributor", "other-fork",
 	); err == nil || !strings.Contains(err.Error(), "identity does not match") {
 		t.Fatalf("unbound fork error = %v, want identity denial", err)
 	}
@@ -317,7 +317,7 @@ func TestGitHubBrokerScopeAuthorizerAllowsOnlyTheBoundContributionFork(t *testin
 		t.Fatalf("update remote contribution: %v", err)
 	}
 	if err := authorizer.AuthorizeGitHubRepository(
-		context.Background(), "workspace-fork", "task-fork", "session-fork", "repository-fork", "contributor", "widget-fork",
+		context.Background(), "workspace-fork", "task-fork", "session-fork", "repository-fork", "github.com", "contributor", "widget-fork",
 	); err == nil || !strings.Contains(err.Error(), "identity does not match") {
 		t.Fatalf("non-collaborative fork error = %v, want identity denial", err)
 	}
@@ -348,17 +348,17 @@ func TestGitHubBrokerScopeAuthorizerAllowsOnlyTheBoundContributionDestination(t 
 	authorizer := &githubBrokerScopeAuthorizer{repo: repo, provider: verifier}
 
 	if err := authorizer.AuthorizeGitHubRepository(
-		context.Background(), "workspace-destination", "task-destination", "session-destination", "repository-destination", "automation", "kandev",
+		context.Background(), "workspace-destination", "task-destination", "session-destination", "repository-destination", "github.com", "automation", "kandev",
 	); err == nil || !strings.Contains(err.Error(), "identity does not match") {
 		t.Fatal("stale canonical provider ID was accepted for a contribution destination")
 	}
 
 	repo.repository.ProviderRepoID = "100"
-	if err := authorizer.AuthorizeGitHubRepository(context.Background(), "workspace-destination", "task-destination", "session-destination", "repository-destination", "automation", "kandev"); err != nil {
+	if err := authorizer.AuthorizeGitHubRepository(context.Background(), "workspace-destination", "task-destination", "session-destination", "repository-destination", "github.com", "automation", "kandev"); err != nil {
 		t.Fatalf("bound destination was denied: %v", err)
 	}
 	if err := authorizer.AuthorizeGitHubRepositoryWithIdentity(
-		context.Background(), "workspace-destination", "task-destination", "session-destination", "repository-destination", "automation", "kandev", "200", "100",
+		context.Background(), "workspace-destination", "task-destination", "session-destination", "repository-destination", "github.com", "automation", "kandev", "200", "100",
 	); err != nil {
 		t.Fatalf("bound destination identity was denied: %v", err)
 	}
@@ -373,16 +373,16 @@ func TestGitHubBrokerScopeAuthorizerAllowsOnlyTheBoundContributionDestination(t 
 		t.Fatalf("provider verification calls = %d, want 2", verifier.calls)
 	}
 	if err := authorizer.AuthorizeGitHubRepositoryWithIdentity(
-		context.Background(), "workspace-destination", "task-destination", "session-destination", "repository-destination", "automation", "kandev", "201", "100",
+		context.Background(), "workspace-destination", "task-destination", "session-destination", "repository-destination", "github.com", "automation", "kandev", "201", "100",
 	); err == nil || !strings.Contains(err.Error(), "identity does not match") {
 		t.Fatal("delete/recreate target with a different provider ID was accepted")
 	}
 	if err := authorizer.AuthorizeGitHubRepositoryWithIdentity(
-		context.Background(), "workspace-destination", "task-destination", "session-destination", "repository-destination", "automation", "kandev", "200", "101",
+		context.Background(), "workspace-destination", "task-destination", "session-destination", "repository-destination", "github.com", "automation", "kandev", "200", "101",
 	); err == nil || !strings.Contains(err.Error(), "identity does not match") {
 		t.Fatal("target with a different parent provider ID was accepted")
 	}
-	if err := authorizer.AuthorizeGitHubRepository(context.Background(), "workspace-destination", "task-destination", "session-destination", "repository-destination", "automation", "other"); err == nil || !strings.Contains(err.Error(), "identity does not match") {
+	if err := authorizer.AuthorizeGitHubRepository(context.Background(), "workspace-destination", "task-destination", "session-destination", "repository-destination", "github.com", "automation", "other"); err == nil || !strings.Contains(err.Error(), "identity does not match") {
 		t.Fatalf("unbound destination error = %v, want identity denial", err)
 	}
 }
@@ -470,7 +470,7 @@ func TestGitHubBrokerScopeAuthorizerRejectsNonPublicProviderHostsForDestination(
 			links:      []*taskmodels.TaskRepository{{TaskID: "task-host", RepositoryID: "repository-host", Metadata: metadata}},
 		}
 		authorizer := &githubBrokerScopeAuthorizer{repo: repo}
-		if err := authorizer.AuthorizeGitHubRepository(context.Background(), "workspace-host", "task-host", "session-host", "repository-host", "automation", "kandev"); err == nil {
+		if err := authorizer.AuthorizeGitHubRepository(context.Background(), "workspace-host", "task-host", "session-host", "repository-host", "github.com", "automation", "kandev"); err == nil {
 			t.Fatalf("provider host %q was accepted for a managed destination", host)
 		}
 	}

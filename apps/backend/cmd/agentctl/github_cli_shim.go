@@ -66,6 +66,9 @@ func runGitHubCLIShim(
 	if err != nil {
 		return err
 	}
+	if err := checkGitHubCLIHostname(args, client.request.Host); err != nil {
+		return err
+	}
 	credential, err := client.resolveWithReissue(ctx)
 	if err != nil {
 		return err
@@ -81,13 +84,83 @@ func runGitHubCLIShim(
 		return err
 	}
 	defer func() { _ = os.RemoveAll(configDir) }()
+	host := client.request.Host
+	tokenKey, _ := githubauth.TokenEnvForHost(host)
 	childEnv := replaceEnvironment(environ(), map[string]string{
-		"GH_TOKEN":            credential.Password,
+		"GH_HOST":             host,
+		tokenKey:              credential.Password,
 		"GH_CONFIG_DIR":       configDir,
 		"PATH":                realPath,
 		envGitHubCLIShimDepth: strconv.Itoa(depth + 1),
-	}, "GITHUB_TOKEN")
+	}, githubCLITokenVariables...)
 	return runner(ctx, executable, args, childEnv, stdin, stdout, stderr)
+}
+
+// githubCLITokenVariables are every token variable gh reads. The shim's child
+// receives only the one for the lease host, so no other credential reaches gh.
+var githubCLITokenVariables = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
+
+// githubCLIValueFlags are gh flags whose next argument is a value, not a
+// positional argument gh could send a request to.
+var githubCLIValueFlags = map[string]bool{
+	"-a": true, "--assignee": true, "-B": true, "--base": true, "-b": true, "--body": true,
+	"-F": true, "--body-file": true, "--field": true, "-f": true, "--raw-field": true,
+	"-H": true, "--head": true, "--header": true, "--hostname": true, "--input": true,
+	"-l": true, "--label": true, "-m": true, "--milestone": true, "-p": true, "--project": true,
+	"-q": true, "--jq": true, "-r": true, "--reviewer": true, "-R": true, "--repo": true,
+	"-t": true, "--title": true, "--template": true, "-T": true, "-X": true, "--method": true,
+	"--json": true, "-c": true, "--comment": true, "-L": true, "--limit": true, "-s": true, "--state": true,
+}
+
+// checkGitHubCLIHostname refuses a --hostname, or a positional URL argument
+// on a host, other than the lease host or its subdomains: gh would send the
+// lease credential to that host. Flag values such as --body are text, not
+// request targets, and are not checked.
+func checkGitHubCLIHostname(args []string, host string) error {
+	host = strings.ToLower(strings.TrimSpace(host))
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		if strings.HasPrefix(arg, "-") && arg != "--" {
+			if githubCLIValueFlags[arg] {
+				index++
+			}
+			continue
+		}
+		if isOffHostURL(arg, host) {
+			return fmt.Errorf("gh URL %q is not on the credential host %q", arg, host)
+		}
+	}
+	for index, arg := range args {
+		if arg == "--" {
+			break
+		}
+		value, found := strings.CutPrefix(arg, "--hostname=")
+		if arg == "--hostname" {
+			value, found = "", true
+			if index+1 < len(args) {
+				value = args[index+1]
+			}
+		}
+		if found && !strings.EqualFold(strings.TrimSpace(value), host) {
+			return fmt.Errorf("gh --hostname %q does not match the credential host %q", value, host)
+		}
+	}
+	return nil
+}
+
+// isOffHostURL reports whether arg is an http(s) URL on neither host nor one
+// of its subdomains. An unparsable URL counts as off host.
+func isOffHostURL(arg, host string) bool {
+	lower := strings.ToLower(arg)
+	if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
+		return false
+	}
+	parsed, err := url.Parse(arg)
+	if err != nil {
+		return true
+	}
+	urlHost := strings.ToLower(parsed.Hostname())
+	return urlHost != host && !strings.HasSuffix(urlHost, "."+host)
 }
 
 // githubCLIShimDepth parses the inherited shim depth; the bound is exclusive.

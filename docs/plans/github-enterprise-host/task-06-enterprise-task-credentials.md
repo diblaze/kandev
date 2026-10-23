@@ -1,7 +1,7 @@
 ---
 id: "06-enterprise-task-credentials"
 title: "Task Git and CLI credentials for enterprise hosts"
-status: pending
+status: done
 wave: 5
 depends_on:
   - "04-enterprise-repository-identity"
@@ -90,7 +90,7 @@ and pull-request creation in agentctl.
 **Justified by:** E36
 **Governed by:** Go limits.
 **Specifics:** the container Git config (container.go:895-914) and the Sprites clone URL token injection (executor_sprites_helpers.go:35-60) iterate the hosts in `KANDEV_GITHUB_HOSTS` plus `github.com`: per host, add `url.https://<host>/.insteadOf` for `git@<host>:`, `<subdomain>@<host>:` for `.ghe.com` hosts, and `ssh://git@<host>/`, and a credential helper reading the variable from `TokenEnvForHost`. `remote_github_env.go` (line 21) forwards `KANDEV_GITHUB_HOSTS` and the enterprise token variables.
-Unverified: could not inspect how the lifecycle manager receives `req.Env` for Docker and Sprites, because only the helper functions were read; the implementer confirms `KANDEV_GITHUB_HOSTS` reaches them.
+Confirmed during implementation: `LaunchAgentRequest.Env` reaches `ExecutorCreateRequest.Env` (`manager_launch.go`), Docker passes it whole as `ContainerConfig.Credentials`, and Sprites passes it to the agent. SSH forwards an allowlist, so the forwarding change lives in `executor_ssh_operations.go` (`sshRemoteAgentCredentialEnvKeys`) and `executor_ssh_remote_contribution.go`, not `remote_github_env.go` (see Results).
 
 ### `apps/backend/internal/scriptengine/providers.go`
 **What:** modified.
@@ -142,4 +142,153 @@ Tasks 04 and 05.
 
 ## Results
 
-Pending.
+Implemented test-first.
+
+What was done:
+
+- `githubauth`: `TokenEnvForHost(host)` (`GH_TOKEN`/`GITHUB_TOKEN` for
+  `github.com` and `*.ghe.com`, `GH_ENTERPRISE_TOKEN`/`GITHUB_ENTERPRISE_TOKEN`
+  otherwise), `GitHubHostsEnv = "KANDEV_GITHUB_HOSTS"`, and
+  `EnterpriseHosts(raw)`, which returns the distinct lowercase listed hosts
+  without `github.com` and drops any entry that is not a bare hostname, so a
+  listed host is safe in a Git config key, a URL, and a shell word.
+- Broker authorization (`backendapp`): every scope with provider `github`
+  goes through `authorizeGitHubRepository`, which now takes a
+  `gitHubRepositoryScope` with the scope host. The repository's
+  `provider_host` (via `github.HostFromProviderHost`) must equal the scope
+  host; contribution destinations need source and target on the scope host;
+  remote-contribution forks need their source on it. The exported
+  `AuthorizeGitHubRepository`/`...WithIdentity` (no host in their interface)
+  keep `github.com`. `isPublicGitHubProviderHost` stays only for the Kandev
+  repository check.
+- Executor: contribution and destination scopes are issued on the attached
+  repository's clone-identity host and rejected when the binding names
+  another host. `setGitHubHostsEnv` publishes the sorted enterprise hosts of
+  the attached GitHub repositories after `removeHostGitHubCredentialHelpers`,
+  and deletes the variable when there are none (stale values included).
+- Host bridge: `hasExplicitGitHubToken` and `hasExplicitGitHubTokenInProfile`
+  use `TokenEnvForHost`.
+- Managed `gh` shim: the child gets `GH_HOST=<lease host>` and only the lease
+  host's token variable; the other three token variables are removed. A
+  `--hostname` other than the lease host is refused before the credential is
+  resolved.
+- agentctl: `gitHubHostsEnv`, `detectPRProviderWithHosts`, and
+  `isGitHubHost(host, configured)` treat a listed host as GitHub; the
+  variable joins the `TestMain` scrub list. `createManagedContributionPR`
+  already used `g.detectPRProvider`.
+- Remote executors with profile tokens: `containerGitConfig` (Docker) adds,
+  for each listed host whose token variable is set, the SSH-to-HTTPS
+  rewrites (`git@<host>:`, the tenant user form for `.ghe.com`,
+  `ssh://git@<host>/`) and a helper reading that host's variables;
+  `injectGitHubTokenIntoCloneURL` (Docker, Sprites, Kubernetes) injects only
+  the URL host's variable for `github.com` and listed hosts; SSH forwards
+  `KANDEV_GITHUB_HOSTS`, `GH_ENTERPRISE_TOKEN`, and
+  `GITHUB_ENTERPRISE_TOKEN`, and adds a helper per host with a token;
+  `github.auth_setup` emits the helper and `gh config set git_protocol` per
+  host. `scriptengine.GitHubSSHPrefixes(host)` is the one owner of the
+  rewrite prefixes (it uses `repoclone.SSHUser`).
+
+Verification (from `apps/backend`, `GOMAXPROCS=4 GOMEMLIMIT=6GiB`, `-p 2`,
+one run at a time):
+
+- `go test -trimpath -tags fts5 ./internal/backendapp -count=1`: `ok 130.791s`.
+- `go test -trimpath -tags fts5 ./internal/orchestrator/executor -count=1`:
+  29 failing tests, the same 29 names as the untouched baseline run, all in
+  the known environmental baseline list; no new failure.
+- `go test -trimpath -tags fts5 ./internal/agent/runtime/lifecycle -count=1`: `ok 158.625s`.
+- `go test -trimpath -tags fts5 ./internal/agentctl/server/process -count=1`: `ok 222.015s`.
+- `go test -trimpath -tags fts5 ./cmd/agentctl -count=1`: `ok 4.015s`;
+  `./internal/scriptengine`: `ok 0.728s`; `./internal/githubauth`: `ok 0.005s`.
+- With `-race`, one package at a time: `internal/githubauth` `ok 1.027s`,
+  `internal/scriptengine` `ok 1.855s`, `cmd/agentctl` `ok 8.078s`,
+  `internal/agentctl/server/process` `ok 431.722s`,
+  `internal/agent/runtime/lifecycle` `ok 251.289s`. `internal/backendapp` and
+  `internal/orchestrator/executor` not run with `-race` (memory limit).
+- `go build -tags fts5 ./...` and `go vet` of every touched package: clean;
+  `gofmt -l`: none.
+- From the repository root, `bash scripts/lint-go-changed <files>` per group
+  (githubauth, scriptengine, cmd/agentctl, agentctl process, lifecycle,
+  backendapp, orchestrator/executor): `0 issues.` each.
+
+Tests that passed on their first run, then proven by breaking the code: the
+host-mismatch denials in `TestGitCredentialHostsDenyScopesOffTheRepositoryHost`
+(repository host check made host-blind, fork host check and destination host
+check removed), `TestEnterprisePRProviderLeavesUnlistedHostsUnsupported`
+(any non-empty list accepted), `TestGitHubAuthHostsIgnoreUnsafeListedHosts`
+(raw split instead of `EnterpriseHosts`),
+`TestContainerGitHubHostsSkipHostsWithoutTheirToken` (token gate removed),
+and the never-reaches, unlisted, and lookalike rows of
+`TestCloneURLGitHubHostsInjectOnlyTheHostTokenVariable` (swapped token
+variables, fixed host list, prefix without the trailing slash). The positive
+canonical tenant and server rows of
+`TestGitCredentialHostsAuthorizeEnterpriseScopesOnTheRepositoryHost` passed
+before through the old record-identity path and are kept as acceptance
+guards; the stale-identity row went red there and is the discriminating test.
+
+Deviations:
+
+- SSH forwarding changed in `executor_ssh_operations.go` and
+  `executor_ssh_remote_contribution.go`; `remote_github_env.go` is the
+  long-lived agentctl broker env and needed no change, because PR detection
+  reads the instance agent env.
+- `selected_checkout.go`: a pull-request checkout now also scrubs
+  `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` (agent env and the
+  `unset` line), since those tokens now configure Git. Not listed.
+- The shim refuses `gh ... --hostname <other host>`. Not listed: `GH_TOKEN`
+  applies to every `*.ghe.com` tenant, so without it a lease token could be
+  sent to another tenant.
+- The shim removes all four token variables for `github.com` too (before
+  only `GITHUB_TOKEN`), so `github.com` output differs from before by
+  `GH_HOST` and the removed enterprise variables.
+- Enterprise hosts get SSH rewrites in the Docker container only when their
+  token variable is set; `github.com` rewrites stay unconditional as before.
+  `github.auth_setup` and the SSH env add helpers, not rewrites.
+- `rewriteGitHubSSHToHTTPS` takes the host; its existing test passes
+  `github.com`.
+- `DescribeTaskGitCredentialPolicy` is unchanged: the mode is per workspace,
+  and its method and actor fields describe the `github.com` projection only.
+
+Deferred:
+
+- Enterprise SSH-to-HTTPS rewrites in `github.auth_setup` (SSH and Sprites
+  default scripts rewrite only `github.com`). Reopen when an SSH or Sprites
+  task with an SSH-form enterprise remote and only a profile token fails to
+  fetch or push.
+- The agentctl PR-provider table in `internal/agentctl/AGENTS.md` (task 08).
+
+Notes:
+
+- With profile tokens, `GH_TOKEN` is by the GitHub CLI rule the token for
+  `github.com` and every `*.ghe.com` tenant, so an attached `octo.ghe.com`
+  repository makes Docker, SSH, and prepare scripts answer that host with the
+  `GH_TOKEN` value. Kandev cannot tell which host a profile token belongs to;
+  managed leases are per host and never cross.
+
+Unverified: `internal/backendapp` and `internal/orchestrator/executor` under
+`-race`.
+
+### Follow-up: profile token bound to `GH_HOST` (2026-10-26)
+
+Task 06 offered a profile `GH_TOKEN` to `github.com` and every attached
+`*.ghe.com` host, following the GitHub CLI rule. Because Kandev cannot tell
+which host such a token was issued for, a `github.com` token could reach a
+tenant and the reverse. The binding is now explicit:
+
+- `githubauth.ProfileTokenEnvForHost(ghHost, host)` and `ProfileTokenHost`
+  bind `GH_TOKEN`/`GITHUB_TOKEN` to the profile's `GH_HOST` (`github.com` when
+  unset) and `GH_ENTERPRISE_TOKEN`/`GITHUB_ENTERPRISE_TOKEN` to Enterprise
+  Server hosts (only the named one when `GH_HOST` names a server). A malformed
+  or secret-backed `GH_HOST` binds no token.
+- Applied in the container Git config and SSH token helpers, the SSH
+  environment allowlist (now forwards `GH_HOST`), clone URL token injection,
+  the `github.auth_setup` prepare script, and the executor host bridge check
+  `hasExplicitGitHubToken(env, profileEnvVars, host)`.
+- The real-git prepare-script test runs in its temporary HOME, so the
+  repository's own credential helper cannot answer it.
+- Tests: `internal/githubauth/profile_token_env_test.go` and
+  `internal/orchestrator/executor/executor_host_gh_bridge_token_binding_test.go`
+  cover the bound host, `github.com`, another tenant, an Enterprise Server
+  host, a malformed `GH_HOST`, a profile `GH_HOST` overriding the request's,
+  and a secret-backed `GH_HOST`.
+- Not covered by Kandev: an agent running `gh` itself still follows the CLI's
+  own rule for `GH_TOKEN`.

@@ -892,27 +892,10 @@ func (cm *ContainerManager) buildEnvVars(config ContainerConfig) ([]string, erro
 		env = append(env, fmt.Sprintf("AGENTCTL_PROTOCOL=%s", rt.Protocol))
 	}
 
-	// Configure Git settings via environment
-	// - Trust all directories (for mounted workspaces)
-	// - URL rewriting: SSH → HTTPS for GitHub (enables token auth)
-	// - Credential helper for GitHub HTTPS auth (uses GH_TOKEN env var)
-	gitConfig := map[string]string{
-		"GIT_CONFIG_COUNT":   "3",
-		"GIT_CONFIG_KEY_0":   "safe.directory",
-		"GIT_CONFIG_VALUE_0": "*",
-		"GIT_CONFIG_KEY_1":   "url.https://github.com/.insteadOf",
-		"GIT_CONFIG_VALUE_1": "git@github.com:",
-		"GIT_CONFIG_KEY_2":   "url.https://github.com/.insteadOf",
-		"GIT_CONFIG_VALUE_2": "ssh://git@github.com/",
-	}
-
-	// If GitHub token is provided, add credential helper
-	// Use ${GH_TOKEN:-${GITHUB_TOKEN}} to support either env var being set
-	if config.Credentials["GH_TOKEN"] != "" || config.Credentials["GITHUB_TOKEN"] != "" {
-		gitConfig["GIT_CONFIG_COUNT"] = "4"
-		gitConfig["GIT_CONFIG_KEY_3"] = gitHubCredentialHelperConfigKey
-		gitConfig["GIT_CONFIG_VALUE_3"] = `!f() { echo "username=x-access-token"; echo "password=${GH_TOKEN:-${GITHUB_TOKEN}}"; }; f`
-	}
+	// Configure Git settings via environment: trust mounted workspaces, rewrite
+	// GitHub SSH remotes to HTTPS, and answer HTTPS auth from the token
+	// variables of each GitHub host.
+	gitConfig := containerGitConfig(config.Credentials)
 	gitConfig, err := gitconfigenv.Merge(gitConfig, config.Credentials)
 	if err != nil {
 		return nil, fmt.Errorf("compose container Git config: %w", err)

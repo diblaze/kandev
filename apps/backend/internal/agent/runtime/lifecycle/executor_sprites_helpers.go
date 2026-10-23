@@ -15,52 +15,54 @@ import (
 
 	commonconfig "github.com/kandev/kandev/internal/common/config"
 	"github.com/kandev/kandev/internal/githubauth"
+	"github.com/kandev/kandev/internal/scriptengine"
 )
 
 var uploadHTTPStatusRE = regexp.MustCompile(`(?i)\b(?:http|status)\s*:?\s*(\d{3})\b`)
 
 // injectGitHubTokenIntoCloneURL injects only GitHub credentials into a clone URL so
-// in-container `git clone` works without prompting. Honours both
-// GITHUB_TOKEN and GH_TOKEN (gh CLI uses GH_TOKEN; Actions/most workflows
-// use GITHUB_TOKEN — accepting either keeps callers from a 401 because they
-// only set one). GITHUB_TOKEN wins when both are present, matching the
-// original Docker behaviour. Uses the documented
-// `https://x-access-token:T@github.com/` form, which works for both clone
-// and gh CLI authentication.
+// in-container `git clone` works without prompting. The URL host must be
+// github.com or a host listed in githubauth.GitHubHostsEnv, and the token comes
+// only from the profile variables bound to that host
+// (githubauth.ProfileTokenEnvForHost). The fallback variable wins when both
+// are present. Uses the documented `https://x-access-token:T@<host>/` form,
+// which works for both clone and gh CLI authentication.
 //
 // GitLab credentials are deliberately provided through an exact-origin
 // ephemeral git credential helper in the execution environment, never in a URL.
 // Used by both Docker and Sprites executors. SSH→HTTPS rewrite is delegated
 // to rewriteGitHubSSHToHTTPS so the two surfaces never drift again.
 func injectGitHubTokenIntoCloneURL(cloneURL string, env map[string]string) string {
-	githubToken := env["GITHUB_TOKEN"]
-	if githubToken == "" {
-		githubToken = env["GH_TOKEN"]
-	}
-	if githubToken != "" {
-		if converted := rewriteGitHubSSHToHTTPS(cloneURL); converted != "" {
-			cloneURL = converted
+	hosts := append([]string{"github.com"}, githubauth.EnterpriseHosts(env[githubauth.GitHubHostsEnv])...)
+	for _, host := range hosts {
+		primary, fallback := githubauth.ProfileTokenEnvForHost(env["GH_HOST"], host)
+		token := env[fallback]
+		if token == "" {
+			token = env[primary]
 		}
-		if strings.HasPrefix(cloneURL, "https://github.com/") {
-			return strings.Replace(cloneURL, "https://github.com/", "https://x-access-token:"+githubToken+"@github.com/", 1)
+		if primary == "" || token == "" {
+			continue
+		}
+		httpsURL := cloneURL
+		if converted := rewriteGitHubSSHToHTTPS(cloneURL, host); converted != "" {
+			httpsURL = converted
+		}
+		if path, ok := strings.CutPrefix(httpsURL, "https://"+host+"/"); ok {
+			return "https://x-access-token:" + token + "@" + host + "/" + path
 		}
 	}
 	return cloneURL
 }
 
-func rewriteGitHubSSHToHTTPS(remoteURL string) string {
-	const (
-		sshPrefixA = "git@github.com:"
-		sshPrefixB = "ssh://git@github.com/"
-	)
-	switch {
-	case strings.HasPrefix(remoteURL, sshPrefixA):
-		return "https://github.com/" + strings.TrimPrefix(remoteURL, sshPrefixA)
-	case strings.HasPrefix(remoteURL, sshPrefixB):
-		return "https://github.com/" + strings.TrimPrefix(remoteURL, sshPrefixB)
-	default:
-		return ""
+// rewriteGitHubSSHToHTTPS returns the https://<host>/ form of an SSH remote on
+// host, or "" when remoteURL is not one.
+func rewriteGitHubSSHToHTTPS(remoteURL, host string) string {
+	for _, prefix := range scriptengine.GitHubSSHPrefixes(host) {
+		if path, ok := strings.CutPrefix(remoteURL, prefix); ok {
+			return "https://" + host + "/" + path
+		}
 	}
+	return ""
 }
 
 func (r *SpritesExecutor) writeFileWithRetry(

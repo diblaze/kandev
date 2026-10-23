@@ -1057,47 +1057,63 @@ type githubBrokerScopeAuthorizer struct {
 	}
 }
 
+// gitHubRepositoryScope is one GitHub credential scope: host, owner, and
+// repository, plus the provider identities the lease was issued for.
+type gitHubRepositoryScope struct {
+	workspaceID, taskID, sessionID, repositoryID string
+	host, owner, repo                            string
+	providerID, parentProviderID                 string
+}
+
 func (a *githubBrokerScopeAuthorizer) AuthorizeGitHubRepository(
 	ctx context.Context,
-	workspaceID, taskID, sessionID, repositoryID, owner, repoName string,
+	workspaceID, taskID, sessionID, repositoryID, host, owner, repoName string,
 ) error {
-	return a.authorizeGitHubRepository(ctx, workspaceID, taskID, sessionID, repositoryID, owner, repoName, "", "", false)
+	return a.authorizeGitHubRepository(ctx, gitHubRepositoryScope{
+		workspaceID: workspaceID, taskID: taskID, sessionID: sessionID, repositoryID: repositoryID,
+		host: host, owner: owner, repo: repoName,
+	}, false)
 }
 
 func (a *githubBrokerScopeAuthorizer) AuthorizeGitHubRepositoryWithIdentity(
 	ctx context.Context,
-	workspaceID, taskID, sessionID, repositoryID, owner, repoName, providerID, parentProviderID string,
+	workspaceID, taskID, sessionID, repositoryID, host, owner, repoName, providerID, parentProviderID string,
 ) error {
-	return a.authorizeGitHubRepository(
-		ctx, workspaceID, taskID, sessionID, repositoryID, owner, repoName, providerID, parentProviderID, true,
-	)
+	return a.authorizeGitHubRepository(ctx, gitHubRepositoryScope{
+		workspaceID: workspaceID, taskID: taskID, sessionID: sessionID, repositoryID: repositoryID,
+		host: host, owner: owner, repo: repoName,
+		providerID: providerID, parentProviderID: parentProviderID,
+	}, true)
 }
 
+// authorizeGitHubRepository accepts a scope only on the attached repository's
+// own GitHub host: the canonical repository, its bound contribution
+// destination, or its bound remote-contribution fork.
 func (a *githubBrokerScopeAuthorizer) authorizeGitHubRepository(
 	ctx context.Context,
-	workspaceID, taskID, sessionID, repositoryID, owner, repoName, providerID, parentProviderID string,
+	scope gitHubRepositoryScope,
 	strictIdentity bool,
 ) error {
 	if a == nil || a.repo == nil {
 		return fmt.Errorf("task repository is unavailable")
 	}
-	if err := a.authorizeTaskSession(ctx, workspaceID, taskID, sessionID); err != nil {
+	if err := a.authorizeTaskSession(ctx, scope.workspaceID, scope.taskID, scope.sessionID); err != nil {
 		return err
 	}
-	link, err := a.authorizeTaskRepository(ctx, taskID, repositoryID)
+	link, err := a.authorizeTaskRepository(ctx, scope.taskID, scope.repositoryID)
 	if err != nil {
 		return err
 	}
-	repository, err := a.repo.GetRepository(ctx, repositoryID)
+	repository, err := a.repo.GetRepository(ctx, scope.repositoryID)
 	if err != nil {
 		return err
 	}
-	if repository == nil || repository.WorkspaceID != workspaceID ||
-		!strings.EqualFold(repository.Provider, "github") || !isPublicGitHubProviderHost(repository.ProviderHost) {
+	if repository == nil || repository.WorkspaceID != scope.workspaceID ||
+		!strings.EqualFold(repository.Provider, "github") || !repositoryOnGitHubHost(repository, scope.host) {
 		return fmt.Errorf("repository identity does not match lease scope")
 	}
-	if strings.EqualFold(repository.ProviderOwner, owner) && strings.EqualFold(repository.ProviderName, repoName) {
-		return authorizeCanonicalGitHubRepository(repository, providerID, parentProviderID)
+	if strings.EqualFold(repository.ProviderOwner, scope.owner) && strings.EqualFold(repository.ProviderName, scope.repo) {
+		return authorizeCanonicalGitHubRepository(repository, scope.providerID, scope.parentProviderID)
 	}
 	if link == nil {
 		return fmt.Errorf("repository identity does not match lease scope")
@@ -1107,11 +1123,16 @@ func (a *githubBrokerScopeAuthorizer) authorizeGitHubRepository(
 		return fmt.Errorf("validate remote contribution scope: %w", err)
 	}
 	if handled, destinationErr := a.authorizeContributionDestination(
-		ctx, workspaceID, repository, link, owner, repoName, providerID, parentProviderID, strictIdentity,
+		ctx, repository, link, scope, strictIdentity,
 	); handled {
 		return destinationErr
 	}
-	return authorizeRemoteContribution(binding, found, owner, repoName, providerID, strictIdentity)
+	return authorizeRemoteContribution(binding, found, scope, strictIdentity)
+}
+
+func repositoryOnGitHubHost(repository *taskmodels.Repository, host string) bool {
+	repositoryHost, err := github.HostFromProviderHost(repository.ProviderHost)
+	return err == nil && strings.EqualFold(repositoryHost, strings.TrimSpace(host))
 }
 
 func authorizeCanonicalGitHubRepository(
@@ -1129,10 +1150,9 @@ func authorizeCanonicalGitHubRepository(
 
 func (a *githubBrokerScopeAuthorizer) authorizeContributionDestination(
 	ctx context.Context,
-	workspaceID string,
 	repository *taskmodels.Repository,
 	link *taskmodels.TaskRepository,
-	owner, repoName, providerID, parentProviderID string,
+	scope gitHubRepositoryScope,
 	strictIdentity bool,
 ) (bool, error) {
 	destination, found, err := taskmodels.LoadContributionDestination(link.Metadata)
@@ -1140,11 +1160,12 @@ func (a *githubBrokerScopeAuthorizer) authorizeContributionDestination(
 		return true, fmt.Errorf("validate contribution destination scope: %w", err)
 	}
 	if !found || destination.Provider != taskmodels.ContributionDestinationProviderGitHub ||
-		!strings.EqualFold(destination.TargetRepository.Host, "github.com") {
+		!strings.EqualFold(destination.SourceRepository.Host, scope.host) ||
+		!strings.EqualFold(destination.TargetRepository.Host, scope.host) {
 		return false, nil
 	}
 	if !contributionDestinationScopeMatches(
-		destination, repository, owner, repoName, providerID, parentProviderID, strictIdentity,
+		destination, repository, scope.owner, scope.repo, scope.providerID, scope.parentProviderID, strictIdentity,
 	) {
 		return false, nil
 	}
@@ -1152,7 +1173,7 @@ func (a *githubBrokerScopeAuthorizer) authorizeContributionDestination(
 		return true, nil
 	}
 	return true, a.verifyContributionDestination(
-		ctx, workspaceID, destination, owner, repoName,
+		ctx, scope.workspaceID, destination, scope.owner, scope.repo,
 	)
 }
 
@@ -1207,19 +1228,19 @@ func (a *githubBrokerScopeAuthorizer) verifyContributionDestination(
 func authorizeRemoteContribution(
 	binding taskmodels.RemoteContribution,
 	found bool,
-	owner, repoName, providerID string,
+	scope gitHubRepositoryScope,
 	strictIdentity bool,
 ) error {
 	if !found || binding.Provider != taskmodels.RemoteContributionProviderGitHub ||
-		!binding.CollaborationAllowed || !strings.EqualFold(binding.SourceRepository.Host, "github.com") {
+		!binding.CollaborationAllowed || !strings.EqualFold(binding.SourceRepository.Host, scope.host) {
 		return fmt.Errorf("repository identity does not match lease scope")
 	}
 	parts := strings.Split(binding.SourceRepository.Path, "/")
-	if len(parts) != 2 || !strings.EqualFold(parts[0], owner) || !strings.EqualFold(parts[1], repoName) {
+	if len(parts) != 2 || !strings.EqualFold(parts[0], scope.owner) || !strings.EqualFold(parts[1], scope.repo) {
 		return fmt.Errorf("repository identity does not match lease scope")
 	}
 	if strictIdentity && binding.SourceRepository.ProviderID != "" &&
-		!strings.EqualFold(binding.SourceRepository.ProviderID, providerID) {
+		!strings.EqualFold(binding.SourceRepository.ProviderID, scope.providerID) {
 		return fmt.Errorf("repository provider identity does not match lease scope")
 	}
 	return nil

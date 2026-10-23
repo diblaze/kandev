@@ -8,13 +8,15 @@ import (
 )
 
 // ambientGitLabEnvVars lists every environment variable this package reads in
-// non-test code for GitLab host/token resolution. TestMain clears all of them
-// before any test runs; TestMainScrubsAmbientGitLabEnvironment guards that the
-// scrub actually ran.
+// non-test code for GitLab host/token resolution and for the attached GitHub
+// hosts that PR provider detection trusts. TestMain clears all of them before
+// any test runs; TestMainScrubsAmbientGitLabEnvironment guards that the scrub
+// actually ran.
 var ambientGitLabEnvVars = []string{
 	gitLabHostEnv,
 	legacyGitLabHostEnv,
 	gitLabTokenEnv,
+	gitHubHostsEnv,
 }
 
 // ambientEnvNotScrubbed lists environment variables this package legitimately

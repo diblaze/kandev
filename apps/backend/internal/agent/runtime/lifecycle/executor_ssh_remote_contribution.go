@@ -78,13 +78,25 @@ func sshRemoteContributionEnv(req *ExecutorCreateRequest, agentctlBin string) ma
 	if managedBroker && !foundManagedHelper && agentctlBin != "" {
 		count = appendSSHGitConfig(env, count, gitHubCredentialHelperConfigKey, "!"+agentctlBin+" git-credential")
 	}
-	if !managedBroker && (env[envKeyGHToken] != "" || env[envKeyGitHubToken] != "") && count < 64 {
-		count = appendSSHGitConfig(env, count, gitHubCredentialHelperConfigKey, `!f() { echo "username=x-access-token"; echo "password=${GH_TOKEN:-${GITHUB_TOKEN}}"; }; f`)
+	if !managedBroker {
+		count = appendSSHGitHubTokenHelpers(env, count)
 	}
 	if count > 0 {
 		env["GIT_CONFIG_COUNT"] = strconv.Itoa(count)
 	}
 	return env
+}
+
+// appendSSHGitHubTokenHelpers adds a token helper for github.com and each
+// listed GitHub host with a profile token in env bound to it.
+func appendSSHGitHubTokenHelpers(env map[string]string, count int) int {
+	hosts := append([]string{"github.com"}, githubauth.EnterpriseHosts(env[githubauth.GitHubHostsEnv])...)
+	for _, host := range hosts {
+		if helper, ok := githubTokenCredentialHelper(env, host); ok && count < 64 {
+			count = appendSSHGitConfig(env, count, "credential.https://"+host+".helper", helper)
+		}
+	}
+	return count
 }
 
 func sshRemoteGitConfigCount(env map[string]string) int {

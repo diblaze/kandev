@@ -179,14 +179,17 @@ attached repository in both task credential modes.
   it.
 - **AC-INTEGRATIONS-GITHUB-ENTERPRISE-HOST-005.4:** When a Local or Worktree
   task inherits executor credentials, the host GitHub CLI bridge shall cover
-  every attached GitHub host, and an explicit `GH_TOKEN` or `GITHUB_TOKEN`
-  shall take precedence for `github.com` and `ghe.com` tenants while
-  `GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN` takes precedence for
-  GitHub Enterprise Server hosts.
+  every attached GitHub host. An explicit `GH_TOKEN` or `GITHUB_TOKEN` shall
+  take precedence only for the host that the same environment's `GH_HOST`
+  names, or `github.com` when `GH_HOST` is unset, and
+  `GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN` only for GitHub
+  Enterprise Server hosts (only the named one when `GH_HOST` names a server).
+  Every other attached host shall use its own connection.
 - **AC-INTEGRATIONS-GITHUB-ENTERPRISE-HOST-005.5:** When a Docker, SSH, or
   cloud task receives profile GitHub tokens, the system shall configure HTTPS
-  credentials for each attached GitHub host with the token variable that the
-  GitHub CLI uses for that host.
+  credentials only for the host each token is bound to by the profile's
+  `GH_HOST` (`github.com` when unset). A malformed or unresolved `GH_HOST`
+  binds the profile token to no host.
 - **AC-INTEGRATIONS-GITHUB-ENTERPRISE-HOST-005.6:** When a user creates a pull
   request from a task whose origin is on a connected enterprise host, the
   system shall create it on that host instead of reporting an unsupported
