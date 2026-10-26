@@ -4,9 +4,15 @@ import { useMemo } from "react";
 import { useAppStore } from "@/components/state-provider";
 import { useWorkspacePRs } from "./use-task-pr";
 import type { TaskPR } from "@/lib/types/github";
+import { DEFAULT_GITHUB_HOST } from "@/lib/github/host";
 
-function prKey(owner: string, repo: string, prNumber: number): string {
-  return `${owner}/${repo}#${prNumber}`;
+function prKey(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  host: string = DEFAULT_GITHUB_HOST,
+): string {
+  return `${host}/${owner}/${repo}#${prNumber}`;
 }
 
 export function usePRKeyToTasks(workspaceId: string | null): Map<string, TaskPR[]> {
@@ -30,7 +36,7 @@ export function usePRKeyToTasks(workspaceId: string | null): Map<string, TaskPR[
       const prs = byTaskId[taskId];
       if (!Array.isArray(prs)) continue;
       for (const pr of prs) {
-        const key = prKey(pr.owner, pr.repo, pr.pr_number);
+        const key = prKey(pr.owner, pr.repo, pr.pr_number, pr.github_host || DEFAULT_GITHUB_HOST);
         const existing = map.get(key) ?? [];
         existing.push(pr);
         map.set(key, existing);

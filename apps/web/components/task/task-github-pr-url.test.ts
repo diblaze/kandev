@@ -7,6 +7,8 @@ import {
 } from "./task-github-pr-url";
 import { repositoryId, workspaceId, type Repository } from "@/lib/types/http";
 
+const ENTERPRISE_HOST = "octo.ghe.com";
+
 type RepoOverrides = Partial<Omit<Repository, "id" | "workspace_id">> & { id: string };
 
 function repo(overrides: RepoOverrides): Repository {
@@ -145,6 +147,60 @@ describe("pullRequestPayload", () => {
     expect(pullRequestPayload("  not a url  ", [githubRepos[0]])).toEqual({
       pr_url: "not a url",
       repository_id: undefined,
+    });
+  });
+});
+
+describe("pull request URLs on connected GitHub hosts", () => {
+  const hosts = ["github.com", ENTERPRISE_HOST];
+  const enterpriseURL = "https://octo.ghe.com/org/api/pull/7";
+
+  it("maps an enterprise repository with its host", () => {
+    const refs = githubReposForTask(
+      { id: "task-1", title: "Task", repositoryId: repositoryId("r") },
+      [
+        repo({
+          id: "r",
+          provider_owner: "org",
+          provider_name: "api",
+          provider_host: "https://octo.ghe.com",
+        }),
+      ],
+    );
+    expect(refs).toEqual([{ host: ENTERPRISE_HOST, owner: "org", repo: "api", repositoryId: "r" }]);
+  });
+
+  it("normalizes a pull request URL on a connected enterprise host", () => {
+    expect(parseGitHubPullRequestURL("octo.ghe.com/org/api/pull/7/files", hosts)).toEqual({
+      host: ENTERPRISE_HOST,
+      owner: "org",
+      repo: "api",
+      number: 7,
+      url: enterpriseURL,
+    });
+    expect(parseGitHubPullRequestURL(enterpriseURL)).toBeNull();
+  });
+
+  it("infers a bare number on the enterprise repository host", () => {
+    const enterpriseRepo = { host: ENTERPRISE_HOST, owner: "org", repo: "api", repositoryId: "r" };
+    expect(pullRequestPayload("#7", [enterpriseRepo], hosts)).toEqual({
+      pr_url: enterpriseURL,
+      repository_id: "r",
+    });
+  });
+
+  it("matches a task repository only on the same host", () => {
+    const repos: GitHubPRRepoRef[] = [
+      { owner: "org", repo: "api", repositoryId: "public" },
+      { host: ENTERPRISE_HOST, owner: "org", repo: "api", repositoryId: "enterprise" },
+    ];
+    expect(pullRequestPayload(enterpriseURL, repos, hosts)).toEqual({
+      pr_url: enterpriseURL,
+      repository_id: "enterprise",
+    });
+    expect(pullRequestPayload("https://github.com/org/api/pull/7", repos, hosts)).toEqual({
+      pr_url: "https://github.com/org/api/pull/7",
+      repository_id: "public",
     });
   });
 });

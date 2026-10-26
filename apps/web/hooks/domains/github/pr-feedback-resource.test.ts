@@ -111,3 +111,26 @@ describe("PR feedback resource", () => {
     expect(scope.getSnapshot(key).loading).toBe(false);
   });
 });
+
+describe("PR feedback resource hosts", () => {
+  it("keys the same pull request number on two hosts apart", () => {
+    const { scope, key } = setupScope();
+    const enterprise = scope.key({
+      workspaceId: "ws-1",
+      owner: "acme",
+      repo: "app",
+      prNumber: 7,
+      host: "octo.ghe.com",
+    });
+    const githubCom = scope.key({
+      workspaceId: "ws-1",
+      owner: "acme",
+      repo: "app",
+      prNumber: 7,
+      host: "github.com",
+    });
+
+    expect(enterprise).not.toBe(key);
+    expect(githubCom).toBe(key);
+  });
+});

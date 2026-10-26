@@ -10,11 +10,11 @@ import {
   type SetGitHubConnectionRequest,
 } from "@/lib/api/domains/github-api";
 import type {
-  GitHubAutomationConnection,
   GitHubCLIAccount,
-  GitHubStatus,
+  GitHubConnectionSource,
   TaskGitCredentialsMode,
 } from "@/lib/types/github";
+import { normalizeGitHubHost } from "@/lib/github/host";
 import { cn } from "@/lib/utils";
 import { GitHubAppConnectionPanel } from "./github-app-connection-panel";
 import { GitHubAuthMethodList, type GitHubAutomationMethod } from "./github-auth-method-list";
@@ -24,9 +24,16 @@ import { GitHubTaskAccessForm } from "./github-task-credentials-section";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
-function methodForStatus(status: GitHubStatus): GitHubAutomationMethod {
-  if (status.automation?.source === "github_app_installation") return "app";
-  if (status.automation?.source === "gh_cli") return "cli";
+/** The existing connection of the host the form edits; null when the host has none. */
+export type GitHubHostConnection = {
+  source: GitHubConnectionSource;
+  github_host: string;
+  login?: string;
+} | null;
+
+export function methodForConnection(connection: GitHubHostConnection): GitHubAutomationMethod {
+  if (connection?.source === "github_app_installation") return "app";
+  if (connection?.source === "gh_cli") return "cli";
   return "pat";
 }
 
@@ -76,30 +83,50 @@ function buildConnectionRequest({
   method,
   currentMethod,
   token,
+  patHost,
   cliAccount,
-  automation,
+  connection,
 }: {
   method: GitHubAutomationMethod;
   currentMethod: GitHubAutomationMethod;
   token: string;
+  patHost: string | null;
   cliAccount: GitHubCLIAccount | null;
-  automation?: GitHubAutomationConnection | null;
+  connection: GitHubHostConnection;
 }): SetGitHubConnectionRequest | null {
-  if (method === "pat" && token.trim()) return { source: "pat", token: token.trim() };
+  if (method === "pat" && token.trim() && patHost) {
+    return { source: "pat", token: token.trim(), host: patHost };
+  }
   if (
     method === "cli" &&
     cliAccount &&
     (currentMethod !== "cli" ||
-      automation?.github_host !== cliAccount.host ||
-      automation.login !== cliAccount.login)
+      connection?.github_host !== cliAccount.host ||
+      connection.login !== cliAccount.login)
   ) {
     return { source: "gh_cli", host: cliAccount.host, login: cliAccount.login };
   }
   return null;
 }
 
+function isConnectionDraftInvalid(draft: {
+  method: GitHubAutomationMethod;
+  currentMethod: GitHubAutomationMethod;
+  patHost: string | null;
+  token: string;
+  cliAccount: GitHubCLIAccount | null;
+}) {
+  if (draft.method === "app") return draft.currentMethod !== "app";
+  if (draft.method === "cli") return !draft.cliAccount;
+  return !draft.patHost || (draft.currentMethod !== "pat" && !draft.token.trim());
+}
+
 type SettingsFormProps = {
-  status: GitHubStatus;
+  connection: GitHubHostConnection;
+  /** Host the token form starts with: the edited host, or github.com for a new one. */
+  defaultHost: string;
+  /** Hosts that already have a connection. */
+  connectedHosts: readonly string[];
   method: GitHubAutomationMethod;
   workspaceId: string;
   open: boolean;
@@ -111,7 +138,8 @@ type SettingsFormProps = {
 };
 
 function useConnectionSettingsDraft({
-  status,
+  connection,
+  defaultHost,
   method,
   workspaceId,
   open,
@@ -121,6 +149,7 @@ function useConnectionSettingsDraft({
 }: SettingsFormProps) {
   const { t } = useTranslation();
   const [token, setToken] = useState("");
+  const [host, setHost] = useState(defaultHost);
   const [cliAccount, setCLIAccount] = useState<GitHubCLIAccount | null>(null);
   const [taskMode, setTaskMode] = useState<TaskGitCredentialsMode>(taskAccess.mode);
   const [saving, setSaving] = useState(false);
@@ -130,29 +159,23 @@ function useConnectionSettingsDraft({
   useEffect(() => {
     if (!open) return;
     setToken("");
+    setHost(defaultHost);
     setSaving(false);
-  }, [open, workspaceId]);
+  }, [defaultHost, open, workspaceId]);
   useEffect(() => {
     if (open) setTaskMode(taskAccess.mode);
   }, [open, taskAccess.mode, workspaceId]);
-  const currentMethod = methodForStatus(status);
+  const currentMethod = methodForConnection(connection);
   const taskDirty = taskMode !== taskAccess.mode;
+  const patHost = normalizeGitHubHost(host);
   const connectionRequest = useMemo(
-    () =>
-      buildConnectionRequest({
-        method,
-        currentMethod,
-        token,
-        cliAccount,
-        automation: status.automation,
-      }),
-    [cliAccount, currentMethod, method, status.automation, token],
+    () => buildConnectionRequest({ method, currentMethod, token, patHost, cliAccount, connection }),
+    [cliAccount, connection, currentMethod, method, patHost, token],
   );
   const methodNeedsWorkflow = method === "app" && currentMethod !== "app";
-  const connectionInvalid =
-    (method === "pat" && currentMethod !== "pat" && !token.trim()) ||
-    (method === "cli" && !cliAccount) ||
-    methodNeedsWorkflow;
+  const hostInvalid = method === "pat" && !patHost;
+  const draft = { method, currentMethod, patHost, token, cliAccount };
+  const connectionInvalid = isConnectionDraftInvalid(draft);
   const canSave =
     !saving &&
     !taskAccess.loading &&
@@ -199,6 +222,9 @@ function useConnectionSettingsDraft({
   return {
     token,
     setToken,
+    host,
+    setHost,
+    hostInvalid,
     setCLIAccount,
     taskMode,
     setTaskMode,
@@ -215,6 +241,9 @@ export function GitHubConnectionSettingsForm(props: SettingsFormProps) {
   const {
     token,
     setToken,
+    host,
+    setHost,
+    hostInvalid,
     setCLIAccount,
     taskMode,
     setTaskMode,
@@ -242,6 +271,9 @@ export function GitHubConnectionSettingsForm(props: SettingsFormProps) {
                   workspaceId={workspaceId}
                   value={token}
                   onChange={setToken}
+                  host={host}
+                  onHostChange={setHost}
+                  hostInvalid={hostInvalid}
                   disabled={saving}
                 />
               )}
@@ -249,6 +281,8 @@ export function GitHubConnectionSettingsForm(props: SettingsFormProps) {
                 <GitHubCLIForm
                   workspaceId={workspaceId}
                   onAccountChange={setCLIAccount}
+                  editedHost={props.connection?.github_host}
+                  connectedHosts={props.connectedHosts}
                   disabled={saving}
                 />
               )}

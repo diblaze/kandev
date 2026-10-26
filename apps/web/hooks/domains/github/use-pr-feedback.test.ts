@@ -165,3 +165,17 @@ describe("usePRFeedback request ownership", () => {
     expect(result.current.loading).toBe(true);
   });
 });
+
+describe("usePRFeedback hosts", () => {
+  it("reads an enterprise pull request on its host", async () => {
+    getPRFeedbackMock.mockResolvedValue(makeFeedback("enterprise"));
+    renderHook(() => usePRFeedback("ws-1", "acme", "app", 1, "octo.ghe.com"), { wrapper });
+
+    await waitFor(() =>
+      expect(getPRFeedbackMock).toHaveBeenCalledWith("ws-1", "acme", "app", 1, {
+        cache: "no-store",
+        host: "octo.ghe.com",
+      }),
+    );
+  });
+});

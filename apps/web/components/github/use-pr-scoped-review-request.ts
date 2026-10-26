@@ -220,9 +220,12 @@ export function usePRScopedReviewRequest(
       if (operationId === null) return;
       try {
         await requestPRReviewers(
-          taskPR.owner,
-          taskPR.repo,
-          taskPR.pr_number,
+          {
+            owner: taskPR.owner,
+            repo: taskPR.repo,
+            number: taskPR.pr_number,
+            host: taskPR.github_host,
+          },
           [reviewer],
           workspaceId,
         );

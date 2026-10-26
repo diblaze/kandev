@@ -60,6 +60,7 @@ export type GitHubAppManifest = {
 
 export type StartGitHubAppManifestRequest = {
   workspace_id: string;
+  github_host?: string;
   display_name: string;
   owner_type: GitHubAppManifestOwnerType;
   owner_login: string;

@@ -200,6 +200,7 @@ function useSubmitHandlersWiring({
     useRemote: fs.useRemote,
     remoteRepos: fs.remoteRepos,
     prInfoByUrl: fs.prInfoByUrl,
+    githubHosts: fs.githubHosts,
     agentProfileId: computed.effectiveAgentProfileId,
     executorId: fs.executorId,
     executorProfileId: fs.executorProfileId,

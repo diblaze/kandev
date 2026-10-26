@@ -20,7 +20,7 @@ const feedbackMocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   value: null as PRFeedback | null,
 }));
-const reviewMocks = vi.hoisted(() => ({ requestReviewers: vi.fn(), submitReview: vi.fn() }));
+const reviewMocks = vi.hoisted(() => ({ requestReviewers: vi.fn() }));
 const RE_REQUEST_BUTTON = "change-request-review-action-rerequest-review-octocat";
 const PENDING_REVIEWER = "change-request-pending-reviewer-octocat";
 const DISMISSED_REVIEWED_AT = "2026-01-01T00:00:00Z";
@@ -35,7 +35,6 @@ vi.mock("@/hooks/domains/github/use-pr-feedback", () => ({
 }));
 vi.mock("@/lib/api/domains/github-review-api", () => ({
   requestPRReviewers: reviewMocks.requestReviewers,
-  submitPRReview: reviewMocks.submitReview,
 }));
 vi.mock("@/lib/state/slices/comments", () => ({
   isPRFeedbackComment: () => false,
@@ -65,7 +64,6 @@ afterEach(async () => {
   feedbackMocks.refresh.mockReset();
   feedbackMocks.value = null;
   reviewMocks.requestReviewers.mockReset();
-  reviewMocks.submitReview.mockReset();
   clearPRReviewRequestRegistryForTests();
   await activateLocale("en");
 });
@@ -303,9 +301,7 @@ describe("PRDetailContent deferred re-request", () => {
       expect(screen.getByTestId(PENDING_REVIEWER)).not.toBeNull();
     });
     expect(reviewMocks.requestReviewers).toHaveBeenCalledWith(
-      "o",
-      "r",
-      1,
+      { owner: "o", repo: "r", number: 1, host: undefined },
       ["octocat"],
       WORKSPACE_ID,
     );
@@ -481,17 +477,13 @@ describe("PRDetailContent workspace-scoped requests", () => {
     await act(async () => reviewRequest?.reRequest("octocat"));
     expect(reviewMocks.requestReviewers).toHaveBeenNthCalledWith(
       1,
-      "o",
-      "r",
-      1,
+      { owner: "o", repo: "r", number: 1, host: undefined },
       ["octocat"],
       "workspace-a",
     );
     expect(reviewMocks.requestReviewers).toHaveBeenNthCalledWith(
       2,
-      "o",
-      "r",
-      1,
+      { owner: "o", repo: "r", number: 1, host: undefined },
       ["octocat"],
       "workspace-b",
     );

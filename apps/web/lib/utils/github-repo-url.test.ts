@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildGitHubRepoUrl, parseGitHubRepoUrl } from "./github-repo-url";
 
+const ENTERPRISE_HOST = "octo.ghe.com";
+
 describe("parseGitHubRepoUrl", () => {
   it("parses a plain repository URL", () => {
     expect(parseGitHubRepoUrl("https://github.com/jcfs/kandev-workflows-test")).toEqual({
@@ -111,6 +113,41 @@ describe("buildGitHubRepoUrl", () => {
     );
     expect(buildGitHubRepoUrl({ owner: "jcfs", repo: "repo", branch: "main" })).toBe(
       "https://github.com/jcfs/repo/tree/main",
+    );
+  });
+});
+
+describe("GitHub repository URLs on connected hosts", () => {
+  const hosts = ["github.com", ENTERPRISE_HOST, "ghe.example.com"];
+
+  it("parses HTTPS and SSH remotes on a connected enterprise host", () => {
+    expect(parseGitHubRepoUrl("https://octo.ghe.com/org/flows/tree/main/dir", hosts)).toEqual({
+      host: ENTERPRISE_HOST,
+      owner: "org",
+      repo: "flows",
+      branch: "main",
+      path: "dir",
+    });
+    expect(parseGitHubRepoUrl("octo@octo.ghe.com:org/flows.git", hosts)).toEqual({
+      host: ENTERPRISE_HOST,
+      owner: "org",
+      repo: "flows",
+    });
+    expect(parseGitHubRepoUrl("git@ghe.example.com:org/flows.git", hosts)).toEqual({
+      host: "ghe.example.com",
+      owner: "org",
+      repo: "flows",
+    });
+  });
+
+  it("rejects remotes on a host that is not connected", () => {
+    expect(parseGitHubRepoUrl("https://octo.ghe.com/org/flows")).toBeNull();
+    expect(parseGitHubRepoUrl("git@other.example.com:org/flows.git", hosts)).toBeNull();
+  });
+
+  it("builds the URL on the repository host", () => {
+    expect(buildGitHubRepoUrl({ host: ENTERPRISE_HOST, owner: "org", repo: "flows" })).toBe(
+      "https://octo.ghe.com/org/flows",
     );
   });
 });

@@ -39,11 +39,28 @@ describe("useIssueKeyToTasks", () => {
       result.current.setTaskIssues("ws-1", { a: link("a"), b: link("b"), c: link("c", 2) }),
     );
 
-    expect(result.current.map.get("kdlbs/kandev#1672")?.map((item) => item.task_id)).toEqual([
-      "a",
-      "b",
-    ]);
-    expect(result.current.map.get("kdlbs/kandev#2")?.[0]?.task_id).toBe("c");
+    expect(
+      result.current.map.get("github.com/kdlbs/kandev#1672")?.map((item) => item.task_id),
+    ).toEqual(["a", "b"]);
+    expect(result.current.map.get("github.com/kdlbs/kandev#2")?.[0]?.task_id).toBe("c");
+  });
+
+  it("keys the same issue number on different hosts separately", () => {
+    const { result } = renderHook(
+      () => ({
+        map: useIssueKeyToTasks("ws-1"),
+        setTaskIssues: useAppStore((state) => state.setTaskIssues),
+      }),
+      { wrapper },
+    );
+    const enterprise = { ...link("b"), issue_url: "https://octo.ghe.com/kdlbs/kandev/issues/1672" };
+
+    act(() => result.current.setTaskIssues("ws-1", { a: link("a"), b: enterprise }));
+
+    expect(result.current.map.get(issueKey("kdlbs", "kandev", 1672))?.[0]?.task_id).toBe("a");
+    expect(
+      result.current.map.get(issueKey("kdlbs", "kandev", 1672, "octo.ghe.com"))?.[0]?.task_id,
+    ).toBe("b");
   });
 
   it("does not expose links cached for another workspace", () => {
@@ -63,6 +80,6 @@ describe("useIssueKeyToTasks", () => {
 
 describe("issueKey", () => {
   it("formats owner/repo#number", () => {
-    expect(issueKey("kdlbs", "kandev", 1672)).toBe("kdlbs/kandev#1672");
+    expect(issueKey("kdlbs", "kandev", 1672)).toBe("github.com/kdlbs/kandev#1672");
   });
 });

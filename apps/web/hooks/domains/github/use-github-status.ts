@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchGitHubStatus } from "@/lib/api/domains/github-api";
 import { useAppStore } from "@/components/state-provider";
 import type { GitHubStatus, GitHubStatusResponse } from "@/lib/types/github";
@@ -95,4 +95,42 @@ export function useGitHubStatus(requestedWorkspaceId?: string | null) {
     loading: statusState?.loading ?? false,
     refresh,
   };
+}
+
+/**
+ * Status of one GitHub host other than github.com. Kept local to the caller so a
+ * host-scoped response never replaces the workspace status in the store.
+ */
+export function useGitHubHostStatus(workspaceId: string, host: string) {
+  const [status, setStatus] = useState<GitHubStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const version = useRef(0);
+
+  const doFetch = useCallback(
+    (refreshRateLimit = false) => {
+      const current = ++version.current;
+      setLoading(true);
+      fetchGitHubStatus(workspaceId, { cache: "no-store" }, refreshRateLimit, host)
+        .then((response) => {
+          if (current === version.current) setStatus(normalizeGitHubStatus(response));
+        })
+        .catch(() => {
+          if (current === version.current) setStatus(null);
+        })
+        .finally(() => {
+          if (current === version.current) setLoading(false);
+        });
+    },
+    [host, workspaceId],
+  );
+
+  useEffect(() => {
+    setStatus(null);
+    doFetch();
+  }, [doFetch]);
+
+  useEffect(() => subscribeIntegrationAvailability(doFetch), [doFetch]);
+
+  const refresh = useCallback(() => doFetch(true), [doFetch]);
+  return { status, loading, refresh };
 }

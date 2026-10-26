@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  DEFAULT_GITHUB_HOST,
+  githubWebOrigin,
+  hostFromProviderHost,
+  hostFromUrl,
+} from "@/lib/github/host";
 import { useMemo } from "react";
 import { useRouter } from "@/lib/routing/client-router";
 import { linkToTask } from "@/lib/links";
@@ -37,10 +43,16 @@ type DialogState = {
 const LOCAL_SOURCE_TYPE = "local";
 const REJECT_REPO_MATCH = Number.POSITIVE_INFINITY;
 
-function matchRepo(repos: Repository[], owner: string, name: string): Repository | undefined {
+function matchRepo(
+  repos: Repository[],
+  host: string,
+  owner: string,
+  name: string,
+): Repository | undefined {
   let best: Repository | undefined;
   let bestRank = REJECT_REPO_MATCH;
   for (const repo of repos) {
+    if (hostFromProviderHost(repo.provider_host) !== host) continue;
     if (!matchesProviderIdentity(repo, owner, name)) continue;
     const rank = repositoryLaunchRank(repo);
     if (rank < bestRank) {
@@ -81,7 +93,9 @@ function emptyToUndefined(value: string | undefined): string | undefined {
 
 function prURL(pr: GitHubPR): string {
   return (
-    pr.html_url || pr.url || `https://github.com/${pr.repo_owner}/${pr.repo_name}/pull/${pr.number}`
+    pr.html_url ||
+    pr.url ||
+    `${githubWebOrigin(DEFAULT_GITHUB_HOST)}/${pr.repo_owner}/${pr.repo_name}/pull/${pr.number}`
   );
 }
 
@@ -146,7 +160,8 @@ function buildDialogState(payload: LaunchPayload, repositories: Repository[]): D
       prBaseBranch: payload.pr.base_branch,
     };
   }
-  const repo = matchRepo(repositories, data.owner, data.name);
+  const host = hostFromUrl(data.url) ?? DEFAULT_GITHUB_HOST;
+  const repo = matchRepo(repositories, host, data.owner, data.name);
   if (repo) {
     return {
       title,
@@ -159,7 +174,7 @@ function buildDialogState(payload: LaunchPayload, repositories: Repository[]): D
   return {
     title,
     description,
-    githubUrl: `github.com/${data.owner}/${data.name}`,
+    githubUrl: `${host}/${data.owner}/${data.name}`,
     branch: data.branch,
     checkoutBranch,
   };

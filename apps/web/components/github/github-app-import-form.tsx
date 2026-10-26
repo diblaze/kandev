@@ -12,6 +12,7 @@ import {
   appRegistrationError,
   defaultVisibility,
   githubAppSettingsURL,
+  normalizeAppGitHubHost,
   normalizePublicBaseUrl,
   validateImportSecrets,
   validateRegistrationBasics,
@@ -25,6 +26,7 @@ import {
 } from "./github-app-import-fields";
 import { GitHubAppVisibilityField } from "./github-app-visibility-field";
 import { useTranslation } from "react-i18next";
+import { DEFAULT_GITHUB_HOST, normalizeGitHubHost } from "@/lib/github/host";
 
 type RegistrationHook = ReturnType<typeof useGitHubAppRegistrations>;
 
@@ -66,16 +68,14 @@ export function GitHubAppImportForm({
     event.preventDefault();
     if (!preparation) return;
     const ownerType = values.ownerType as GitHubAppOwnerType;
-    const basics = validateRegistrationBasics({ ...values, ownerType });
-    const secrets = validateImportSecrets(values);
-    const nextErrors = { ...basics.errors, ...secrets.errors };
+    const { basics, secrets, githubHost, errors: nextErrors } = validateImport(values, ownerType);
     setErrors(nextErrors);
-    if (!basics.publicBaseUrl || Object.keys(nextErrors).length) return;
+    if (!basics.publicBaseUrl || !githubHost || Object.keys(nextErrors).length) return;
     try {
       const imported = await registrations.importRegistration({
         registration_id: preparation.registration_id,
         display_name: basics.displayName,
-        github_host: "github.com",
+        github_host: githubHost,
         app_id: secrets.appId,
         client_id: values.clientId.trim(),
         client_secret: values.clientSecret,
@@ -210,6 +210,7 @@ function PreparedImportForm(props: PreparedImportProps) {
 }
 
 const initialValues: GitHubAppImportValues = {
+  githubHost: DEFAULT_GITHUB_HOST,
   displayName: "",
   ownerLogin: "",
   ownerType: "Organization" as GitHubAppOwnerType,
@@ -223,13 +224,31 @@ const initialValues: GitHubAppImportValues = {
   slug: "",
 };
 
+function validateImport(values: GitHubAppImportValues, ownerType: GitHubAppOwnerType) {
+  const basics = validateRegistrationBasics({ ...values, ownerType });
+  const secrets = validateImportSecrets(values);
+  const hostErrors: AppSetupErrors = {};
+  const githubHost = normalizeAppGitHubHost(values.githubHost, hostErrors);
+  return {
+    basics,
+    secrets,
+    githubHost,
+    errors: { ...basics.errors, ...secrets.errors, ...hostErrors },
+  };
+}
+
 function clearImportSecrets(values: GitHubAppImportValues): GitHubAppImportValues {
   return { ...values, clientSecret: "", privateKey: "", webhookSecret: "" };
 }
 
 function importSettingsUrl(values: GitHubAppImportValues) {
   if (!values.ownerLogin.trim() || !values.slug.trim()) return undefined;
-  return githubAppSettingsURL(values.ownerType, values.ownerLogin, values.slug);
+  return githubAppSettingsURL(
+    values.ownerType,
+    values.ownerLogin,
+    values.slug,
+    normalizeGitHubHost(values.githubHost) ?? undefined,
+  );
 }
 
 function showError(error: unknown, fallback: string, toast: ReturnType<typeof useToast>["toast"]) {

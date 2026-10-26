@@ -1,5 +1,7 @@
 "use client";
 
+import { DEFAULT_GITHUB_HOST } from "@/lib/github/host";
+import { GitHubWatchHostField } from "@/components/github/github-watch-host-field";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@kandev/ui/button";
 import { Switch } from "@kandev/ui/switch";
@@ -59,6 +61,7 @@ type IssueWatchDialogProps = {
 
 type FormState = {
   workspaceId: string;
+  githubHost: string;
   selectedRepos: RepoFilter[];
   allRepos: boolean;
   workflowId: string;
@@ -81,6 +84,7 @@ const ISSUE_LABEL_EXAMPLES = "bug, enhancement, priority:high";
 function makeDefaultForm(workspaceId: string): FormState {
   return {
     workspaceId,
+    githubHost: DEFAULT_GITHUB_HOST,
     selectedRepos: [],
     allRepos: false,
     workflowId: "",
@@ -100,6 +104,7 @@ function formStateFromWatch(watch: IssueWatch): FormState {
   const hasRepos = watch.repos && watch.repos.length > 0;
   return {
     workspaceId: watch.workspace_id,
+    githubHost: watch.github_host || DEFAULT_GITHUB_HOST,
     selectedRepos: hasRepos ? watch.repos : [],
     allRepos: !hasRepos,
     workflowId: watch.workflow_id,
@@ -232,7 +237,15 @@ function IssueFilterFields({
   return (
     <>
       <SectionHeader>{t("github:filter")}</SectionHeader>
+      <GitHubWatchHostField
+        workspaceId={form.workspaceId}
+        value={form.githubHost}
+        onChange={(githubHost) =>
+          setForm((prev) => ({ ...prev, githubHost, selectedRepos: [], allRepos: false }))
+        }
+      />
       <RepoFilterSelector
+        host={form.githubHost}
         allRepos={form.allRepos}
         selectedRepos={form.selectedRepos}
         onAllReposChange={onAllReposChange}
@@ -454,6 +467,7 @@ export function IssueWatchDialog({
     try {
       const repos = form.allRepos ? [] : form.selectedRepos;
       const payload = {
+        github_host: form.githubHost,
         workflow_id: form.workflowId,
         workflow_step_id: form.workflowStepId,
         repos,

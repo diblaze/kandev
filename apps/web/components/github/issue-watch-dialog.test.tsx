@@ -14,6 +14,7 @@ const store = {
 
 vi.mock("@/components/state-provider", () => ({
   useAppStore: (selector: (value: typeof store) => unknown) => selector(store),
+  useOptionalAppStore: (_selector: unknown, fallback: unknown) => fallback,
 }));
 vi.mock("@/hooks/domains/settings/use-settings-data", () => ({ useSettingsData: vi.fn() }));
 vi.mock("@/hooks/use-workflows", () => ({ useWorkflows: vi.fn() }));

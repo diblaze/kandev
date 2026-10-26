@@ -3,6 +3,7 @@ import {
   callbackNotice,
   defaultVisibility,
   githubAppSettingsURL,
+  normalizeAppGitHubHost,
   normalizePublicBaseUrl,
   submitManifestToGitHub,
   validateImportSecrets,
@@ -68,5 +69,27 @@ describe("GitHub App onboarding model", () => {
 
   it("lists only configurable GitHub App webhook subscriptions", () => {
     expect(githubAppEvents).toEqual(["push", "check_run"]);
+  });
+});
+
+describe("GitHub App onboarding hosts", () => {
+  it("builds App settings URLs on the registration host", () => {
+    expect(githubAppSettingsURL("Organization", "acme", "work-app", "octo.ghe.com")).toBe(
+      "https://octo.ghe.com/organizations/acme/settings/apps/work-app",
+    );
+    expect(githubAppSettingsURL("User", "", "", "ghe.example.com")).toBe(
+      "https://ghe.example.com/settings/apps",
+    );
+  });
+
+  it("normalizes a GitHub host and reports an invalid one", () => {
+    const errors = {};
+    expect(normalizeAppGitHubHost(" GHE.Example.com ", errors)).toBe("ghe.example.com");
+    expect(normalizeAppGitHubHost("", errors)).toBe("github.com");
+    expect(errors).toEqual({});
+
+    const invalid: { githubHost?: string } = {};
+    expect(normalizeAppGitHubHost("https://ghe.example.com", invalid)).toBeNull();
+    expect(invalid.githubHost).toBeTruthy();
   });
 });

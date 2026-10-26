@@ -5,24 +5,25 @@ import type {
   RepoMergeAccess,
   RepoMergeMethods,
 } from "@/lib/types/github";
+import { githubWorkspaceQuery, setGitHubHostParam } from "@/lib/github/host";
 import { fetchJson, type ApiRequestOptions } from "../client";
 
 export type PRStatusRef = { owner: string; repo: string; number: number };
+/** A pull request on a GitHub host; an absent host means github.com. */
+export type GitHubPRRef = PRStatusRef & { host?: string };
+/** Request options naming the GitHub host of the item; an absent host means github.com. */
+export type GitHubHostOptions = ApiRequestOptions & { host?: string };
 export type PRReviewEvent = "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
-
-function workspaceQuery(workspaceId: string) {
-  return new URLSearchParams({ workspace_id: workspaceId });
-}
 
 export async function getPRFeedback(
   workspaceId: string,
   owner: string,
   repo: string,
   number: number,
-  options?: ApiRequestOptions,
+  options?: GitHubHostOptions,
 ) {
   return fetchJson<PRFeedback>(
-    `/api/v1/github/prs/${owner}/${repo}/${number}?${workspaceQuery(workspaceId)}`,
+    `/api/v1/github/prs/${owner}/${repo}/${number}?${githubWorkspaceQuery(workspaceId, options?.host)}`,
     options,
   );
 }
@@ -32,10 +33,10 @@ export async function getPRStatus(
   owner: string,
   repo: string,
   number: number,
-  options?: ApiRequestOptions,
+  options?: GitHubHostOptions,
 ) {
   return fetchJson<GitHubPRStatus>(
-    `/api/v1/github/prs/${owner}/${repo}/${number}/status?${workspaceQuery(workspaceId)}`,
+    `/api/v1/github/prs/${owner}/${repo}/${number}/status?${githubWorkspaceQuery(workspaceId, options?.host)}`,
     options,
   );
 }
@@ -43,13 +44,14 @@ export async function getPRStatus(
 export async function getPRStatusesBatch(
   workspaceId: string,
   refs: PRStatusRef[],
-  options?: ApiRequestOptions,
+  options?: GitHubHostOptions,
 ) {
+  const host = setGitHubHostParam(new URLSearchParams(), options?.host).get("host");
   return fetchJson<{ statuses: Record<string, GitHubPRStatus> }>(`/api/v1/github/prs/statuses`, {
     ...options,
     init: {
       method: "POST",
-      body: JSON.stringify({ workspace_id: workspaceId, refs }),
+      body: JSON.stringify({ workspace_id: workspaceId, ...(host ? { host } : {}), refs }),
       ...(options?.init ?? {}),
     },
   });
@@ -57,12 +59,12 @@ export async function getPRStatusesBatch(
 
 export async function submitPRReview(
   workspaceId: string,
-  ref: PRStatusRef,
+  ref: GitHubPRRef,
   event: PRReviewEvent,
   body?: string,
 ) {
   return fetchJson<{ submitted: boolean }>(
-    `/api/v1/github/prs/${ref.owner}/${ref.repo}/${ref.number}/reviews?${workspaceQuery(workspaceId)}`,
+    `/api/v1/github/prs/${ref.owner}/${ref.repo}/${ref.number}/reviews?${githubWorkspaceQuery(workspaceId, ref.host)}`,
     {
       init: {
         method: "POST",
@@ -72,15 +74,9 @@ export async function submitPRReview(
   );
 }
 
-export async function mergePR(
-  workspaceId: string,
-  owner: string,
-  repo: string,
-  number: number,
-  mergeMethod?: MergeMethod,
-) {
+export async function mergePR(workspaceId: string, ref: GitHubPRRef, mergeMethod?: MergeMethod) {
   return fetchJson<{ status: "merged" | "queued" }>(
-    `/api/v1/github/prs/${owner}/${repo}/${number}/merge?${workspaceQuery(workspaceId)}`,
+    `/api/v1/github/prs/${ref.owner}/${ref.repo}/${ref.number}/merge?${githubWorkspaceQuery(workspaceId, ref.host)}`,
     {
       init: {
         method: "PUT",
@@ -94,10 +90,10 @@ export async function getRepoMergeMethods(
   workspaceId: string,
   owner: string,
   repo: string,
-  options?: ApiRequestOptions,
+  options?: GitHubHostOptions,
 ) {
   return fetchJson<RepoMergeMethods>(
-    `/api/v1/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/merge-methods?${workspaceQuery(workspaceId)}`,
+    `/api/v1/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/merge-methods?${githubWorkspaceQuery(workspaceId, options?.host)}`,
     options,
   );
 }
@@ -106,10 +102,10 @@ export async function getRepoMergeAccess(
   workspaceId: string,
   owner: string,
   repo: string,
-  options?: ApiRequestOptions,
+  options?: GitHubHostOptions,
 ) {
   return fetchJson<RepoMergeAccess>(
-    `/api/v1/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/merge-access?${workspaceQuery(workspaceId)}`,
+    `/api/v1/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/merge-access?${githubWorkspaceQuery(workspaceId, options?.host)}`,
     { ...options, cache: "no-store" },
   );
 }

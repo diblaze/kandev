@@ -7,6 +7,7 @@ type UrlErrorFake = {
   useRemote?: boolean;
   remoteRepos?: Array<{ key: string; url: string; branch: string; source: "paste" | "picker" }>;
   setGitHubUrlError?: ReturnType<typeof vi.fn>;
+  githubHosts?: readonly string[];
 };
 
 function makeUrlErrorFs(overrides: UrlErrorFake = {}): DialogFormState {
@@ -17,6 +18,7 @@ function makeUrlErrorFs(overrides: UrlErrorFake = {}): DialogFormState {
     useRemote: overrides.useRemote ?? true,
     setGitHubUrlError: overrides.setGitHubUrlError ?? vi.fn(),
     remoteRepos,
+    githubHosts: overrides.githubHosts,
   } as unknown as DialogFormState;
 }
 
@@ -62,5 +64,36 @@ describe("useGitHubUrlErrorEffect", () => {
     });
     renderHook(() => useGitHubUrlErrorEffect(fs, true));
     expect(setGitHubUrlError).toHaveBeenCalledWith(null);
+  });
+});
+
+describe("useGitHubUrlErrorEffect GitHub hosts", () => {
+  const enterpriseRows = [
+    {
+      key: "remote-0",
+      url: "https://octo.ghe.com/org/api/pull/7",
+      branch: "",
+      source: "paste" as const,
+    },
+  ];
+
+  it("accepts a URL on a connected enterprise host", () => {
+    const setGitHubUrlError = vi.fn();
+    const fs = makeUrlErrorFs({
+      remoteRepos: enterpriseRows,
+      setGitHubUrlError,
+      githubHosts: ["github.com", "octo.ghe.com"],
+    });
+    renderHook(() => useGitHubUrlErrorEffect(fs, true));
+    expect(setGitHubUrlError).toHaveBeenLastCalledWith(null);
+  });
+
+  it("flags a URL on a host that is not connected", () => {
+    const setGitHubUrlError = vi.fn();
+    const fs = makeUrlErrorFs({ remoteRepos: enterpriseRows, setGitHubUrlError });
+    renderHook(() => useGitHubUrlErrorEffect(fs, true));
+    expect(setGitHubUrlError).toHaveBeenLastCalledWith(
+      expect.stringContaining("Invalid GitHub URL"),
+    );
   });
 });

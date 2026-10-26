@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   listAzureDevOpsProjects: vi.fn(),
   listAzureDevOpsRepositories: vi.fn(),
   useGitHubStatus: vi.fn(),
+  useGitHubHosts: vi.fn(),
   useGitLabStatus: vi.fn(),
   useAzureDevOpsConnection: vi.fn(),
 }));
@@ -22,6 +23,9 @@ vi.mock("@/lib/api/domains/azure-devops-api", () => ({
 vi.mock("@/hooks/domains/github/use-github-status", () => ({
   useGitHubStatus: mocks.useGitHubStatus,
 }));
+vi.mock("@/hooks/domains/github/use-github-hosts", () => ({
+  useGitHubHosts: mocks.useGitHubHosts,
+}));
 vi.mock("@/hooks/domains/gitlab/use-gitlab-status", () => ({
   useGitLabStatus: mocks.useGitLabStatus,
 }));
@@ -34,6 +38,9 @@ import { pluginRegistry } from "@/lib/plugins/registry";
 
 const WORKSPACE_ID = "workspace-1";
 const NEXT_WORKSPACE_ID = "workspace-2";
+const GITHUB_COM = "github.com";
+const GITHUB_COM_ONLY = [GITHUB_COM];
+const CONNECTED_GITHUB_HOSTS = [GITHUB_COM, "octo.ghe.com", "ghe.example.com"];
 const PLUGIN_ID = "test-bitbucket-provider";
 const GITLAB_UNAVAILABLE = "GitLab unavailable";
 
@@ -58,6 +65,7 @@ function setBuiltInAvailability({
     loading: false,
     refresh: vi.fn(),
   });
+  mocks.useGitHubHosts.mockReturnValue(GITHUB_COM_ONLY);
   mocks.useGitLabStatus.mockReturnValue({
     status: gitlab ? { authenticated: true, token_configured: true } : null,
     loading: false,
@@ -82,6 +90,7 @@ function expectWorkspaceScopedGitHubRequest() {
   expect(mocks.fetchAccessibleRepos).toHaveBeenCalledWith({
     workspaceId: WORKSPACE_ID,
     limit: 100,
+    host: GITHUB_COM,
   });
 }
 
@@ -599,5 +608,57 @@ describe("useRemoteRepositories workspace scope", () => {
     });
     expect(result.current.repos).toEqual([]);
     await waitFor(() => expect(mocks.fetchAccessibleRepos).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("useRemoteRepositories GitHub hosts", () => {
+  function setGitHubHosts() {
+    mocks.useGitHubStatus.mockReturnValue({
+      status: {
+        authenticated: true,
+        token_configured: true,
+        hosts: [
+          { github_host: "github.com", source: "pat", status: "active" },
+          { github_host: "octo.ghe.com", source: "pat", status: "active" },
+          { github_host: "ghe.example.com", source: "pat", status: "invalid" },
+        ],
+      },
+      loaded: true,
+      loading: false,
+      refresh: vi.fn(),
+    });
+    mocks.useGitHubHosts.mockReturnValue(CONNECTED_GITHUB_HOSTS);
+  }
+
+  it("lists repositories from every active GitHub host on that host", async () => {
+    setGitHubHosts();
+    mocks.fetchAccessibleRepos.mockImplementation(async ({ host }: { host?: string }) =>
+      host === "octo.ghe.com" ? [githubRepo("api")] : [githubRepo("site")],
+    );
+    rejectUnavailableProviders();
+    const { result } = renderHook(() => useRemoteRepositories(WORKSPACE_ID));
+
+    await waitFor(() => expect(result.current.repos).toHaveLength(2));
+    expect(mocks.fetchAccessibleRepos).toHaveBeenCalledTimes(2);
+    expect(result.current.repos.map((repo) => repo.url).sort()).toEqual([
+      "https://github.com/acme/site",
+      "https://octo.ghe.com/acme/api",
+    ]);
+    expect(result.current.repos.find((repo) => repo.name === "api")).toMatchObject({
+      providerHost: "https://octo.ghe.com",
+    });
+    expect(result.current.availableProviders).toEqual(["github"]);
+  });
+
+  it("recognizes pasted remotes on a connected GitHub host", async () => {
+    setGitHubHosts();
+    mocks.fetchAccessibleRepos.mockResolvedValue([]);
+    rejectUnavailableProviders();
+    const { result } = renderHook(() => useRemoteRepositories(WORKSPACE_ID));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.matchesURL?.("https://octo.ghe.com/org/repo")).toBe(true);
+    expect(result.current.matchesURL?.("octo@octo.ghe.com:org/repo.git")).toBe(true);
+    expect(result.current.matchesURL?.("https://unknown.example.com/org/repo")).toBe(false);
   });
 });

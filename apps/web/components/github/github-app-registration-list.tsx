@@ -42,6 +42,9 @@ export function GitHubAppRegistrationList({
           <span className="min-w-0 flex-1 space-y-1">
             <span className="flex min-w-0 flex-wrap items-center gap-2">
               <span className="break-words text-sm font-medium">{registration.display_name}</span>
+              <Badge variant="outline" data-testid="github-app-registration-host">
+                {registration.github_host}
+              </Badge>
               <Badge variant="outline" className="capitalize">
                 {registration.visibility}
               </Badge>

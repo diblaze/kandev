@@ -1,5 +1,6 @@
 "use client";
 
+import { useGitHubHosts } from "@/hooks/domains/github/use-github-hosts";
 import { useCallback, useState, type RefObject, type ReactNode } from "react";
 import { Button } from "@kandev/ui/button";
 import {
@@ -78,7 +79,8 @@ export function AddWorkspaceSourcesDialog({
     useWorkspaceRepositoryOptions(workspaceId, open);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const sourceRows = useWorkspaceSourceRows(executorType);
+  const githubHosts = useGitHubHosts(workspaceId);
+  const sourceRows = useWorkspaceSourceRows(executorType, githubHosts);
   const reconcileWorkspaceSourcesAdopted = useAppStore(
     (state) => state.reconcileWorkspaceSourcesAdopted,
   );

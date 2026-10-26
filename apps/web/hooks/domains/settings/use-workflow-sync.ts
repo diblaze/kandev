@@ -19,9 +19,12 @@ import type {
 } from "@/lib/types/workflow-sync";
 import { buildGitHubRepoUrl, parseGitHubRepoUrl } from "@/lib/utils/github-repo-url";
 import { parseGitLabProjectUrl } from "@/lib/utils/gitlab-repo-url";
+import { DEFAULT_GITHUB_HOST } from "@/lib/github/host";
+import { useGitHubHosts } from "@/hooks/domains/github/use-github-hosts";
 
 export type WorkflowSyncFormState = {
   provider: WorkflowSyncProvider;
+  github_host: string;
   repo_owner: string;
   repo_name: string;
   project_path: string;
@@ -33,6 +36,7 @@ export type WorkflowSyncFormState = {
 
 const DEFAULT_FORM: WorkflowSyncFormState = {
   provider: "github",
+  github_host: DEFAULT_GITHUB_HOST,
   repo_owner: "",
   repo_name: "",
   project_path: "",
@@ -46,6 +50,7 @@ function configToForm(cfg: WorkflowSyncConfig | null): WorkflowSyncFormState {
   if (!cfg) return DEFAULT_FORM;
   return {
     provider: cfg.provider,
+    github_host: cfg.github_host || DEFAULT_GITHUB_HOST,
     repo_owner: cfg.repo_owner,
     repo_name: cfg.repo_name,
     project_path: cfg.project_path,
@@ -66,18 +71,27 @@ function configToForm(cfg: WorkflowSyncConfig | null): WorkflowSyncFormState {
 // would let it silently disagree with the authoritative Branch/Directory
 // fields after a direct edit.
 function displayUrl(
-  form: Pick<WorkflowSyncFormState, "provider" | "repo_owner" | "repo_name" | "project_path">,
+  form: Pick<
+    WorkflowSyncFormState,
+    "provider" | "github_host" | "repo_owner" | "repo_name" | "project_path"
+  >,
 ): string {
   if (form.provider === "gitlab") {
     return form.project_path;
   }
   return form.repo_owner
-    ? buildGitHubRepoUrl({ owner: form.repo_owner, repo: form.repo_name })
+    ? buildGitHubRepoUrl({ host: form.github_host, owner: form.repo_owner, repo: form.repo_name })
     : "";
 }
 
-function parseRepoUrl(provider: WorkflowSyncProvider, value: string) {
-  return provider === "gitlab" ? parseGitLabProjectUrl(value) : parseGitHubRepoUrl(value);
+function parseRepoUrl(
+  provider: WorkflowSyncProvider,
+  value: string,
+  githubHosts: readonly string[],
+) {
+  return provider === "gitlab"
+    ? parseGitLabProjectUrl(value)
+    : parseGitHubRepoUrl(value, githubHosts);
 }
 
 // Background refresh so the status banner picks up new poller results
@@ -128,8 +142,12 @@ function draftFromConfig(cfg: WorkflowSyncConfig | null): WorkflowSyncDraft {
   return { form, url: displayUrl(form) };
 }
 
-function formFromUrl(form: WorkflowSyncFormState, url: string): WorkflowSyncFormState {
-  const parsed = parseRepoUrl(form.provider, url);
+function formFromUrl(
+  form: WorkflowSyncFormState,
+  url: string,
+  githubHosts: readonly string[],
+): WorkflowSyncFormState {
+  const parsed = parseRepoUrl(form.provider, url, githubHosts);
   if (!parsed) return form;
   if (form.provider === "gitlab" && "projectPath" in parsed) {
     return {
@@ -142,6 +160,7 @@ function formFromUrl(form: WorkflowSyncFormState, url: string): WorkflowSyncForm
   if (form.provider === "github" && "owner" in parsed) {
     return {
       ...form,
+      github_host: parsed.host ?? DEFAULT_GITHUB_HOST,
       repo_owner: parsed.owner,
       repo_name: parsed.repo,
       branch: parsed.branch ?? form.branch,
@@ -151,7 +170,7 @@ function formFromUrl(form: WorkflowSyncFormState, url: string): WorkflowSyncForm
   return form;
 }
 
-function useWorkflowSyncForm(lifetime: WorkflowSyncLifetime) {
+function useWorkflowSyncForm(lifetime: WorkflowSyncLifetime, githubHosts: readonly string[]) {
   const [draft, setDraft] = useState<WorkflowSyncDraft>(() => draftFromConfig(null));
   const latest = useRef(draft);
   // Admitted edits and resets publish atomically, including before a batched render.
@@ -172,9 +191,9 @@ function useWorkflowSyncForm(lifetime: WorkflowSyncLifetime) {
   const setUrlInput = useCallback(
     (value: string) => {
       if (!lifetime.active) return;
-      publish({ form: formFromUrl(latest.current.form, value), url: value });
+      publish({ form: formFromUrl(latest.current.form, value, githubHosts), url: value });
     },
-    [lifetime, publish],
+    [githubHosts, lifetime, publish],
   );
 
   // Switching providers changes what the link/project-path field means, so
@@ -186,7 +205,14 @@ function useWorkflowSyncForm(lifetime: WorkflowSyncLifetime) {
       if (!lifetime.active) return;
       publish({
         url: "",
-        form: { ...latest.current.form, provider, repo_owner: "", repo_name: "", project_path: "" },
+        form: {
+          ...latest.current.form,
+          provider,
+          github_host: DEFAULT_GITHUB_HOST,
+          repo_owner: "",
+          repo_name: "",
+          project_path: "",
+        },
       });
     },
     [lifetime, publish],
@@ -214,7 +240,7 @@ function useWorkflowSyncForm(lifetime: WorkflowSyncLifetime) {
   );
 
   const { form, url } = draft;
-  const urlInvalid = !!url.trim() && !parseRepoUrl(form.provider, url);
+  const urlInvalid = !!url.trim() && !parseRepoUrl(form.provider, url, githubHosts);
   return { draft, form, url, urlInvalid, update, setUrlInput, setProvider, reset, acknowledgeSave };
 }
 
@@ -275,12 +301,13 @@ function useWorkflowSyncInitialLoad(
 }
 
 export function useWorkflowSync(workspaceId: string) {
+  const githubHosts = useGitHubHosts(workspaceId);
   const lifetime = useWorkflowSyncLifetime(workspaceId);
   const { toast } = useToast();
   const router = useRouter();
   const [config, setConfig] = useState<WorkflowSyncConfig | null>(null);
   const { draft, form, url, urlInvalid, update, setUrlInput, setProvider, reset, acknowledgeSave } =
-    useWorkflowSyncForm(lifetime);
+    useWorkflowSyncForm(lifetime, githubHosts);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -341,6 +368,7 @@ function savePayload(form: WorkflowSyncFormState): WorkflowSyncSetConfigRequest 
       }
     : {
         provider: "github",
+        github_host: form.github_host,
         repo_owner: form.repo_owner.trim(),
         repo_name: form.repo_name.trim(),
         branch: form.branch.trim(),

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { hostFromUrl } from "@/lib/github/host";
 import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import type { PRComment } from "@/lib/types/github";
 import { CollapsibleSection, AddToContextButton, FeedbackItemRow } from "./pr-shared";
@@ -100,6 +101,7 @@ function CommentItem({
     <FeedbackItemRow
       author={comment.author}
       authorAvatar={comment.author_avatar}
+      host={hostFromUrl(prUrl) ?? undefined}
       body={comment.body}
       createdAt={comment.created_at}
       metaBadge={<CommentMetaBadge comment={comment} isReply={isReply} />}

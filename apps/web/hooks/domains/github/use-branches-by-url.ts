@@ -5,6 +5,8 @@ import { fetchRepoBranches } from "@/lib/api/domains/github-api";
 import { listProjectBranches } from "@/lib/api/domains/gitlab-api";
 import { listAzureDevOpsBranches } from "@/lib/api/domains/azure-devops-api";
 import { parseGitHubAnyUrl } from "@/hooks/domains/github/use-pr-info-by-url";
+import { useGitHubHosts } from "@/hooks/domains/github/use-github-hosts";
+import { listedGitHubHost } from "@/lib/github/parse-url";
 import type { Branch } from "@/lib/types/http";
 import { usePluginRegistry } from "@/lib/plugins/registry";
 import {
@@ -171,7 +173,25 @@ function invalidateRegistryCache(refs: Refs, setState: SetState): void {
   setState({});
 }
 
+/** Drops every request and cached result when the workspace changes. */
+function useWorkspaceReset(
+  workspaceId: string | null,
+  refs: Refs,
+  setState: (state: Record<string, URLState>) => void,
+) {
+  useEffect(() => {
+    refs.workspaceIdRef.current = workspaceId;
+    refs.workspaceEpochRef.current += 1;
+    for (const controller of refs.abortersRef.current.values()) controller.abort();
+    refs.abortersRef.current.clear();
+    refs.inFlightRef.current.clear();
+    refs.loadedRef.current.clear();
+    setState({});
+  }, [refs, setState, workspaceId]);
+}
+
 export function useBranchesByURL(workspaceId: string | null = null): UseBranchesByURLResult {
+  const githubHosts = useGitHubHosts(workspaceId);
   const registryVersion = usePluginRegistry().getVersion();
   const registryVersionRef = useRef(registryVersion);
   const [state, setState] = useState<Record<string, URLState>>({});
@@ -218,15 +238,7 @@ export function useBranchesByURL(workspaceId: string | null = null): UseBranches
     };
   }, []);
 
-  useEffect(() => {
-    workspaceIdRef.current = workspaceId;
-    workspaceEpochRef.current += 1;
-    for (const controller of abortersRef.current.values()) controller.abort();
-    abortersRef.current.clear();
-    inFlightRef.current.clear();
-    loadedRef.current.clear();
-    setState({});
-  }, [workspaceId]);
+  useWorkspaceReset(workspaceId, refsRef.current, setState);
 
   const ensure = useCallback(
     (rawUrl: string) => {
@@ -244,7 +256,7 @@ export function useBranchesByURL(workspaceId: string | null = null): UseBranches
       // the item number. Using the repo-only parser here used to reject PR URLs
       // outright, leaving the branch picker permanently empty when the user
       // pasted a PR link into the Remote tab.
-      const request = branchRequestForURL(url, workspaceId);
+      const request = branchRequestForURL(url, workspaceId, githubHosts);
       if (!request) {
         loadedRef.current.add(url);
         setState((prev) => ({ ...prev, [url]: { branches: [], loading: false } }));
@@ -257,7 +269,7 @@ export function useBranchesByURL(workspaceId: string | null = null): UseBranches
         .catch((error) => handleFailure(refs, setState, url, requestIdentity, error))
         .finally(() => finalizeRequest(refs, url, requestIdentity));
     },
-    [registryVersion, workspaceId],
+    [githubHosts, registryVersion, workspaceId],
   );
 
   const clear = useCallback((rawUrl: string) => {
@@ -297,29 +309,37 @@ export function useBranchesByURL(workspaceId: string | null = null): UseBranches
 
 type BranchRequest = (signal: AbortSignal) => Promise<{ branches?: Array<{ name: string }> }>;
 
-function branchRequestForURL(rawURL: string, workspaceId: string | null): BranchRequest | null {
+function branchRequestForURL(
+  rawURL: string,
+  workspaceId: string | null,
+  githubHosts: readonly string[],
+): BranchRequest | null {
   if (hasRegisteredRepositoryProviderCandidate(rawURL)) {
-    return registeredProviderBranchRequest(rawURL, workspaceId);
+    return registeredProviderBranchRequest(rawURL, workspaceId, githubHosts);
   }
-  return builtInBranchRequestForURL(rawURL, workspaceId);
+  return builtInBranchRequestForURL(rawURL, workspaceId, githubHosts);
 }
 
 function builtInBranchRequestForURL(
   rawURL: string,
   workspaceId: string | null,
+  githubHosts: readonly string[],
 ): BranchRequest | null {
-  const github = parseGitHubAnyUrl(rawURL);
+  const github = parseGitHubAnyUrl(rawURL, githubHosts);
   if (github) {
     if (!workspaceId) return null;
     return (signal) =>
-      fetchRepoBranches(workspaceId, github.owner, github.repo, { init: { signal } });
+      fetchRepoBranches(workspaceId, github.owner, github.repo, {
+        host: github.host,
+        init: { signal },
+      });
   }
   const parsed = parseRemoteURL(rawURL);
   if (!parsed) return null;
+  const githubHost = listedGitHubHost(parsed.hostname, githubHosts);
+  if (githubHost) return githubBranchRequest(parsed, workspaceId, githubHost);
 
   switch (parsed.hostname) {
-    case "github.com":
-      return githubBranchRequest(parsed, workspaceId);
     case "gitlab.com":
       return gitLabBranchRequest(parsed, workspaceId);
     case "dev.azure.com":
@@ -334,12 +354,13 @@ function builtInBranchRequestForURL(
 function registeredProviderBranchRequest(
   url: string,
   workspaceId: string | null,
+  githubHosts: readonly string[],
 ): BranchRequest | null {
   if (!workspaceId) return null;
   return async (signal) => {
     const match = await inspectRegisteredRepositoryURL({ workspaceId, url, signal });
     if (!match) {
-      const fallback = builtInBranchRequestForURL(url, workspaceId);
+      const fallback = builtInBranchRequestForURL(url, workspaceId, githubHosts);
       return fallback ? fallback(signal) : { branches: [] };
     }
     const entries = await match.provider.listBranches({
@@ -365,14 +386,18 @@ function branchEntry(entry: unknown): Array<{ name: string }> {
   return [];
 }
 
-function githubBranchRequest(parsed: URL, workspaceId: string | null): BranchRequest | null {
+function githubBranchRequest(
+  parsed: URL,
+  workspaceId: string | null,
+  host: string,
+): BranchRequest | null {
   if (!workspaceId) return null;
   const parts = parsed.pathname
     .replace(/^\//, "")
     .replace(/\.git$/, "")
     .split("/");
   if (parts.length < 2) return null;
-  return (signal) => fetchRepoBranches(workspaceId, parts[0], parts[1], { init: { signal } });
+  return (signal) => fetchRepoBranches(workspaceId, parts[0], parts[1], { host, init: { signal } });
 }
 
 function gitLabBranchRequest(parsed: URL, workspaceId: string | null): BranchRequest | null {
@@ -401,8 +426,8 @@ function azureSSHBranchRequest(parsed: URL, workspaceId: string | null): BranchR
 
 function parseRemoteURL(raw: string): URL | null {
   let candidate = /^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
-  const scpMatch = raw.match(/^git@([^:]+):(.+)$/i);
-  if (scpMatch) candidate = `ssh://git@${scpMatch[1]}/${scpMatch[2]}`;
+  const scpMatch = raw.match(/^([A-Za-z0-9_.-]+)@([^:/]+):(.+)$/);
+  if (scpMatch) candidate = `ssh://${scpMatch[1]}@${scpMatch[2]}/${scpMatch[3]}`;
   try {
     return new URL(candidate);
   } catch {

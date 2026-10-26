@@ -2,6 +2,7 @@ import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { StoreApi } from "zustand";
 import { useAppStore, useAppStoreApi } from "@/components/state-provider";
 import { getBackendConfig } from "@/lib/config";
+import { DEFAULT_GITHUB_HOST } from "@/lib/github/host";
 import type { AppState } from "@/lib/state/store";
 import type { PRFeedback } from "@/lib/types/github";
 
@@ -10,6 +11,8 @@ export type PRFeedbackIdentity = {
   owner: string;
   repo: string;
   prNumber: number;
+  /** GitHub host; absent means github.com. */
+  host?: string;
 };
 
 export type PRFeedbackSnapshot = {
@@ -70,6 +73,7 @@ export class PRFeedbackResourceScope {
       pr.owner,
       pr.repo,
       pr.prNumber,
+      ...(pr.host && pr.host !== DEFAULT_GITHUB_HOST ? [pr.host] : []),
     ]);
   }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { GitHubWatchHostField } from "@/components/github/github-watch-host-field";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@kandev/ui/button";
 import { Switch } from "@kandev/ui/switch";
@@ -27,7 +28,6 @@ import {
   stepPlaceholder,
   type WorkflowStepOption,
 } from "@/hooks/use-workflow-steps";
-import { DEFAULT_REVIEW_WATCH_PROMPT } from "@/components/github/review-watch-placeholders";
 import { ReviewWatchPromptField } from "@/components/github/review-watch-prompt-field";
 import { RepoFilterSelector } from "@/components/github/repo-filter-selector";
 import { STEP_DEFAULT, resolveProfileId } from "@/lib/watcher-profile-default";
@@ -41,6 +41,12 @@ import type {
 } from "@/lib/types/github";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
+import {
+  QUERY_TEMPLATES,
+  formStateFromWatch,
+  makeDefaultForm,
+  type FormState,
+} from "./review-watch-form";
 import {
   REVIEW_CLEANUP_POLICY_OPTIONS,
   cleanupPolicyDescription,
@@ -57,61 +63,6 @@ type ReviewWatchDialogProps = {
   onCreate: (req: CreateReviewWatchRequest) => Promise<void>;
   onUpdate: (id: string, req: UpdateReviewWatchRequest) => Promise<void>;
 };
-
-const QUERY_TEMPLATES = {
-  meAndTeams: "type:pr state:open review-requested:@me -is:draft",
-  me: "type:pr state:open user-review-requested:@me -is:draft",
-} as const;
-
-type FormState = {
-  workspaceId: string;
-  selectedRepos: RepoFilter[];
-  allRepos: boolean;
-  workflowId: string;
-  workflowStepId: string;
-  agentProfileId: string;
-  executorProfileId: string;
-  prompt: string;
-  customQuery: string;
-  enabled: boolean;
-  pollInterval: number;
-  cleanupPolicy: CleanupPolicy;
-};
-
-function makeDefaultForm(workspaceId: string): FormState {
-  return {
-    workspaceId,
-    selectedRepos: [],
-    allRepos: false,
-    workflowId: "",
-    workflowStepId: "",
-    agentProfileId: "",
-    executorProfileId: "",
-    prompt: DEFAULT_REVIEW_WATCH_PROMPT,
-    customQuery: QUERY_TEMPLATES.meAndTeams,
-    enabled: true,
-    pollInterval: 300,
-    cleanupPolicy: "auto",
-  };
-}
-
-function formStateFromWatch(watch: ReviewWatch): FormState {
-  const hasRepos = watch.repos && watch.repos.length > 0;
-  return {
-    workspaceId: watch.workspace_id,
-    selectedRepos: hasRepos ? watch.repos : [],
-    allRepos: !hasRepos,
-    workflowId: watch.workflow_id,
-    workflowStepId: watch.workflow_step_id,
-    agentProfileId: watch.agent_profile_id,
-    executorProfileId: watch.executor_profile_id,
-    prompt: watch.prompt || DEFAULT_REVIEW_WATCH_PROMPT,
-    customQuery: watch.custom_query || QUERY_TEMPLATES.meAndTeams,
-    enabled: watch.enabled,
-    pollInterval: watch.poll_interval_seconds,
-    cleanupPolicy: watch.cleanup_policy ?? "auto",
-  };
-}
 
 // --- Generic select field with description ---
 
@@ -344,7 +295,15 @@ function WatchFormFields({
         disabled={workspaceLocked}
       />
       <SectionHeader>{t("github:filter")}</SectionHeader>
+      <GitHubWatchHostField
+        workspaceId={form.workspaceId}
+        value={form.githubHost}
+        onChange={(githubHost) =>
+          setForm((prev) => ({ ...prev, githubHost, selectedRepos: [], allRepos: false }))
+        }
+      />
       <RepoFilterSelector
+        host={form.githubHost}
         allRepos={form.allRepos}
         selectedRepos={form.selectedRepos}
         onAllReposChange={onAllReposChange}
@@ -585,6 +544,7 @@ export function ReviewWatchDialog({
     try {
       const repos = form.allRepos ? [] : form.selectedRepos;
       const payload = {
+        github_host: form.githubHost,
         workflow_id: form.workflowId,
         workflow_step_id: form.workflowStepId,
         repos,

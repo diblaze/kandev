@@ -115,3 +115,21 @@ describe("TaskChangeRequestLinkForm", () => {
     expect(props.onCancel).toHaveBeenCalledOnce();
   });
 });
+
+describe("TaskChangeRequestLinkForm input notice", () => {
+  it("shows the notice for the current input and does not submit while it applies", async () => {
+    const props = renderForm({
+      inputNotice: (input) =>
+        input.includes("ghe.example.com") ? <span>not connected</span> : null,
+    });
+    fireEvent.change(screen.getByLabelText(pullRequestLabel), {
+      target: { value: "https://ghe.example.com/org/repo/pull/7" },
+    });
+
+    expect(screen.getByText("not connected")).not.toBeNull();
+    fireEvent.submit(screen.getByRole("button", { name: "Save" }).closest("form")!);
+
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(props.onSubmit).not.toHaveBeenCalled();
+  });
+});

@@ -41,7 +41,9 @@ it("returns the queue-aware merge outcome", async () => {
     ),
   );
 
-  await expect(mergePR("workspace-1", "acme", "site", 42, "squash")).resolves.toEqual({
+  await expect(
+    mergePR("workspace-1", { owner: "acme", repo: "site", number: 42 }, "squash"),
+  ).resolves.toEqual({
     status: "queued",
   });
 });

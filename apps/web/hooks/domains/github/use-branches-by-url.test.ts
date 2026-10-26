@@ -5,6 +5,10 @@ const fetchRepoBranchesMock = vi.fn();
 const listProjectBranchesMock = vi.fn();
 const listAzureDevOpsBranchesMock = vi.fn();
 
+const githubHosts = vi.hoisted(() => ({ current: ["github.com"] }));
+vi.mock("@/hooks/domains/github/use-github-hosts", () => ({
+  useGitHubHosts: () => githubHosts.current,
+}));
 vi.mock("@/lib/api/domains/github-api", () => ({
   fetchRepoBranches: (...args: unknown[]) => fetchRepoBranchesMock(...args),
 }));
@@ -29,6 +33,7 @@ afterEach(() => {
   listProjectBranchesMock.mockReset();
   listAzureDevOpsBranchesMock.mockReset();
   vi.useRealTimers();
+  githubHosts.current = ["github.com"];
 });
 
 const REPO_A = "https://github.com/acme/site";
@@ -590,5 +595,36 @@ describe("useBranchesByURL — cache invalidation", () => {
       result.current.ensure(REPO_A);
     });
     await waitFor(() => expect(fetchRepoBranchesMock).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("useBranchesByURL GitHub hosts", () => {
+  const hosts = ["github.com", "octo.ghe.com"];
+
+  it.each([
+    "https://octo.ghe.com/org/api",
+    "octo@octo.ghe.com:org/api.git",
+    "https://octo.ghe.com/org/api/pull/7",
+  ])("loads branches of %s on its connected host", async (url) => {
+    fetchRepoBranchesMock.mockResolvedValue({ branches: [{ name: "main" }] });
+    githubHosts.current = hosts;
+    const { result } = renderHook(() => useBranchesByURL(WORKSPACE_ID));
+
+    act(() => result.current.ensure(url));
+
+    await waitFor(() => expect(result.current.branches(url)).toHaveLength(1));
+    expect(fetchRepoBranchesMock).toHaveBeenCalledWith(
+      WORKSPACE_ID,
+      "org",
+      "api",
+      expect.objectContaining({ host: "octo.ghe.com" }),
+    );
+  });
+
+  it("does not load branches for a host that is not connected", async () => {
+    const { result } = renderHook(() => useBranchesByURL(WORKSPACE_ID));
+    act(() => result.current.ensure("https://octo.ghe.com/org/api"));
+    await waitFor(() => expect(result.current.loading("https://octo.ghe.com/org/api")).toBe(false));
+    expect(fetchRepoBranchesMock).not.toHaveBeenCalled();
   });
 });

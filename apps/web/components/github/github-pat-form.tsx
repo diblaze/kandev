@@ -7,16 +7,23 @@ import { Input } from "@kandev/ui/input";
 import { Label } from "@kandev/ui/label";
 import { useTranslation } from "react-i18next";
 import { settingsCredentialClassName } from "@/components/settings/settings-control";
+import { DEFAULT_GITHUB_HOST } from "@/lib/github/host";
 
 export function GitHubPATForm({
   workspaceId,
   value,
   onChange,
+  host,
+  onHostChange,
+  hostInvalid,
   disabled,
 }: {
   workspaceId: string;
   value: string;
   onChange: (value: string) => void;
+  host: string;
+  onHostChange: (value: string) => void;
+  hostInvalid: boolean;
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
@@ -28,6 +35,26 @@ export function GitHubPATForm({
 
   return (
     <div className="space-y-3">
+      <div className="space-y-1">
+        <Label htmlFor="github-workspace-host">{t("github:githubHost")}</Label>
+        <p className="text-xs text-muted-foreground">{t("github:githubHostHelp")}</p>
+        <Input
+          id="github-workspace-host"
+          data-testid="github-workspace-host"
+          value={host}
+          onChange={(event) => onHostChange(event.target.value)}
+          placeholder={DEFAULT_GITHUB_HOST}
+          autoComplete="off"
+          spellCheck={false}
+          disabled={disabled}
+          aria-invalid={hostInvalid || undefined}
+        />
+        {hostInvalid && (
+          <p role="alert" className="text-xs text-destructive">
+            {t("github:enterAValidGithubHost")}
+          </p>
+        )}
+      </div>
       <div className="space-y-1">
         <Label htmlFor="github-workspace-token">{t("github:personalAccessToken")}</Label>
         <p className="text-xs text-muted-foreground">{t("github:kandevStoresThisTokenForThis")}</p>

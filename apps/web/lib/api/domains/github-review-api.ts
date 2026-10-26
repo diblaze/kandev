@@ -1,32 +1,15 @@
+import { githubWorkspaceQuery } from "@/lib/github/host";
 import { fetchJson } from "../client";
-
-export async function submitPRReview(
-  owner: string,
-  repo: string,
-  number: number,
-  event: "APPROVE" | "COMMENT" | "REQUEST_CHANGES",
-  body?: string,
-) {
-  return fetchJson<{ submitted: boolean }>(
-    `/api/v1/github/prs/${owner}/${repo}/${number}/reviews`,
-    {
-      init: {
-        method: "POST",
-        body: JSON.stringify({ event, body: body ?? "" }),
-      },
-    },
-  );
-}
+import type { GitHubPRRef } from "./github-pr-api";
 
 export async function requestPRReviewers(
-  owner: string,
-  repo: string,
-  number: number,
+  ref: GitHubPRRef,
   reviewers: string[],
   workspaceId: string,
 ) {
+  const query = githubWorkspaceQuery(workspaceId, ref.host);
   return fetchJson<{ requested: boolean }>(
-    `/api/v1/github/prs/${owner}/${repo}/${number}/requested-reviewers?workspace_id=${encodeURIComponent(workspaceId)}`,
+    `/api/v1/github/prs/${ref.owner}/${ref.repo}/${ref.number}/requested-reviewers?${query}`,
     {
       init: {
         method: "POST",

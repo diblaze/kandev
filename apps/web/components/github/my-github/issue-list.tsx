@@ -9,6 +9,9 @@ import { TaskRowIndicator } from "@/components/integrations/task-row-indicator";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import type { GitHubIssue, TaskIssueLink } from "@/lib/types/github";
 import type { LaunchPayload, TaskPreset } from "./quick-task-launcher";
+import { GitHubResultHost } from "./pr-list";
+import { issueKey } from "@/hooks/domains/github/use-issue-key-to-tasks";
+import { hostFromUrl } from "@/lib/github/host";
 
 type IssueListProps = {
   items: GitHubIssue[];
@@ -63,6 +66,7 @@ function IssueRow({
       href={issue.html_url}
       metadata={
         <>
+          <GitHubResultHost url={issue.html_url} />
           <span>
             {issue.repo_owner}/{issue.repo_name}#{issue.number}
           </span>
@@ -117,7 +121,12 @@ export function IssueList({
       emptyMessage={t("github:noIssuesMatchThisFilter")}
     >
       {items.map((issue) => {
-        const key = `${issue.repo_owner}/${issue.repo_name}#${issue.number}`;
+        const key = issueKey(
+          issue.repo_owner,
+          issue.repo_name,
+          issue.number,
+          hostFromUrl(issue.html_url) ?? undefined,
+        );
         return (
           <IssueRow
             key={key}

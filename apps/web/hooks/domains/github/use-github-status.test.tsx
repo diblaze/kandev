@@ -1,9 +1,9 @@
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { StateProvider } from "@/components/state-provider";
+import { StateProvider, useAppStore } from "@/components/state-provider";
 import { getGitHubMutationActor } from "@/lib/github-auth";
 import type { GitHubStatusResponse } from "@/lib/types/github";
-import { normalizeGitHubStatus, useGitHubStatus } from "./use-github-status";
+import { normalizeGitHubStatus, useGitHubHostStatus, useGitHubStatus } from "./use-github-status";
 
 const fetchGitHubStatusMock = vi.hoisted(() => vi.fn());
 
@@ -357,5 +357,78 @@ describe("normalizeGitHubStatus for human automation", () => {
       auth_method: "gh_cli",
       username: "bob",
     });
+  });
+});
+
+describe("useGitHubHostStatus", () => {
+  const ENTERPRISE = "octo.ghe.com";
+  const hostResponse = (username: string): GitHubStatusResponse => ({
+    workspace_id: WORKSPACE_A,
+    authenticated: true,
+    username,
+    auth_method: "pat",
+    token_configured: true,
+    required_scopes: [],
+    effective_personal_actor: {
+      kind: "human",
+      source: "pat",
+      login: username,
+      workspace_id: WORKSPACE_A,
+    },
+  });
+
+  it("fetches the host-scoped status and refreshes its rate limit", async () => {
+    fetchGitHubStatusMock.mockResolvedValue(hostResponse("octo-bot"));
+    const { result } = renderHook(() => useGitHubHostStatus(WORKSPACE_A, ENTERPRISE));
+
+    await waitFor(() => expect(result.current.status?.username).toBe("octo-bot"));
+    expect(result.current.loading).toBe(false);
+    expect(fetchGitHubStatusMock).toHaveBeenCalledWith(
+      WORKSPACE_A,
+      { cache: "no-store" },
+      false,
+      ENTERPRISE,
+    );
+
+    act(() => result.current.refresh());
+    await waitFor(() => expect(fetchGitHubStatusMock).toHaveBeenCalledTimes(2));
+    expect(fetchGitHubStatusMock).toHaveBeenLastCalledWith(
+      WORKSPACE_A,
+      { cache: "no-store" },
+      true,
+      ENTERPRISE,
+    );
+  });
+
+  it("keeps the newest response and leaves the workspace store untouched", async () => {
+    const first = deferred<GitHubStatusResponse>();
+    const second = deferred<GitHubStatusResponse>();
+    fetchGitHubStatusMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const initialState = {
+      githubStatus: { byWorkspaceId: {}, pendingPRDiscoveryHealthByWorkspaceId: {} },
+    };
+    let storeStatus: unknown;
+    function StoreProbe() {
+      storeStatus = useAppStore((state) => state.githubStatus.byWorkspaceId[WORKSPACE_A]);
+      return null;
+    }
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <StateProvider initialState={initialState}>
+        <StoreProbe />
+        {children}
+      </StateProvider>
+    );
+    const { result } = renderHook(() => useGitHubHostStatus(WORKSPACE_A, ENTERPRISE), {
+      wrapper,
+    });
+    await waitFor(() => expect(fetchGitHubStatusMock).toHaveBeenCalledTimes(1));
+    act(() => result.current.refresh());
+    await waitFor(() => expect(fetchGitHubStatusMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => second.resolve(hostResponse("new")));
+    await act(async () => first.resolve(hostResponse("old")));
+
+    expect(result.current.status?.username).toBe("new");
+    expect(storeStatus).toBeUndefined();
   });
 });

@@ -452,6 +452,8 @@ export type DialogFormState = {
    * first row's `info(url).suggestedTitle` to autofill the task title.
    */
   prInfoByUrl: UsePRInfoByURLResult;
+  /** GitHub hosts whose URLs the dialog recognizes; absent means github.com only. */
+  githubHosts?: readonly string[];
   agentProfileId: string;
   setAgentProfileId: (v: string) => void;
   executorId: string;
@@ -559,6 +561,8 @@ export type SubmitHandlersDeps = {
    * target (from the GitHub API).
    */
   prInfoByUrl: UsePRInfoByURLResult;
+  /** GitHub hosts whose URLs are recognized; absent means github.com only. */
+  githubHosts?: readonly string[];
   agentProfileId: string;
   executorId: string;
   executorProfileId: string;

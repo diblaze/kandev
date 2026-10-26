@@ -1,4 +1,5 @@
 import { IconCheck, IconX, IconClock } from "@tabler/icons-react";
+import { hostFromUrl } from "@/lib/github/host";
 import { Badge } from "@kandev/ui/badge";
 import { Button } from "@kandev/ui/button";
 import type { PRReview, RequestedReviewer } from "@/lib/types/github";
@@ -150,6 +151,7 @@ function SubmittedReviewRow({
       <FeedbackItemRow
         author={review.author}
         authorAvatar={review.author_avatar}
+        host={hostFromUrl(prUrl) ?? undefined}
         body={review.body || undefined}
         createdAt={review.created_at}
         metaBadge={<ReviewMetaBadge state={review.state} />}

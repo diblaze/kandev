@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/components/toast-provider";
 import { GitHubCLIForm } from "./github-cli-form";
 
+const GITHUB_COM = "github.com";
+
 const mocks = vi.hoisted(() => ({
   fetchAccounts: vi.fn(),
 }));
@@ -48,7 +50,7 @@ describe("GitHubCLIForm", () => {
 
   it("reports the preferred account without requiring a second action", async () => {
     const account = {
-      host: "github.com",
+      host: GITHUB_COM,
       login: "octocat",
       active: true,
       selected: true,
@@ -66,5 +68,53 @@ describe("GitHubCLIForm", () => {
     expect(await screen.findByText(/octocat/)).toBeTruthy();
     expect(onAccountChange).toHaveBeenLastCalledWith(account);
     expect(screen.queryByRole("button", { name: "Use account" })).toBeNull();
+  });
+});
+
+describe("GitHubCLIForm hosts", () => {
+  const accounts = [
+    { host: GITHUB_COM, login: "octocat", active: true, state: "success", selected: true },
+    { host: "octo.ghe.com", login: "octo-bot", active: true, state: "success" },
+  ];
+
+  it("preselects an account on a host without a connection when adding a host", async () => {
+    mocks.fetchAccounts.mockResolvedValue(accounts);
+    const onAccountChange = vi.fn();
+    render(
+      <ToastProvider>
+        <GitHubCLIForm
+          workspaceId="workspace-1"
+          onAccountChange={onAccountChange}
+          connectedHosts={[GITHUB_COM]}
+        />
+      </ToastProvider>,
+    );
+
+    await vi.waitFor(() =>
+      expect(onAccountChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ host: "octo.ghe.com" }),
+      ),
+    );
+  });
+
+  it("keeps the edited host's account available while changing that host", async () => {
+    mocks.fetchAccounts.mockResolvedValue(accounts);
+    const onAccountChange = vi.fn();
+    render(
+      <ToastProvider>
+        <GitHubCLIForm
+          workspaceId="workspace-1"
+          onAccountChange={onAccountChange}
+          editedHost={GITHUB_COM}
+          connectedHosts={[GITHUB_COM, "octo.ghe.com"]}
+        />
+      </ToastProvider>,
+    );
+
+    await vi.waitFor(() =>
+      expect(onAccountChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ host: GITHUB_COM }),
+      ),
+    );
   });
 });

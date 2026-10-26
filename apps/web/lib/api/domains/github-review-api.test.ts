@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { requestPRReviewers, submitPRReview } from "./github-review-api";
+import { requestPRReviewers } from "./github-review-api";
 
 vi.mock("@/lib/config", () => ({
   getBackendConfig: () => ({ apiBaseUrl: "http://api.test" }),
@@ -27,24 +27,11 @@ function jsonResponse(body: unknown): Response {
 }
 
 describe("PR review writes", () => {
-  it("posts review events and an empty default body to the reviews endpoint", async () => {
-    fetchSpy.mockResolvedValueOnce(jsonResponse({ submitted: true }));
-
-    await expect(submitPRReview("acme", "site", 42, "APPROVE")).resolves.toEqual({
-      submitted: true,
-    });
-
-    const call = fetchSpy.mock.calls.at(-1);
-    expect(String(call?.[0])).toBe("http://api.test/api/v1/github/prs/acme/site/42/reviews");
-    expect(call?.[1]?.method).toBe("POST");
-    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ event: "APPROVE", body: "" });
-  });
-
   it("posts reviewer logins to the pull request review-request endpoint", async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse({ requested: true }));
 
     await expect(
-      requestPRReviewers("acme", "site", 42, ["octocat"], "workspace-1"),
+      requestPRReviewers({ owner: "acme", repo: "site", number: 42 }, ["octocat"], "workspace-1"),
     ).resolves.toEqual({
       requested: true,
     });

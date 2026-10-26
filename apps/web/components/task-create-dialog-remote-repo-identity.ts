@@ -84,7 +84,10 @@ function remoteSSHRepositoryIdentity(value: string): string | undefined {
   const azure = value.match(
     /^git@ssh\.dev\.azure\.com:v3\/([^/\s]+)\/([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i,
   );
-  return azure ? `azure_devops:${azure[1]}/${azure[2]}/${azure[3]}` : undefined;
+  if (azure) return `azure_devops:${azure[1]}/${azure[2]}/${azure[3]}`;
+
+  const scp = value.match(/^[A-Za-z0-9_.-]+@([^:/\s]+):([^\s]+?)(?:\.git)?\/?$/);
+  return scp ? `https://${scp[1].toLowerCase()}/${scp[2]}` : undefined;
 }
 
 function remoteHTTPSRepositoryIdentity(url: URL): string | undefined {

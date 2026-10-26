@@ -473,6 +473,11 @@ function buildOptionalAgentTaskFields(opts?: OptionalAgentTaskOpts): Record<stri
 
 const MAX_TASK_DELETE_PREVIEW_ATTEMPTS = 3;
 
+/** Query suffix naming a GitHub host for the mock connection routes; empty means github.com. */
+function mockHostQuery(host: string | undefined): string {
+  return host ? `?host=${encodeURIComponent(host)}` : "";
+}
+
 /**
  * HTTP API client for seeding test data via the backend REST API.
  */
@@ -1991,18 +1996,19 @@ export class ApiClient {
   async mockGitHubSetWorkspaceConnection(
     workspaceId: string,
     connection: MockGitHubWorkspaceConnection,
+    host?: string,
   ): Promise<void> {
     await this.request(
       "PUT",
-      `/api/v1/github/mock/workspace-connections/${encodeURIComponent(workspaceId)}`,
+      `/api/v1/github/mock/workspace-connections/${encodeURIComponent(workspaceId)}${mockHostQuery(host)}`,
       connection,
     );
   }
 
-  async mockGitHubDeleteWorkspaceConnection(workspaceId: string): Promise<void> {
+  async mockGitHubDeleteWorkspaceConnection(workspaceId: string, host?: string): Promise<void> {
     await this.request(
       "DELETE",
-      `/api/v1/github/mock/workspace-connections/${encodeURIComponent(workspaceId)}`,
+      `/api/v1/github/mock/workspace-connections/${encodeURIComponent(workspaceId)}${mockHostQuery(host)}`,
     );
   }
 
