@@ -1,7 +1,7 @@
 ---
 id: "08-docs"
 title: "Documentation for GitHub hosts"
-status: pending
+status: done
 wave: 6
 depends_on:
   - "01-host-aware-workspace-client"
@@ -114,4 +114,48 @@ Tasks 01 to 07.
 
 ## Results
 
-Pending.
+Public docs updated:
+
+- `docs/public/integrations.md`: per-host connection scope (line 54), CLI
+  host/login with `gh auth token --hostname <host> --user <login>`, one
+  connection per host, per-host snapshot for new workspaces, a new
+  "GitHub hosts" subsection (cards, host field, endpoint table, item routing,
+  fail-closed behavior, repository classification and SCP forms, host selector,
+  what stays `github.com`), a new "Profile tokens and GitHub hosts" subsection
+  (the `GH_HOST` binding and the agent `gh` caveat), managed shim host
+  behavior, App flows per host with the public HTTPS origin rule, and two
+  troubleshooting entries.
+- `docs/public/executors.md`: per-host profile override, lease resolution by
+  host, shim `GH_HOST` and token variable, and the SSH forwarded variable list
+  (now matches `sshRemoteAgentCredentialEnvKeys`, including the GitLab names
+  that were already forwarded but undocumented).
+- `docs/public/workflow-sync.md`: GitHub links on connected hosts.
+
+Internal docs updated:
+
+- `apps/backend/internal/agentctl/AGENTS.md`: PR-provider table row for
+  `KANDEV_GITHUB_HOSTS` (deferred by task 06).
+- `github-authentication-01.md`: App registration `github_host` and the
+  `(workspace_id, github_host)` connection key, linked to the new design.
+- `github-authentication-03.md`: out-of-scope line narrowed to one host; the
+  "hosts other than `github.com`" line removed.
+- `system-design/github-enterprise-host.md`: corrected to the implementation
+  (409 and 503 error statuses, personal `host` parameter, shim `--hostname`
+  refusal, Docker-only enterprise SSH rewrites, canonical SCP user, URL notice
+  only for PR and issue paths, enterprise cards without API limits or personal
+  management).
+
+Verification (repository root):
+
+- `python3 scripts/list-docs.py validate`: `Validated 397 decisions and 1714 specifications.`
+- `python3 scripts/lint-spec-files.py --all`: `All specification files passed.`
+- `node scripts/validate-public-docs.mjs`: `Validated 54 published docs pages.`
+- `node --test scripts/validate-public-docs.test.mjs`: 63 pass, 0 fail.
+
+Deviations and open items:
+
+- The live end-to-end run was not performed, so `status: active` and
+  `status: current` were not set and the plan is `in_progress`, not
+  `complete`; see the plan Results.
+- No screenshot changed: `settings-integrations.png` shows the integrations
+  list, not the GitHub card layout.

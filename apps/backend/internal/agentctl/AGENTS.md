@@ -50,7 +50,7 @@ to the parent gitlink. The focused contract tests are in
 
 | Remote host | CLI | Notes |
 |-------------|-----|-------|
-| `github.com`, `*.github.com` | `gh pr create` | Requires `gh` on `PATH` (included in the Kandev Docker image). |
+| `github.com`, `*.github.com`, hosts listed in `KANDEV_GITHUB_HOSTS` | `gh pr create` | Requires `gh` on `PATH` (included in the Kandev Docker image). The executor sets `KANDEV_GITHUB_HOSTS` to the comma-separated GitHub Enterprise hosts of the attached repositories; `githubauth.EnterpriseHosts` drops entries that are not bare hostnames. An unlisted enterprise host is an unsupported remote. |
 | `gitlab.com`, configured self-managed host | `glab mr create` or REST v4 | `KANDEV_GITLAB_HOST` binds detection/auth to the workspace origin. `GITLAB_TOKEN` is used only for that exact host; the REST fallback resolves the project default branch and reuses an existing open source/target MR on retry. |
 | `dev.azure.com`, `ssh.dev.azure.com`, `*.visualstudio.com` | `az repos pr create` | Requires `az` on `PATH`, `azure-devops` extension (both in the Kandev Docker image). Auth: `az login` or `AZURE_DEVOPS_EXT_PAT`. |
 | Other hosts | — | Returns an unsupported-remote error. |

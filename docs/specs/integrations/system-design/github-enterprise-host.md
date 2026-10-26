@@ -102,7 +102,8 @@ trigger repositories carry an optional `host` in their JSON config.
 - `DELETE /api/v1/github/workspace-connection?workspace_id=&host=` removes
   one host connection.
 - App manifest start and import requests carry `github_host`; installation
-  and personal flows take the host from the registration.
+  and personal flows take the host from the registration. Personal connect and
+  disconnect routes take a `host` query parameter.
 - Every route and WebSocket action that names `owner` and `repo`, and every
   search route, accepts `host`, defaulting to `github.com`.
 
@@ -111,9 +112,9 @@ trigger repositories carry an optional `host` in their JSON config.
 `HostNotConnectedError` wraps `ErrGitHubNotConfigured` and carries the host;
 callers match it with `errors.As`. A missing `github.com` connection keeps
 returning `ErrGitHubNotConfigured` unchanged. HTTP responses keep the existing
-`github_not_configured` status (409) and code and add `host`, so existing
-clients keep their "Connect GitHub" handling and new clients can name the
-host.
+`github_not_configured` code and status (409 on connection and credential
+routes, 503 on read and operation routes) and add `host`, so existing clients
+keep their "Connect GitHub" handling and new clients can name the host.
 
 ## Control flow
 
@@ -175,7 +176,8 @@ organization scopes name owners only and apply to every host.
   with an empty provider whose remote URL host equals the connected host get
   provider `github`, provider host, owner, and name.
 - Clone URLs and managed clone paths use `provider_host`. SSH clone URLs use
-  the user `<subdomain>` on a `<subdomain>.ghe.com` host and `git` elsewhere.
+  the user `<subdomain>` on a `<subdomain>.ghe.com` host and `git` elsewhere,
+  and the canonical SCP `RemoteURL` of a repository uses the same user.
   The review-watch repository resolver looks up and clones on the pull
   request's host.
 
@@ -194,7 +196,9 @@ only when every host fails.
   accepts any connected host and resolves the credential for that host. The
   managed `gh` shim keeps its repository detection, sets `GH_HOST` to the
   target host, and passes the credential as `GH_TOKEN` for `github.com` and
-  `.ghe.com` hosts or as `GH_ENTERPRISE_TOKEN` for other hosts.
+  `.ghe.com` hosts or as `GH_ENTERPRISE_TOKEN` for other hosts, removing the
+  other token variables. It refuses a `--hostname` other than the lease host,
+  because `GH_TOKEN` would otherwise answer every `.ghe.com` tenant.
 - **Executor mode:** the host bridge already covers attached GitHub hosts. An
   explicit profile token suppresses the bridge only for the host it is bound
   to (below); every other host keeps the bridge credential.
@@ -209,7 +213,11 @@ only when every host fails.
   for, so `GH_HOST` is the only binding it trusts.
 - **Remote executors with profile tokens:** Docker, Sprites, and SSH prepare
   scripts receive the list of attached GitHub hosts and add an HTTPS helper
-  and SSH-to-HTTPS rewrite for each host whose profile token is bound to it.
+  for each host whose profile token is bound to it. Docker also adds the
+  SSH-to-HTTPS rewrites for those hosts; the default SSH and Sprites scripts
+  rewrite only `github.com`. Clone URL token injection uses the same binding.
+- **Agent `gh` outside Kandev:** an agent that runs `gh` with profile token
+  variables follows the GitHub CLI rule, not this binding.
 - **Pull-request creation:** the executor publishes
   `KANDEV_GITHUB_HOSTS`, a comma-separated list of attached enterprise hosts.
   agentctl treats an origin on a listed host as GitHub and runs `gh pr create`
@@ -229,13 +237,17 @@ host.
 
 - A workspace query exposes the connected hosts from the status `hosts` array.
 - GitHub URL parsers take the connected hosts and accept them alongside
-  `github.com`. The remote URL allowlist does the same. A URL on a GitHub-like
-  path but an unknown host reports "host not connected".
+  `github.com`. The remote URL allowlist does the same. A pull-request or issue
+  URL on an unknown host reports "host not connected"; a bare repository URL
+  on an unknown host keeps the invalid-URL message, because it can equally be
+  another provider.
 - API helpers that name an owner and repository send `host`.
 - Settings render one connection card per host and an "Connect another GitHub
   host" action. The PAT form gains a host field. The CLI picker lists accounts
   on every host and marks hosts that are already connected. App create and
-  import forms gain a host field.
+  import forms gain a host field. An enterprise host card shows its `hosts`
+  entry; API limit details and personal identity management stay on the
+  `github.com` card.
 - Profile, mention, quick-task, remote-repository, and file links use the item
   host.
 

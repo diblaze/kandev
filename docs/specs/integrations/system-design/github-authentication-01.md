@@ -237,7 +237,7 @@ workspace use is represented only by an explicit workspace connection.
 | `id` | UUID text | Primary key; allocated before manifest creation |
 | `source` | enum text | `managed` (manifest-created) or `imported` |
 | `display_name` | text | Non-empty user-facing disambiguator |
-| `github_host` | text | `github.com` in this feature |
+| `github_host` | text | Bare host the App is registered on; see [GitHub Enterprise Host](github-enterprise-host.md) |
 | `app_id` | int64 | Positive; unique with `github_host` |
 | `client_id` | text | Non-secret App OAuth client identifier |
 | `slug` | text | Verified App slug |
@@ -269,7 +269,10 @@ unconsumed flow. State is random, hashed at rest, single-use, and expires after 
 
 ### `github_workspace_connections`
 
-One row per configured workspace automation identity. Existing fields remain, with:
+One row per configured workspace automation identity and GitHub host. The primary key is
+`(workspace_id, github_host)`, so a workspace holds at most one connection per host; see
+[GitHub Enterprise Host](github-enterprise-host.md#connection-model) for the key, the personal
+connection tables, and host routing. Existing fields remain, with:
 
 | Field | Type | Constraint |
 | --- | --- | --- |

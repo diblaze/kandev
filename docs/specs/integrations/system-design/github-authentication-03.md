@@ -236,11 +236,11 @@ This design preserves the technical source detail for `REQ-INTEGRATIONS-GITHUB-A
 
 ## Out Of Scope
 
-- Multiple automation connections or per-repository credential routing inside one workspace.
+- Multiple automation connections for one host in one workspace. Host connections and host routing
+  are owned by [GitHub Enterprise Host](github-enterprise-host.md).
 - Automatically editing an imported App's GitHub settings or uninstalling an App on disconnect.
 - Automatic private-key/client-secret rotation; users replace an unbound stored registration or
   import the replacement App credentials through the guided flow.
-- GitHub Enterprise Server, enterprise-owned Apps, or hosts other than `github.com`.
 - Kandev multi-user login, workspace membership, or RBAC implementation.
 - Publishing Apps to GitHub Marketplace.
 - Discovering or verifying the actor behind inherited credential managers, SSH agents, or explicit

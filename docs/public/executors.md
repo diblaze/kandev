@@ -260,14 +260,17 @@ executor Git credentials** in the workspace GitHub settings to leave Git and `gh
 selected executor; Kandev then injects no GitHub broker helper or shim. Local and Worktree use
 host-visible Git/SSH credentials, while Docker, Kubernetes, SSH, and cloud require executor-configured
 credentials. An explicit executor-profile `GH_TOKEN` or `GITHUB_TOKEN` overrides the managed
-workspace route.
+workspace route for the GitHub host that the profile's `GH_HOST` binds it to; see
+[Profile tokens and GitHub hosts](integrations.md#profile-tokens-and-github-hosts).
 
 For attached GitHub repositories, Kandev normally gives the task an opaque lease for each
 repository instead of placing the workspace PAT, selected CLI token, or App installation token in
 its ambient environment. Git's credential helper selects the lease whose HTTPS host and path
-exactly match the repository. A broker-aware `gh` shim redeems the primary repository lease for
-each invocation, sets `GH_TOKEN` only on the child `gh` process, and isolates CLI configuration
-from the host.
+exactly match the repository. Each lease resolves against the workspace connection for its
+repository's GitHub host. A broker-aware `gh` shim redeems the primary repository lease for each
+invocation, sets `GH_HOST` and that host's token variable (`GH_TOKEN`, or `GH_ENTERPRISE_TOKEN` for
+GitHub Enterprise Server) only on the child `gh` process, and isolates CLI configuration from the
+host.
 
 For Local and Worktree tasks, managed credentials cover Kandev's checkout operations and the
 launched task processes. Per-repository setup scripts still receive executor-profile and repository
@@ -614,7 +617,7 @@ support, update Kandev and start a fresh session.
 
 SSH materializes the primary attached repository at the remote task-workspace root and additional repository sources in direct child directories. The default prepare script initializes or reuses the root checkout, verifies the configured origin, fetches the base branch, runs repository setup, and lets Kandev's managed postlude select the task branch. A stored profile script replaces that default and must leave the same verified primary checkout before `agentctl` starts. Existing matching checkouts retain local commits and untracked files; a different origin, missing checkout, failed script, timeout, or cancellation fails the launch before a controller is started. Ensure the remote host has the required Git credentials and can reach every selected remote; folders cannot be attached to SSH tasks.
 
-The runtime preflights the selected agent command and reports an installation hint when missing; it does not install the agent or its toolchain. Only these resolved credential environment names are forwarded to the remote agent: `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GITHUB_TOKEN`, and `GH_TOKEN`. Arbitrary profile variables and control-plane process variables are not forwarded to that agent process. Agent-specific auth setup scripts can still consume a selected stored secret and materialize their own remote login state.
+The runtime preflights the selected agent command and reports an installation hint when missing; it does not install the agent or its toolchain. Only these resolved credential environment names are forwarded to the remote agent: `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GITHUB_TOKEN`, `GH_TOKEN`, `GH_HOST`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `KANDEV_GITHUB_HOSTS`, `GITLAB_TOKEN`, `GITLAB_HOST`, and `KANDEV_GITLAB_HOST`. `KANDEV_GITHUB_HOSTS` lists the attached GitHub Enterprise hosts so the remote controller can create pull requests on them. Arbitrary profile variables and control-plane process variables are not forwarded to that agent process. Agent-specific auth setup scripts can still consume a selected stored secret and materialize their own remote login state.
 
 Stop attempts to kill the session's remote `agentctl` and remove only the remote session-runtime directory, then closes forwarding and SSH. Terminal archive/delete stops run the profile cleanup script first; cleanup is best-effort, so a failure does not block controller teardown. Plain Stop skips cleanup and preserves the task workspace for resume. The task directory always remains and no background sweeper currently removes it. The cached helper and checksum at `~/.kandev/bin/agentctl` and `agentctl.sha256` also remain for later sessions. Periodically audit the remote process list, session directories, and `<workdir-root>/tasks/` after confirming no session needs the data. An explicit resume re-dials SSH and reuses a live recorded PID when possible; otherwise Kandev starts a fresh remote controller and re-runs preparation.
 
