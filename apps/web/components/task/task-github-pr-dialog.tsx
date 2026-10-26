@@ -11,6 +11,9 @@ import {
 import { TaskChangeRequestLinkForm } from "@/components/integrations/task-change-request-link-form";
 import { createTaskPR } from "@/lib/api/domains/github-api";
 import { createFocusReturnHandler } from "@/lib/dialog-focus-return";
+import { unconnectedGitHubHost } from "@/lib/github/parse-url";
+import { useGitHubHosts } from "@/hooks/domains/github/use-github-hosts";
+import { GitHubHostNotConnectedNotice } from "@/components/github/github-host-not-connected-notice";
 import type { Repository } from "@/lib/types/http";
 import {
   githubReposForTask,
@@ -44,6 +47,7 @@ export function TaskGitHubPRDialog({
 }: TaskGitHubPRDialogProps) {
   const { t } = useTranslation();
   const githubRepos = useMemo(() => githubReposForTask(task, repositories), [task, repositories]);
+  const githubHosts = useGitHubHosts(workspaceId);
   const inferredRepo = githubRepos.length === 1 ? githubRepos[0] : null;
   const placeholder = inferredRepo
     ? t("task:githubPrRefPlaceholder", { example: GITHUB_PR_URL_EXAMPLE })
@@ -53,7 +57,7 @@ export function TaskGitHubPRDialog({
     if (!workspaceId) {
       throw new Error(t("task:selectWorkspaceBeforeLinkingPr"));
     }
-    const payload = pullRequestPayload(reference, githubRepos);
+    const payload = pullRequestPayload(reference, githubRepos, githubHosts);
     await createTaskPR({
       workspace_id: workspaceId,
       task_id: task.id,
@@ -89,6 +93,12 @@ export function TaskGitHubPRDialog({
           errorTestId="task-github-pr-error"
           submitTestId="task-github-pr-submit"
           resetKey={open}
+          inputNotice={(reference) => {
+            const host = unconnectedGitHubHost(reference, githubHosts);
+            return host ? (
+              <GitHubHostNotConnectedNotice host={host} workspaceId={workspaceId} />
+            ) : null;
+          }}
           onSubmit={submit}
           onCancel={() => onOpenChange(false)}
           onSuccess={() => onOpenChange(false)}

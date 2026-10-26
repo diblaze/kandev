@@ -16,6 +16,7 @@ export function prStatusKey(owner: string, repo: string, number: number): string
 export function usePRStatuses(
   workspaceId: string | null,
   prs: GitHubPR[],
+  host?: string,
 ): Map<string, GitHubPRStatus> {
   const emptyStatuses = useMemo(() => new Map<string, GitHubPRStatus>(), []);
   const [result, setResult] = useState(() => ({ key: "", statuses: emptyStatuses }));
@@ -25,7 +26,7 @@ export function usePRStatuses(
 
   const key =
     workspaceId && prs.length > 0
-      ? `${workspaceId}:${prs.map((p) => prStatusKey(p.repo_owner, p.repo_name, p.number)).join(",")}`
+      ? `${workspaceId}:${host ?? ""}:${prs.map((p) => prStatusKey(p.repo_owner, p.repo_name, p.number)).join(",")}`
       : "";
 
   // We deliberately depend only on `key`: `prs` gets a new array identity on
@@ -46,7 +47,7 @@ export function usePRStatuses(
       number: p.number,
     }));
     let cancelled = false;
-    getPRStatusesBatch(workspaceId!, refs)
+    getPRStatusesBatch(workspaceId!, refs, host ? { host } : undefined)
       .then((resp) => {
         if (cancelled) return;
         completedKey.current = key;

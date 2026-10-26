@@ -74,3 +74,39 @@ describe("ListToolbar", () => {
     expect(onRepoFilterChange).not.toHaveBeenCalled();
   });
 });
+
+describe("ListToolbar GitHub hosts", () => {
+  function renderWithHosts(githubHosts: string[]) {
+    render(
+      <TooltipProvider>
+        <ListToolbar
+          title="Review requested"
+          count={0}
+          loading={false}
+          lastFetchedAt={null}
+          customQuery=""
+          committedQuery=""
+          onCustomQueryChange={vi.fn()}
+          onCommitCustomQuery={vi.fn()}
+          repoFilter=""
+          onRepoFilterChange={vi.fn()}
+          repoOptions={[]}
+          onRefresh={vi.fn()}
+          githubHosts={githubHosts}
+          githubHost="octo.ghe.com"
+          onGitHubHostChange={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+  }
+
+  it("offers a host selector when two or more hosts are connected", () => {
+    renderWithHosts(["github.com", "octo.ghe.com"]);
+    expect(screen.getByTestId("github-host-select").textContent).toContain("octo.ghe.com");
+  });
+
+  it("hides the host selector with a single host", () => {
+    renderWithHosts(["github.com"]);
+    expect(screen.queryByTestId("github-host-select")).toBeNull();
+  });
+});

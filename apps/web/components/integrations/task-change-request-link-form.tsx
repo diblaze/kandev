@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Button } from "@kandev/ui/button";
 import { DialogFooter } from "@kandev/ui/dialog";
 import { Input } from "@kandev/ui/input";
@@ -18,6 +18,8 @@ export type TaskChangeRequestLinkFormProps = {
   errorTestId?: string;
   submitTestId?: string;
   resetKey?: unknown;
+  /** Explains why the current input cannot be linked; while it returns content, submit is blocked. */
+  inputNotice?: (input: string) => ReactNode;
   onSubmit(reference: string, signal: AbortSignal): Promise<void>;
   onCancel(): void;
   onSuccess(): void;
@@ -25,10 +27,12 @@ export type TaskChangeRequestLinkFormProps = {
 
 function LinkFormFooter({
   submitting,
+  blocked,
   submitTestId,
   onCancel,
 }: {
   submitting: boolean;
+  blocked: boolean;
   submitTestId?: string;
   onCancel(): void;
 }) {
@@ -40,13 +44,22 @@ function LinkFormFooter({
       <Button
         type="submit"
         className="cursor-pointer"
-        disabled={submitting}
+        disabled={submitting || blocked}
         data-testid={submitTestId}
         data-dialog-default-action
       >
         {submitting ? t("integrations:saving") : t("common:save")}
       </Button>
     </DialogFooter>
+  );
+}
+
+function LinkFormError({ error, testId }: { error: string | null; testId?: string }) {
+  if (!error) return null;
+  return (
+    <p className="text-xs text-destructive" data-testid={testId}>
+      {error}
+    </p>
   );
 }
 
@@ -64,6 +77,7 @@ export function TaskChangeRequestLinkForm({
   errorTestId,
   submitTestId,
   resetKey,
+  inputNotice,
   onSubmit,
   onCancel,
   onSuccess,
@@ -91,8 +105,11 @@ export function TaskChangeRequestLinkForm({
     setSubmitting(false);
   }, [resetKey]);
 
+  const notice = inputNotice?.(input.trim()) ?? null;
+
   const submit = async () => {
     const reference = input.trim();
+    if (notice) return;
     if (!reference) {
       setError(emptyError);
       return;
@@ -144,13 +161,14 @@ export function TaskChangeRequestLinkForm({
           disabled={submitting}
           autoFocus
         />
-        {error && (
-          <p className="text-xs text-destructive" data-testid={errorTestId}>
-            {error}
-          </p>
-        )}
+        {notice ?? <LinkFormError error={error} testId={errorTestId} />}
       </div>
-      <LinkFormFooter submitting={submitting} submitTestId={submitTestId} onCancel={cancel} />
+      <LinkFormFooter
+        submitting={submitting}
+        blocked={Boolean(notice)}
+        submitTestId={submitTestId}
+        onCancel={cancel}
+      />
     </form>
   );
 }

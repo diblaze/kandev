@@ -59,3 +59,48 @@ describe("GitHubAppImportForm", () => {
     });
   });
 });
+
+describe("GitHubAppImportForm hosts", () => {
+  it("verifies the App against the named GitHub host", async () => {
+    const registrations = {
+      mutating: false,
+      prepareImport: vi.fn().mockResolvedValue(preparation),
+      importRegistration: vi.fn().mockResolvedValue({ id: "registration-1" }),
+    };
+    render(
+      <ToastProvider>
+        <GitHubAppImportForm
+          workspaceId="workspace-1"
+          registrations={registrations as never}
+          onImported={vi.fn()}
+        />
+      </ToastProvider>,
+    );
+    fireEvent.change(screen.getByLabelText("Public Kandev URL"), {
+      target: { value: "https://kandev.example" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate setup instructions" }));
+    const fields: Record<string, string> = {
+      "GitHub host": "OCTO.ghe.com",
+      "Name in Kandev": "Tenant automation",
+      "GitHub App slug": "tenant-app",
+      "GitHub owner login": "octo-org",
+      "App ID": "42",
+      "Client ID": "Iv1.tenant",
+      "Client secret": "client-secret",
+      "Webhook secret": "webhook-secret",
+      "Private key (.pem)": "private-key",
+    };
+    await screen.findByLabelText("Client secret");
+    for (const [label, value] of Object.entries(fields)) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Verify and import App" }));
+
+    await waitFor(() =>
+      expect(registrations.importRegistration).toHaveBeenCalledWith(
+        expect.objectContaining({ github_host: "octo.ghe.com", slug: "tenant-app" }),
+      ),
+    );
+  });
+});

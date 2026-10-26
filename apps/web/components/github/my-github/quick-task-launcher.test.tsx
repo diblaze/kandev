@@ -12,6 +12,8 @@ import {
 } from "@/lib/types/http";
 import { QuickTaskLauncher, type LaunchPayload, type TaskPreset } from "./quick-task-launcher";
 
+const LOCAL_KANDEV_PATH = "/work/kandev";
+
 const NOW = "2026-07-01T00:00:00Z";
 const WORKSPACE_ID = "workspace-1";
 const WORKFLOW_ID = "workflow-1";
@@ -135,7 +137,7 @@ function repo(overrides: RepoOverrides): Repository {
     workspace_id: workspaceId(WORKSPACE_ID),
     name: "kdlbs/kandev",
     source_type: "local",
-    local_path: "/work/kandev",
+    local_path: LOCAL_KANDEV_PATH,
     provider: "github",
     provider_repo_id: "",
     provider_owner: "kdlbs",
@@ -232,7 +234,7 @@ describe("QuickTaskLauncher repository defaults", () => {
 
   it("still preselects an ordinary matching local GitHub repo for issues", () => {
     const initialValues = renderIssueLauncher([
-      repo({ id: LOCAL_REPO_ID, local_path: "/work/kandev" }),
+      repo({ id: LOCAL_REPO_ID, local_path: LOCAL_KANDEV_PATH }),
     ]);
 
     expect(initialValues).toMatchObject({
@@ -305,5 +307,35 @@ describe("QuickTaskLauncher issue linking", () => {
     expect(mocks.push).toHaveBeenCalledWith("/t/task-1");
     await waitFor(() => expect(mocks.linkTaskIssue).toHaveBeenCalledTimes(1));
     expect(mocks.upsertTaskIssue).not.toHaveBeenCalled();
+  });
+});
+
+describe("QuickTaskLauncher GitHub hosts", () => {
+  const enterpriseIssueURL = "https://octo.ghe.com/kdlbs/kandev/issues/5";
+
+  it("does not preselect a same-named repository on another host", () => {
+    const initialValues = renderIssueLauncher(
+      [repo({ id: LOCAL_REPO_ID, local_path: LOCAL_KANDEV_PATH })],
+      { html_url: enterpriseIssueURL },
+    );
+
+    expect(initialValues?.repositoryId).toBeUndefined();
+    expect(initialValues).toMatchObject({ githubUrl: "octo.ghe.com/kdlbs/kandev" });
+  });
+
+  it("preselects the repository on the issue host", () => {
+    const initialValues = renderIssueLauncher(
+      [
+        repo({
+          id: LOCAL_REPO_ID,
+          local_path: LOCAL_KANDEV_PATH,
+          provider: "github",
+          provider_host: "https://octo.ghe.com",
+        }),
+      ],
+      { html_url: enterpriseIssueURL },
+    );
+
+    expect(initialValues).toMatchObject({ repositoryId: LOCAL_REPO_ID });
   });
 });

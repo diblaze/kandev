@@ -1,5 +1,6 @@
 "use client";
 
+import { useGitHubHosts } from "@/hooks/domains/github/use-github-hosts";
 import { useMemo, useRef, useState } from "react";
 import type { LocalRepository } from "@/lib/types/http";
 import type {
@@ -51,6 +52,7 @@ export function defaultSubtaskWorkspaceMode(
 export function useSubtaskFormState(workspaceId: string | null): DialogFormState {
   const repos = useRepositoriesState();
   const remoteRepos = useRemoteReposState();
+  const githubHosts = useGitHubHosts(workspaceId);
   const branchesByUrl = useBranchesByURL(workspaceId);
   const prInfoByUrl = usePRInfoByURL(workspaceId);
   const [agentProfileId, setAgentProfileId] = useState("");
@@ -94,6 +96,7 @@ export function useSubtaskFormState(workspaceId: string | null): DialogFormState
       updateRemoteRepo: remoteRepos.updateRemoteRepo,
       branchesByUrl,
       prInfoByUrl,
+      githubHosts,
       agentProfileId,
       setAgentProfileId,
       executorId: "",
@@ -149,6 +152,7 @@ export function useSubtaskFormState(workspaceId: string | null): DialogFormState
       remoteRepos.updateRemoteRepo,
       branchesByUrl,
       prInfoByUrl,
+      githubHosts,
       agentProfileId,
       executorProfileId,
       autopilot,

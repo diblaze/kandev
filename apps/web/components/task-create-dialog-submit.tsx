@@ -289,6 +289,7 @@ export function useTaskSubmitHandlers({
   useRemote,
   remoteRepos,
   prInfoByUrl,
+  githubHosts,
   agentProfileId,
   executorId,
   executorProfileId,
@@ -400,7 +401,7 @@ export function useTaskSubmitHandlers({
   // Returns true when a duplicate was found (caller should abort).
   const checkRemoteDuplicates = useCallback((): boolean => {
     if (!useRemote) return false;
-    const duplicate = findDuplicateRemoteRepo(remoteRepos);
+    const duplicate = findDuplicateRemoteRepo(remoteRepos, githubHosts);
     if (!duplicate) return false;
     toast({
       title: t("task:duplicateRepository"),
@@ -408,7 +409,7 @@ export function useTaskSubmitHandlers({
       variant: "error",
     });
     return true;
-  }, [useRemote, remoteRepos, toast]);
+  }, [useRemote, remoteRepos, toast, githubHosts]);
 
   const checkRemoteResolution = useCallback((): boolean => {
     if (!useRemote) return false;

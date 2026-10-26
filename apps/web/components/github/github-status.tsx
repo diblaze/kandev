@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import {
   IconBrandGithub,
   IconCheck,
@@ -20,19 +20,20 @@ import {
   useTaskGitCredentials,
   type TaskGitCredentialsState,
 } from "@/hooks/domains/github/use-task-git-credentials";
-import {
-  disconnectGitHubPersonal,
-  disconnectGitHubWorkspace,
-  startGitHubPersonalConnect,
-} from "@/lib/api/domains/github-api";
+import { disconnectGitHubPersonal, startGitHubPersonalConnect } from "@/lib/api/domains/github-api";
 import { getGitHubPersonalIdentityState } from "@/lib/github-auth";
 import type {
-  GitHubConnectionSource,
   GitHubConnectionState,
   GitHubStatus,
   GitHubAppRegistrationCatalogItem,
 } from "@/lib/types/github";
 import { GitHubConnectionDialog } from "./github-connection-dialog";
+import {
+  GitHubHostConnectionCard,
+  githubSourceLabelKeys,
+  useHostDisconnect,
+} from "./github-host-connection-card";
+import { DEFAULT_GITHUB_HOST } from "@/lib/github/host";
 import { GitHubAccessHelp } from "./github-access-help";
 import { GitHubPermissionsDialog } from "./github-permissions-dialog";
 import { GitHubRateLimitDisplay } from "./github-rate-limit";
@@ -41,16 +42,6 @@ import { GitHubTaskAccessSummary } from "./github-task-credentials-section";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { controlSizingClassName } from "@kandev/ui/control-sizing";
-
-// Keyed by the wire enum, which is never translated; only the label is copy.
-// Catalog keys rather than `t()` calls because this is module scope — a `t()`
-// here would freeze at the boot locale (see docs/i18n.md).
-const sourceLabelKeys: Record<GitHubConnectionSource, string> = {
-  pat: "github:personalAccessToken",
-  gh_cli: "github:githubCli",
-  github_app_installation: "github:githubApp",
-  legacy_shared: "github:legacySharedConnection",
-};
 
 // `t` is threaded in rather than imported at module level so the label follows a
 // locale switch and stays a pure function of its arguments.
@@ -104,7 +95,7 @@ function StatusLine({
             : connectionLabel(t, status))}
       </span>
       <Badge variant={active ? "secondary" : "destructive"}>
-        {t(sourceLabelKeys[connection.source])}
+        {t(githubSourceLabelKeys[connection.source])}
       </Badge>
       {connection.status !== "active" && <Badge variant="outline">{connection.status}</Badge>}
       <GitHubRateLimitDisplay
@@ -265,51 +256,61 @@ function AutomationActions({
 }
 
 export function GitHubAutomationSettings({ workspaceId }: { workspaceId: string }) {
-  const { t } = useTranslation();
   const { status, loaded, loading, refresh } = useGitHubStatus(workspaceId);
   const appRegistrations = useGitHubAppRegistrations(workspaceId);
   const taskAccess = useTaskGitCredentials(workspaceId);
-  const [busy, setBusy] = useState(false);
-  const { toast } = useToast();
-  const disconnect = useCallback(async () => {
-    setBusy(true);
-    try {
-      await disconnectGitHubWorkspace(workspaceId);
-      toast({ description: t("github:workspaceGithubConnectionRemoved"), variant: "success" });
-      refresh();
-    } catch (error) {
-      toast({
-        description: error instanceof Error ? error.message : t("github:disconnectFailed"),
-        variant: "error",
-      });
-    } finally {
-      setBusy(false);
-    }
-  }, [refresh, toast, workspaceId]);
+  const { busy, disconnect } = useHostDisconnect(workspaceId, DEFAULT_GITHUB_HOST, refresh);
   if (!loaded || !status) return <LoadingStatus />;
   const activeRegistrationId =
     status.app_registration?.id ?? status.automation?.app_registration_id;
   const activeApp = appRegistrations.registrations.find((item) => item.id === activeRegistrationId);
+  const enterpriseHosts = (status.hosts ?? []).filter(
+    (entry) => entry.github_host !== DEFAULT_GITHUB_HOST,
+  );
   return (
-    <div
-      className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-      data-testid="github-workspace-automation"
-    >
-      <AutomationStatusSummary
-        status={status}
-        app={activeApp}
-        taskAccess={taskAccess}
-        onRateLimitOpen={refresh}
-      />
-      <AutomationActions
-        status={status}
-        workspaceId={workspaceId}
-        busy={busy}
-        refreshing={loading}
-        onDisconnect={disconnect}
-        onRefresh={refresh}
-        taskAccess={taskAccess}
-      />
+    <div className="space-y-3" data-testid="github-host-connections">
+      <div data-testid="github-host-card" data-host={DEFAULT_GITHUB_HOST} className="space-y-1">
+        <span className="text-sm font-semibold">{DEFAULT_GITHUB_HOST}</span>
+        <div
+          className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+          data-testid="github-workspace-automation"
+        >
+          <AutomationStatusSummary
+            status={status}
+            app={activeApp}
+            taskAccess={taskAccess}
+            onRateLimitOpen={refresh}
+          />
+          <AutomationActions
+            status={status}
+            workspaceId={workspaceId}
+            busy={busy}
+            refreshing={loading}
+            onDisconnect={disconnect}
+            onRefresh={refresh}
+            taskAccess={taskAccess}
+          />
+        </div>
+      </div>
+      {enterpriseHosts.map((entry) => (
+        <GitHubHostConnectionCard
+          key={entry.github_host}
+          workspaceId={workspaceId}
+          status={status}
+          entry={entry}
+          taskAccess={taskAccess}
+          onChanged={refresh}
+        />
+      ))}
+      <div className="border-t pt-3">
+        <GitHubConnectionDialog
+          status={status}
+          workspaceId={workspaceId}
+          addHost
+          onSaved={refresh}
+          taskAccess={taskAccess}
+        />
+      </div>
     </div>
   );
 }

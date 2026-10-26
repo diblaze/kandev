@@ -206,3 +206,18 @@ describe("useRepoMergeAccess committed lifetime", () => {
     await act(async () => suspension.resolve(denied));
   });
 });
+
+describe("useRepoMergeAccess hosts", () => {
+  it("reads access on the pull request host", async () => {
+    mocks.request.mockResolvedValueOnce(allowed);
+    renderHook(() => useRepoMergeAccess("ws-1", "upstream", "site", true, "octo.ghe.com"));
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith(
+        "ws-1",
+        "upstream",
+        "site",
+        expect.objectContaining({ host: "octo.ghe.com" }),
+      ),
+    );
+  });
+});

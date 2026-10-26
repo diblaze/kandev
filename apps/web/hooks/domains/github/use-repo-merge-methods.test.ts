@@ -41,7 +41,7 @@ describe("useRepoMergeMethods", () => {
 
     await waitFor(() => expect(result.current).toEqual(methods));
     expect(getRepoMergeMethodsMock).toHaveBeenCalledTimes(1);
-    expect(getRepoMergeMethodsMock).toHaveBeenCalledWith("ws-1", owner, repo);
+    expect(getRepoMergeMethodsMock).toHaveBeenCalledWith("ws-1", owner, repo, { host: undefined });
   });
 
   it("returns the cached value on subsequent mounts without refetching", async () => {
@@ -130,5 +130,23 @@ describe("useRepoMergeMethods", () => {
     expect(secondMount.result.current).toBeNull();
     await waitFor(() => expect(secondMount.result.current).toEqual(second));
     expect(getRepoMergeMethodsMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("useRepoMergeMethods hosts", () => {
+  it("reads an enterprise repository on its host and caches it apart from github.com", async () => {
+    const { owner, repo } = uniqueRepo();
+    getRepoMergeMethodsMock
+      .mockResolvedValueOnce({ merge: true, squash: false, rebase: false })
+      .mockResolvedValueOnce({ merge: false, squash: true, rebase: false });
+
+    const github = renderHook(() => useRepoMergeMethods("ws-1", owner, repo));
+    await waitFor(() => expect(github.result.current?.merge).toBe(true));
+    const enterprise = renderHook(() => useRepoMergeMethods("ws-1", owner, repo, "octo.ghe.com"));
+    await waitFor(() => expect(enterprise.result.current?.squash).toBe(true));
+
+    expect(getRepoMergeMethodsMock).toHaveBeenLastCalledWith("ws-1", owner, repo, {
+      host: "octo.ghe.com",
+    });
   });
 });

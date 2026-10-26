@@ -657,5 +657,15 @@
   "mergeAccessDeniedByActor": "{{actor}} cannot merge into {{repository}}.",
   "mergeAccessDenied": "This account cannot merge into {{repository}}.",
   "checkMergeAccess": "Check again",
-  "mergeAsActor": "as {{actor}}"
+  "mergeAsActor": "as {{actor}}",
+  "githubHost": "GitHub host",
+  "githubHostHelp": "Enter github.com, a GHE.com tenant such as octo.ghe.com, or the hostname of your GitHub Enterprise Server.",
+  "enterAValidGithubHost": "Enter a bare hostname, such as github.com or ghe.example.com, without https:// or a path.",
+  "connectAnotherGithubHost": "Connect another GitHub host",
+  "githubHostNotConnected": "{{host}} is not connected.",
+  "openGithubSettings": "Open GitHub settings",
+  "cliAccountConnectedSuffix": " (connected)",
+  "githubHostConnectionRemoved": "{{host}} connection removed",
+  "personalLoginOnHost": "Personal: {{login}}",
+  "actionsForGithubHost": "Actions for {{host}}"
 }

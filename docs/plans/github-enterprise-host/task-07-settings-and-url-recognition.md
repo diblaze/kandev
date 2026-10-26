@@ -1,7 +1,7 @@
 ---
 id: "07-settings-and-url-recognition"
 title: "Settings and URL recognition for GitHub hosts"
-status: pending
+status: done
 wave: 4
 depends_on:
   - "03-host-routed-operations"
@@ -196,4 +196,144 @@ Task 03 (`host` on routes, `hosts` in status).
 
 ## Results
 
-Pending.
+Implemented test-first.
+
+What was done:
+
+- Host helpers (`lib/github/host.ts`): `normalizeGitHubHost` (backend rule,
+  null for an invalid host), `githubWebOrigin`, `hostFromUrl`,
+  `hostFromProviderHost` (empty means github.com, malformed is null),
+  `isKnownGitHubHost`, `githubSSHUser` (tenant name on `.ghe.com`, `git`
+  elsewhere), and `setGitHubHostParam`, which sends `host` only for a host
+  other than github.com and forwards a malformed host unchanged so the backend
+  rejects it.
+- Types: `GitHubHostStatus`, `GitHubStatus.hosts`, `github_host` on `TaskPR`,
+  watches, watch create requests, `GitHubPersonalConnection`, workflow sync
+  config and request; `RepoFilter.host`; `StartGitHubAppManifestRequest.github_host`.
+- API clients: status, workspace disconnect, personal connect and disconnect,
+  PR info/feedback/status/batch statuses/review/merge/reviewers, issue info,
+  branches, merge methods and access, orgs, org repo search, accessible repos
+  (tagged with `host`), user PR and issue search, and task issue links take a
+  host.
+- `useGitHubHosts(workspaceId)`: github.com plus every connected host, read
+  from the loaded workspace status in the store (no request of its own; outside
+  a store it returns github.com only).
+- URL recognition: every GitHub parser takes the connected hosts and returns
+  the host (`parse-url.ts`, `github-repo-url.ts`, `use-pr-info-by-url.ts`,
+  `task-github-pr-url.ts`); `matchGitHubShapedUrl` and `unconnectedGitHubHost`
+  name the host of a pull-request or issue URL on a host without a connection.
+  `looksLikeSupportedRemoteURL` accepts listed hosts in URL and SCP form with
+  any SCP user. Branch listing, PR and issue metadata, duplicate-repository
+  checks, the first-row URL error, workspace source validation, remote
+  repository identity (SCP and HTTPS of one host now dedupe), the PR and issue
+  link dialogs, the add-remote-repository dialog, and workflow sync (stores
+  `github_host`) use them. Remote repository browsing lists every active
+  connected host with URLs and `providerHost` on that host.
+- UI-04: `GitHubHostNotConnectedNotice` ("<host> is not connected." plus an
+  "Open GitHub settings" link to the workspace GitHub settings) in the task
+  create and workspace source remote picker, the PR link dialog (through a new
+  optional `inputNotice` on `TaskChangeRequestLinkForm`, which blocks submit
+  while it shows), and the issue link dialog.
+- Links: author, reviewer, and comment profile links and the PR detail mapping
+  use the PR host (`taskPRWebHost`); file links accept the repository
+  `provider_host` for GitHub over HTTPS and SSH (tenant SSH user required on
+  `.ghe.com`); `githubPRMatches` compares hosts when the PR has no repository
+  ID; the quick-task launcher matches repositories and builds the fallback URL
+  on the item host. PR feedback, merge methods, merge access, merge, review, and
+  re-request calls send the task PR `github_host`, and the feedback and merge
+  method caches key by host.
+- Settings (UI-01, UI-02): one card per host (`github-host-card`): the existing
+  github.com card plus `GitHubHostConnectionCard` per enterprise host (source,
+  login or installation account, status, last error, personal login, Change,
+  Disconnect for that host), and "Connect another GitHub host". On phones the
+  enterprise card actions move into a row menu (44px trigger) that opens the
+  connection drawer. The connection dialog takes `host` (Change) or `addHost`;
+  the token form has a "GitHub host" field defaulting to github.com, validated
+  like the backend; the CLI picker marks and disables accounts on hosts that
+  already have a connection, except the host being changed.
+- App flows: create and import forms have a host field sent as `github_host`;
+  App settings links use the host; the registration list shows each host.
+- GitHub page (UI-03): a host selector when two or more hosts are connected;
+  search and PR statuses use the selected host; enterprise results show their
+  host in the row metadata. Review and issue watch dialogs have a host field
+  (shown with two or more hosts) and store `github_host`; the repository filter
+  lists organizations and repositories on that host.
+- Locale keys in all seven catalogs (zh-hk and zh-tw through
+  `pnpm run i18n:zh-hant`) and the pseudo catalog.
+- E2E: `github-multi-host-settings.spec.ts` (two cards and host-scoped
+  disconnect; connect a second host with a token; PR link dialog recognizes an
+  `octo.ghe.com` URL and shows UI-04 for `ghe.example.com`) and a phone case in
+  `mobile-github-workspace-settings.spec.ts` (stacked cards, row menu, 44px
+  target, no horizontal overflow). The API client mock connection helpers take
+  an optional host.
+
+Verification (from `apps/web`, `NODE_OPTIONS=--max-old-space-size=4096`,
+`--maxWorkers=2`, one heavy command at a time):
+
+- `pnpm run typecheck`: exit 0 (tsc needed `--max-old-space-size=8192`; it
+  aborts with an out-of-memory error at 4096 on this tree, also before this order).
+- `pnpm vitest run --maxWorkers=2` (full suite): `Test Files 3 failed | 3067 passed (3070)`,
+  `Tests 3 failed | 27974 passed | 4 skipped`. The three failures are outside
+  this order and untouched by it: `lib/sidebar/sidebar-archived-update-freshness.test.ts`
+  and `lib/logger/indexeddb-store.test.ts` timed out under load and pass alone;
+  `e2e/helpers/seed-repository-origin.test.ts` fails alone too (the local Git
+  reports `reference already exists` where the test expects `cannot lock ref`).
+- The affected-area run (`components/task components/task-create components/workspace-source-picker components/settings components/integrations components/github hooks lib/github lib/utils lib/api/domains app/github`):
+  `Test Files 1619 passed (1619)`, `Tests 14742 passed | 4 skipped`.
+- `pnpm run lint`: exit 0, no warnings.
+- `pnpm run i18n:check`: all six checks pass; ja, ko, pt-pt, zh-cn, zh-hk,
+  zh-tw complete, pseudo in sync.
+- `pnpm run i18n:ratchet`: `0 added + 68 modified file(s) clean`, guard
+  allowlist intact.
+- `pnpm e2e:run --host -- tests/integrations/github-multi-host-settings.spec.ts`: `3 passed`.
+- `pnpm e2e:run --host --no-build --project mobile-chrome -- tests/integrations/mobile-github-workspace-settings.spec.ts`: `4 passed`.
+- Regression: `github-workspace-settings.spec.ts` and `github-authentication.spec.ts`
+  `10 passed`; `mobile-github-auth-settings.spec.ts` `3 passed`.
+  The E2E runs used the harness's own backend (ports 18080+, temporary HOME);
+  the Playwright browser was installed into `apps/web/node_modules/.ms-playwright`
+  through `PLAYWRIGHT_BROWSERS_PATH`.
+
+Tests that passed on their first run, then proven by breaking the code: the CLI
+picker host test (preferred account no longer skipped taken hosts) and the
+toolbar host selector test (selector shown with one host). The second CLI test
+and "does not recognize URLs on a host that is not connected" are guards that
+passed before the change by construction.
+
+Deviations:
+
+- `useGitHubHosts` reads the store with `useOptionalAppStore` instead of calling
+  `useGitHubStatus`: many hook tests run without a `StateProvider`, and the
+  status is already loaded by the navigation availability hook and every
+  GitHub surface. Hosts reach the task-create submit and effects through
+  `DialogFormState.githubHosts`, and the remote picker through
+  `UseRemoteRepositoriesResult.githubHosts`, which derives them from its own
+  status read. Five test mocks of `@/components/state-provider` gained
+  `useOptionalAppStore`.
+- `mergePR(workspaceId, ref, mergeMethod)` and `requestPRReviewers(ref, reviewers, workspaceId)`
+  take a pull-request ref object instead of positional owner, repo, and number,
+  to stay within the five-parameter limit; callers and tests are updated.
+- The token form sends `host` only for a host other than github.com, so the
+  github.com request is unchanged.
+- `matchGitHubShapedUrl` matches pull-request and issue paths only: a bare
+  `https://<host>/<owner>/<repo>` is equally a GitLab or other self-hosted
+  repository, so an unlisted repository URL keeps the existing invalid-URL
+  message instead of UI-04 (workflow sync included).
+- Per-host detail on expand (permissions, rate limits, personal OAuth connect
+  for an enterprise host) is not built: an enterprise card shows what the
+  `hosts` entry carries; personal connection management stays on the
+  github.com projection.
+- Results show their host in the row metadata for enterprise hosts only; the
+  selector names the host for the whole result list.
+- `review-watch-dialog.tsx` moved its form state helpers to
+  `review-watch-form.ts`, and `task-create-dialog-helpers` host tests live in a
+  new file, to stay within the file length limit.
+- The mock GitHub controller needed no change: task 02 already gave its
+  connection routes a `host` query parameter.
+- A pasted URL that `usePRInfoByURL` already recorded as "no info" before the
+  workspace status loaded is not re-parsed when the hosts arrive; the
+  navigation hook loads the status at startup, so this needs a paste in the
+  first moments after boot.
+
+Unverified: a live enterprise host (task 08); `issue-watch-dialog` host storage
+has no own test (it shares `GitHubWatchHostField` and the payload shape with the
+review watch dialog, which is tested).

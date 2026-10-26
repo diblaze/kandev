@@ -31,6 +31,8 @@ import type {
   TaskCIAutomationPatch,
 } from "@/lib/types/github";
 import { invalidateIntegrationAvailabilityAfter } from "@/lib/integrations/integration-availability-events";
+import { githubWorkspaceQuery, setGitHubHostParam } from "@/lib/github/host";
+import type { GitHubHostOptions } from "./github-pr-api";
 
 export * from "./github-auth-api";
 export * from "./github-pr-api";
@@ -109,7 +111,7 @@ export async function deleteTaskPR(
 
 export async function linkTaskIssue(
   taskId: string,
-  data: { issue: string; owner?: string; repo?: string; number?: number },
+  data: { issue: string; owner?: string; repo?: string; number?: number; host?: string },
   options?: ApiRequestOptions,
 ) {
   return fetchJson<TaskIssueLink>(`/api/v1/github/tasks/${encodeURIComponent(taskId)}/issue`, {
@@ -310,6 +312,8 @@ export async function triggerAllReviewWatches(workspaceId: string, options?: Api
 // `omitempty` — null/empty descriptions are dropped from the JSON.
 export type AccessibleRepo = {
   provider: "github" | "gitlab";
+  /** GitHub host the repository was listed from; absent means github.com. */
+  host?: string;
   owner: string;
   name: string;
   full_name: string;
@@ -352,6 +356,7 @@ function isGitHubNotConfigured(err: unknown): boolean {
 
 export async function fetchAccessibleRepos(opts: {
   workspaceId: string;
+  host?: string;
   q?: string;
   limit?: number;
   signal?: AbortSignal;
@@ -359,6 +364,7 @@ export async function fetchAccessibleRepos(opts: {
   const params = new URLSearchParams({ workspace_id: opts.workspaceId });
   if (opts.q) params.set("q", opts.q);
   if (typeof opts.limit === "number") params.set("limit", String(opts.limit));
+  setGitHubHostParam(params, opts.host);
   const suffix = params.toString();
   const path = `/api/v1/github/repos${suffix ? `?${suffix}` : ""}`;
   try {
@@ -367,7 +373,11 @@ export async function fetchAccessibleRepos(opts: {
       init: opts.signal ? { signal: opts.signal } : undefined,
     });
     const repos = res?.repos ?? [];
-    return repos.map((r) => ({ ...r, provider: "github" as const }));
+    return repos.map((r) => ({
+      ...r,
+      provider: "github" as const,
+      ...(opts.host ? { host: opts.host } : {}),
+    }));
   } catch (err) {
     if (isGitHubNotConfigured(err)) {
       throw new GitHubUnavailableError(err instanceof Error ? err.message : undefined);
@@ -377,8 +387,8 @@ export async function fetchAccessibleRepos(opts: {
 }
 
 // Orgs & repo search
-export async function listUserOrgs(workspaceId: string, options?: ApiRequestOptions) {
-  const query = new URLSearchParams({ workspace_id: workspaceId });
+export async function listUserOrgs(workspaceId: string, options?: GitHubHostOptions) {
+  const query = githubWorkspaceQuery(workspaceId, options?.host);
   return fetchJson<{ orgs: GitHubOrg[] }>(`/api/v1/github/orgs?${query}`, options);
 }
 
@@ -386,10 +396,11 @@ export async function searchOrgRepos(
   workspaceId: string,
   org: string,
   query?: string,
-  options?: ApiRequestOptions,
+  options?: GitHubHostOptions,
 ) {
   const params = new URLSearchParams({ workspace_id: workspaceId, org });
   if (query) params.set("q", query);
+  setGitHubHostParam(params, options?.host);
   return fetchJson<{ repos: GitHubRepoInfo[] }>(
     `/api/v1/github/repos/search?${params.toString()}`,
     options,
@@ -402,9 +413,9 @@ export async function fetchPRInfo(
   owner: string,
   repo: string,
   number: number,
-  options?: ApiRequestOptions,
+  options?: GitHubHostOptions,
 ) {
-  const query = new URLSearchParams({ workspace_id: workspaceId });
+  const query = githubWorkspaceQuery(workspaceId, options?.host);
   return fetchJsonWithRetry<GitHubPR>(
     `/api/v1/github/prs/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${number}/info?${query}`,
     options,
@@ -417,9 +428,9 @@ export async function fetchIssueInfo(
   owner: string,
   repo: string,
   number: number,
-  options?: ApiRequestOptions,
+  options?: GitHubHostOptions,
 ) {
-  const query = new URLSearchParams({ workspace_id: workspaceId });
+  const query = githubWorkspaceQuery(workspaceId, options?.host);
   return fetchJsonWithRetry<GitHubIssue>(
     `/api/v1/github/issues/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${number}/info?${query}`,
     options,
@@ -431,9 +442,9 @@ export async function fetchRepoBranches(
   workspaceId: string,
   owner: string,
   repo: string,
-  options?: ApiRequestOptions,
+  options?: GitHubHostOptions,
 ) {
-  const query = new URLSearchParams({ workspace_id: workspaceId });
+  const query = githubWorkspaceQuery(workspaceId, options?.host);
   return fetchJsonWithRetry<{ branches: { name: string }[] }>(
     `/api/v1/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches?${query}`,
     options,
@@ -575,6 +586,7 @@ export async function cleanupClosedIssueTasks(workspaceId?: string, options?: Ap
 // the default (type:pr state:open / type:issue state:open).
 type SearchParams = {
   workspaceId: string;
+  host?: string;
   query?: string;
   filter?: string;
   page?: number;
@@ -588,6 +600,7 @@ function buildSearchQuery(params: SearchParams) {
   if (params.page && params.page > 1) search.set("page", String(params.page));
   if (params.perPage) search.set("per_page", String(params.perPage));
   search.set("workspace_id", params.workspaceId);
+  setGitHubHostParam(search, params.host);
   return search.toString();
 }
 

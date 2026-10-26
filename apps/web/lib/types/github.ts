@@ -51,6 +51,7 @@ export type GitHubAutomationConnection = {
 export type GitHubPersonalConnection = {
   workspace_id: string;
   user_id: string;
+  github_host?: string;
   app_registration_id: string;
   github_user_id: number;
   login: string;
@@ -75,8 +76,21 @@ export type AuthDiagnostics = {
   exit_code: number;
 };
 
+/** One host connection of a workspace, as listed in the status `hosts` array. */
+export type GitHubHostStatus = {
+  github_host: string;
+  source: GitHubConnectionSource;
+  login?: string;
+  installation_account_login?: string;
+  status: GitHubConnectionState;
+  last_error?: string;
+  personal_login?: string;
+};
+
 export type GitHubStatus = {
   workspace_id?: string;
+  /** Every host connection; the top-level fields describe the requested host (github.com by default). */
+  hosts?: GitHubHostStatus[];
   automation?: GitHubAutomationConnection | null;
   personal?: GitHubPersonalConnection | null;
   app_registration?: GitHubAppRegistration | null;
@@ -234,6 +248,8 @@ export type TaskPR = {
   id: string;
   workspace_id: string;
   task_id: string;
+  /** GitHub host of the pull request; absent on payloads that predate hosts (github.com). */
+  github_host?: string;
   /** ID of the task repository this PR belongs to. Empty for legacy single-repo
    *  tasks persisted before multi-repo support. */
   repository_id?: string;
@@ -417,6 +433,8 @@ export type PRWatch = {
 export type RepoFilter = {
   owner: string;
   name: string;
+  /** GitHub host; absent means github.com. */
+  host?: string;
 };
 
 export type GitHubRepoScopeMode = "all" | "orgs" | "repos";
@@ -474,6 +492,7 @@ export type ReviewWatch = {
   workspace_id: string;
   workflow_id: string;
   workflow_step_id: string;
+  github_host?: string;
   repos: RepoFilter[];
   agent_profile_id: string;
   executor_profile_id: string;
@@ -528,6 +547,7 @@ export type PRStatsResponse = PRStats;
 // Request types
 export type CreateReviewWatchRequest = {
   workspace_id: string;
+  github_host?: string;
   workflow_id: string;
   workflow_step_id: string;
   repos: RepoFilter[];
@@ -554,6 +574,7 @@ export type IssueWatch = {
   workspace_id: string;
   workflow_id: string;
   workflow_step_id: string;
+  github_host?: string;
   repos: RepoFilter[];
   agent_profile_id: string;
   executor_profile_id: string;
@@ -578,6 +599,7 @@ export type TriggerIssueResponse = {
 
 export type CreateIssueWatchRequest = {
   workspace_id: string;
+  github_host?: string;
   workflow_id: string;
   workflow_step_id: string;
   repos: RepoFilter[];

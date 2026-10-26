@@ -111,6 +111,7 @@ describe("workflow source raw acknowledgement", () => {
     });
     expect(hook.result.current.form).toEqual({
       provider: "gitlab",
+      github_host: "github.com",
       repo_owner: "",
       repo_name: "",
       project_path: "team/sub/project",

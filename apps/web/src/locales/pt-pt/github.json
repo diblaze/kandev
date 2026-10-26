@@ -657,5 +657,15 @@
   "mergeAccessDeniedByActor": "{{actor}} não pode integrar em {{repository}}.",
   "mergeAccessDenied": "Esta conta não pode integrar em {{repository}}.",
   "checkMergeAccess": "Verificar novamente",
-  "mergeAsActor": "como {{actor}}"
+  "mergeAsActor": "como {{actor}}",
+  "githubHost": "Anfitrião do GitHub",
+  "githubHostHelp": "Introduza github.com, um inquilino GHE.com como octo.ghe.com ou o nome do anfitrião do seu GitHub Enterprise Server.",
+  "enterAValidGithubHost": "Introduza apenas um nome de anfitrião, como github.com ou ghe.example.com, sem https:// nem caminho.",
+  "connectAnotherGithubHost": "Ligar outro anfitrião do GitHub",
+  "githubHostNotConnected": "{{host}} não está ligado.",
+  "openGithubSettings": "Abrir as definições do GitHub",
+  "cliAccountConnectedSuffix": " (ligado)",
+  "githubHostConnectionRemoved": "Ligação a {{host}} removida",
+  "personalLoginOnHost": "Pessoal: {{login}}",
+  "actionsForGithubHost": "Ações de {{host}}"
 }

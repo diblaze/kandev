@@ -657,5 +657,15 @@
   "mergeAccessDeniedByActor": "{{actor}} ćàńńōţ ḿēŕĝē ĩńţō {{repository}}.",
   "mergeAccessDenied": "Ţĥĩś àććōũńţ ćàńńōţ ḿēŕĝē ĩńţō {{repository}}.",
   "checkMergeAccess": "Ćĥēćķ àĝàĩń",
-  "mergeAsActor": "àś {{actor}}"
+  "mergeAsActor": "àś {{actor}}",
+  "githubHost": "ĜĩţĤũƀ ĥōśţ",
+  "githubHostHelp": "Ēńţēŕ ĝĩţĥũƀ.ćōḿ, à ĜĤĒ.ćōḿ ţēńàńţ śũćĥ àś ōćţō.ĝĥē.ćōḿ, ōŕ ţĥē ĥōśţńàḿē ōƒ ŷōũŕ ĜĩţĤũƀ Ēńţēŕƥŕĩśē Śēŕvēŕ.",
+  "enterAValidGithubHost": "Ēńţēŕ à ƀàŕē ĥōśţńàḿē, śũćĥ àś ĝĩţĥũƀ.ćōḿ ōŕ ĝĥē.ēxàḿƥĺē.ćōḿ, ŵĩţĥōũţ ĥţţƥś:// ōŕ à ƥàţĥ.",
+  "connectAnotherGithubHost": "Ćōńńēćţ àńōţĥēŕ ĜĩţĤũƀ ĥōśţ",
+  "githubHostNotConnected": "{{host}} ĩś ńōţ ćōńńēćţēď.",
+  "openGithubSettings": "Ōƥēń ĜĩţĤũƀ śēţţĩńĝś",
+  "cliAccountConnectedSuffix": " (ćōńńēćţēď)",
+  "githubHostConnectionRemoved": "{{host}} ćōńńēćţĩōń ŕēḿōvēď",
+  "personalLoginOnHost": "Ƥēŕśōńàĺ: {{login}}",
+  "actionsForGithubHost": "Àćţĩōńś ƒōŕ {{host}}"
 }

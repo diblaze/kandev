@@ -19,6 +19,7 @@ const REMOVE_CONFIRM_TEST_ID = "workflow-sync-remove-confirm";
 
 const EMPTY_FORM: WorkflowSyncFormState = {
   provider: "github",
+  github_host: "github.com",
   repo_owner: "",
   repo_name: "",
   project_path: "",
@@ -32,6 +33,7 @@ function config(overrides: Partial<WorkflowSyncConfig> = {}): WorkflowSyncConfig
   return {
     workspace_id: "workspace-1",
     provider: "github",
+    github_host: "github.com",
     repo_owner: "acme",
     repo_name: "flows",
     project_path: "",
@@ -50,6 +52,7 @@ function formForConfig(currentConfig: WorkflowSyncConfig | null): WorkflowSyncFo
   if (!currentConfig) return { ...EMPTY_FORM };
   return {
     provider: currentConfig.provider,
+    github_host: "github.com",
     repo_owner: currentConfig.repo_owner,
     repo_name: currentConfig.repo_name,
     project_path: currentConfig.project_path,

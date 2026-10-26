@@ -15,6 +15,10 @@ import { Label } from "@kandev/ui/label";
 import { useToast } from "@/components/toast-provider";
 import { linkTaskIssue, unlinkTaskIssue } from "@/lib/api/domains/github-api";
 import { createFocusReturnHandler } from "@/lib/dialog-focus-return";
+import { DEFAULT_GITHUB_HOST, hostFromProviderHost } from "@/lib/github/host";
+import { unconnectedGitHubHost } from "@/lib/github/parse-url";
+import { useGitHubHosts } from "@/hooks/domains/github/use-github-hosts";
+import { GitHubHostNotConnectedNotice } from "@/components/github/github-host-not-connected-notice";
 import type { Repository } from "@/lib/types/http";
 import { useTranslation } from "react-i18next";
 
@@ -32,6 +36,8 @@ type TaskIssue = {
 };
 
 type GitHubRepoRef = {
+  /** GitHub host; absent means github.com. */
+  host?: string;
   owner: string;
   repo: string;
 };
@@ -52,6 +58,7 @@ type DialogFieldsProps = {
   inferredRepo: GitHubRepoRef | null;
   submitting: boolean;
   error: string | null;
+  unconnectedHost: string | null;
 };
 
 type DialogActionsProps = {
@@ -67,11 +74,16 @@ function githubReposForTask(task: TaskIssue, repositories: Repository[]): GitHub
   if (task.repositoryId) ids.add(task.repositoryId);
   return repositories
     .filter((repo) => ids.has(repo.id) && repo.provider === "github")
-    .map((repo) => ({ owner: repo.provider_owner, repo: repo.provider_name }))
+    .flatMap((repo) => {
+      const host = hostFromProviderHost(repo.provider_host);
+      if (!host) return [];
+      const ref = { owner: repo.provider_owner, repo: repo.provider_name };
+      return [host === DEFAULT_GITHUB_HOST ? ref : { host, ...ref }];
+    })
     .filter((repo) => repo.owner && repo.repo);
 }
 
-function issuePayload(input: string, inferredRepo: GitHubRepoRef | null) {
+export function issuePayload(input: string, inferredRepo: GitHubRepoRef | null) {
   const trimmed = input.trim();
   if (/^#?\d+$/.test(trimmed) && inferredRepo) {
     return {
@@ -79,6 +91,7 @@ function issuePayload(input: string, inferredRepo: GitHubRepoRef | null) {
       owner: inferredRepo.owner,
       repo: inferredRepo.repo,
       number: Number(trimmed.replace(/^#/, "")),
+      ...(inferredRepo.host ? { host: inferredRepo.host } : {}),
     };
   }
   return { issue: trimmed };
@@ -90,6 +103,7 @@ function TaskGitHubIssueFields({
   inferredRepo,
   submitting,
   error,
+  unconnectedHost,
 }: DialogFieldsProps) {
   const { t } = useTranslation();
   const placeholder = inferredRepo
@@ -106,7 +120,8 @@ function TaskGitHubIssueFields({
         placeholder={placeholder}
         disabled={submitting}
       />
-      {error && (
+      {unconnectedHost && <GitHubHostNotConnectedNotice host={unconnectedHost} />}
+      {error && !unconnectedHost && (
         <p className="text-xs text-destructive" data-testid="task-github-issue-error">
           {error}
         </p>
@@ -182,6 +197,8 @@ export function TaskGitHubIssueDialog({
   }
   const githubRepos = useMemo(() => githubReposForTask(task, repositories), [task, repositories]);
   const inferredRepo = githubRepos.length === 1 ? githubRepos[0] : null;
+  const githubHosts = useGitHubHosts();
+  const unconnectedHost = unconnectedGitHubHost(input, githubHosts);
 
   useEffect(() => {
     if (open) {
@@ -191,6 +208,7 @@ export function TaskGitHubIssueDialog({
   }, [open, task.issueUrl]);
 
   const submit = async () => {
+    if (unconnectedHost) return;
     if (!input.trim()) {
       setError(t("task:enterGithubIssueUrlOrNumber"));
       return;
@@ -244,6 +262,7 @@ export function TaskGitHubIssueDialog({
           inferredRepo={inferredRepo}
           submitting={submitting}
           error={error}
+          unconnectedHost={unconnectedHost}
         />
         <TaskGitHubIssueActions
           currentLabel={currentLabel}

@@ -8,8 +8,11 @@ vi.mock("@/lib/api/domains/github-api", () => ({
   getPRStatusesBatch: (
     workspaceId: string,
     refs: { owner: string; repo: string; number: number }[],
+    options?: { host?: string },
   ) =>
-    getPRStatusesBatch(workspaceId, refs) as Promise<{
+    (options?.host
+      ? getPRStatusesBatch(workspaceId, refs, options)
+      : getPRStatusesBatch(workspaceId, refs)) as Promise<{
       statuses: Record<string, GitHubPRStatus>;
     }>,
 }));
@@ -131,5 +134,22 @@ describe("usePRStatuses", () => {
     getPRStatusesBatch.mockRejectedValueOnce(new Error("boom"));
     rerender({ prs: [pr2] });
     await waitFor(() => expect(result.current.size).toBe(0));
+  });
+});
+
+describe("usePRStatuses hosts", () => {
+  beforeEach(() => {
+    getPRStatusesBatch.mockReset();
+  });
+
+  it("reads statuses on the searched GitHub host", async () => {
+    const pr = makePR("acme", "widget", 7);
+    getPRStatusesBatch.mockResolvedValue({ statuses: {} });
+    renderHook(() => usePRStatuses("ws-1", [pr], "octo.ghe.com"));
+    await waitFor(() =>
+      expect(getPRStatusesBatch).toHaveBeenCalledWith("ws-1", expect.any(Array), {
+        host: "octo.ghe.com",
+      }),
+    );
   });
 });

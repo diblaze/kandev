@@ -82,24 +82,24 @@ function renderUsePRKeyToTasks() {
 }
 
 describe("prKey", () => {
-  it("formats owner/repo#number", () => {
-    expect(prKey("kdlbs", "kandev", 42)).toBe("kdlbs/kandev#42");
+  it("formats host/owner/repo#number", () => {
+    expect(prKey("kdlbs", "kandev", 42)).toBe("github.com/kdlbs/kandev#42");
   });
 
   it("handles underscores and dashes in owner/repo", () => {
-    expect(prKey("my-org", "my_repo", 1)).toBe("my-org/my_repo#1");
+    expect(prKey("my-org", "my_repo", 1)).toBe("github.com/my-org/my_repo#1");
   });
 
   it("handles large PR numbers", () => {
-    expect(prKey("foo", "bar", 99999)).toBe("foo/bar#99999");
+    expect(prKey("foo", "bar", 99999)).toBe("github.com/foo/bar#99999");
   });
 
   it("handles zero PR number", () => {
-    expect(prKey("o", "r", 0)).toBe("o/r#0");
+    expect(prKey("o", "r", 0)).toBe("github.com/o/r#0");
   });
 
   it("handles single-character owner and repo", () => {
-    expect(prKey("a", "b", 7)).toBe("a/b#7");
+    expect(prKey("a", "b", 7)).toBe("github.com/a/b#7");
   });
 });
 
@@ -121,7 +121,7 @@ describe("usePRKeyToTasks", () => {
         ],
       });
     });
-    const entries = result.current.map.get("o/r#7");
+    const entries = result.current.map.get("github.com/o/r#7");
     expect(entries?.length).toBe(2);
     expect(entries?.map((e) => e.task_id).sort()).toEqual(["task-a", "task-b"]);
   });
@@ -136,8 +136,33 @@ describe("usePRKeyToTasks", () => {
         ],
       });
     });
-    expect(result.current.map.get("o/r#1")?.length).toBe(1);
-    expect(result.current.map.get("o/r#2")?.length).toBe(1);
+    expect(result.current.map.get("github.com/o/r#1")?.length).toBe(1);
+    expect(result.current.map.get("github.com/o/r#2")?.length).toBe(1);
+  });
+
+  it("keys the same owner/repo#number on different hosts separately", () => {
+    const { result } = renderUsePRKeyToTasks();
+    act(() => {
+      result.current.setTaskPRs({
+        "task-a": [
+          makeTaskPR({ id: "row-1", task_id: "task-a", owner: "o", repo: "r", pr_number: 7 }),
+        ],
+        "task-b": [
+          makeTaskPR({
+            id: "row-2",
+            task_id: "task-b",
+            github_host: "octo.ghe.com",
+            owner: "o",
+            repo: "r",
+            pr_number: 7,
+          }),
+        ],
+      });
+    });
+    expect(result.current.map.get(prKey("o", "r", 7))?.map((e) => e.task_id)).toEqual(["task-a"]);
+    expect(
+      result.current.map.get(prKey("o", "r", 7, "octo.ghe.com"))?.map((e) => e.task_id),
+    ).toEqual(["task-b"]);
   });
 
   it("skips entries whose value is not an array (defensive against partial hydration)", () => {
@@ -153,7 +178,7 @@ describe("usePRKeyToTasks", () => {
         "task-bad": {} as unknown as TaskPR[],
       });
     });
-    expect(result.current.map.get("o/r#1")?.length).toBe(1);
+    expect(result.current.map.get("github.com/o/r#1")?.length).toBe(1);
     expect(result.current.map.size).toBe(1);
   });
 });

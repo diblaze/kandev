@@ -13,6 +13,19 @@ import type { LaunchPayload, TaskPreset } from "./quick-task-launcher";
 import { PRStatusBadges } from "./pr-status-badges";
 import { PRRowTaskIndicator } from "./pr-row-task-indicator";
 import { prStatusKey, usePRStatuses } from "./use-pr-statuses";
+import { prKey } from "@/hooks/domains/github/use-pr-key-to-tasks";
+import { DEFAULT_GITHUB_HOST, hostFromUrl } from "@/lib/github/host";
+
+/** Host of a search result on a GitHub host other than github.com. */
+export function GitHubResultHost({ url }: { url: string }) {
+  const host = hostFromUrl(url);
+  if (!host || host === DEFAULT_GITHUB_HOST) return null;
+  return (
+    <span className="whitespace-nowrap" data-testid="github-result-host">
+      {host}
+    </span>
+  );
+}
 
 type PRListProps = {
   workspaceId: string | null;
@@ -81,6 +94,7 @@ function PRRow({
       href={pr.html_url}
       metadata={
         <>
+          <GitHubResultHost url={pr.html_url} />
           <span className="whitespace-nowrap">
             {pr.repo_owner}/{pr.repo_name}#{pr.number}
           </span>
@@ -109,7 +123,11 @@ function PRRow({
 }
 
 function PRListBody({ workspaceId, items, presets, onStartTask, prKeyToTasks }: PRListProps) {
-  const statuses = usePRStatuses(workspaceId, items);
+  const statuses = usePRStatuses(
+    workspaceId,
+    items,
+    hostFromUrl(items[0]?.html_url ?? "") ?? undefined,
+  );
   return (
     <>
       {items.map((pr) => {
@@ -121,7 +139,9 @@ function PRListBody({ workspaceId, items, presets, onStartTask, prKeyToTasks }: 
             status={statuses.get(key)}
             presets={presets}
             onStartTask={onStartTask}
-            tasks={prKeyToTasks?.get(key)}
+            tasks={prKeyToTasks?.get(
+              prKey(pr.repo_owner, pr.repo_name, pr.number, hostFromUrl(pr.html_url) ?? undefined),
+            )}
           />
         );
       })}

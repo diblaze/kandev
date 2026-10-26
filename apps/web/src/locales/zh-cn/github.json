@@ -657,5 +657,15 @@
   "mergeAccessDeniedByActor": "{{actor}} 无法合并到 {{repository}}。",
   "mergeAccessDenied": "此账户无法合并到 {{repository}}。",
   "checkMergeAccess": "重新检查",
-  "mergeAsActor": "以 {{actor}} 的身份"
+  "mergeAsActor": "以 {{actor}} 的身份",
+  "githubHost": "GitHub 主机",
+  "githubHostHelp": "输入 github.com、GHE.com 租户（例如 octo.ghe.com）或你的 GitHub Enterprise Server 主机名。",
+  "enterAValidGithubHost": "请输入纯主机名，例如 github.com 或 ghe.example.com，不要包含 https:// 或路径。",
+  "connectAnotherGithubHost": "连接另一个 GitHub 主机",
+  "githubHostNotConnected": "{{host}} 尚未连接。",
+  "openGithubSettings": "打开 GitHub 设置",
+  "cliAccountConnectedSuffix": "（已连接）",
+  "githubHostConnectionRemoved": "已移除 {{host}} 的连接",
+  "personalLoginOnHost": "个人：{{login}}",
+  "actionsForGithubHost": "{{host}} 的操作"
 }

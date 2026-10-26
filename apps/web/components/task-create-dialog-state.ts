@@ -2,6 +2,7 @@
 
 /* eslint-disable max-lines -- the state module owns the task creation form lifecycle and projections. */
 
+import { useGitHubHosts } from "@/hooks/domains/github/use-github-hosts";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import type { InitialWorkspaceLayout, LocalRepository, TaskPriority } from "@/lib/types/http";
 import type { TaskFormInputsHandle } from "@/components/task-create-dialog-types";
@@ -241,6 +242,7 @@ export function useDialogFormState(
   const remoteRepos = useRemoteReposState();
   const freshBranch = useFreshBranchState();
   const dependencies = useTaskDependencyState();
+  const githubHosts = useGitHubHosts(workspaceId);
   const branchesByUrl = useBranchesByURL(workspaceId);
   const prInfoByUrl = usePRInfoByURL(workspaceId);
 
@@ -323,6 +325,7 @@ export function useDialogFormState(
     ...dependencies,
     branchesByUrl,
     prInfoByUrl,
+    githubHosts,
     clearDraft,
     seededExecutorProfileId,
     setExecutorProfileIdFromSeed,

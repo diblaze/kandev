@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { renderHook, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
 import { IconGitPullRequest } from "@tabler/icons-react";
-import { buildParams } from "./use-github-search";
+import { buildParams, useGitHubSearch } from "./use-github-search";
 import type { PresetOption } from "./search-bar";
 
 const presets: PresetOption[] = [
@@ -45,5 +46,33 @@ describe("buildParams", () => {
 
   it("whitespace-only custom query treated as empty (uses preset)", () => {
     expect(buildParams(presets, "open", "   ", "")).toEqual({ filter: "is:open" });
+  });
+});
+
+const searchMocks = vi.hoisted(() => ({
+  searchUserPRs: vi.fn(),
+  searchUserIssues: vi.fn(),
+}));
+vi.mock("@/lib/api/domains/github-api", () => searchMocks);
+
+describe("useGitHubSearch hosts", () => {
+  it("searches the selected GitHub host", async () => {
+    searchMocks.searchUserPRs.mockResolvedValue({ prs: [], total_count: 0 });
+    renderHook(() =>
+      useGitHubSearch({
+        kind: "pr",
+        presets,
+        preset: "open",
+        customQuery: "",
+        workspaceId: "ws-1",
+        host: "octo.ghe.com",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(searchMocks.searchUserPRs).toHaveBeenCalledWith(
+        expect.objectContaining({ workspaceId: "ws-1", host: "octo.ghe.com" }),
+      ),
+    );
   });
 });

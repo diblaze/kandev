@@ -316,7 +316,7 @@ describe("workspace-scoped GitHub operations", () => {
     await getPRStatus(workspaceID, "acme", "site", 42);
     await getPRStatusesBatch(workspaceID, [{ owner: "acme", repo: "site", number: 42 }]);
     await submitPRReview(workspaceID, { owner: "acme", repo: "site", number: 42 }, "APPROVE");
-    await mergePR(workspaceID, "acme", "site", 42, "squash");
+    await mergePR(workspaceID, { owner: "acme", repo: "site", number: 42 }, "squash");
     await getRepoMergeMethods(workspaceID, "acme", "site");
     await listUserOrgs(workspaceID);
     await searchOrgRepos(workspaceID, "acme", "site");

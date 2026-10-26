@@ -28,6 +28,9 @@ import type {
   UseRemoteRepositoriesResult,
 } from "@/hooks/domains/integrations/use-remote-repositories";
 import { parseGitHubAnyUrl, type PRInfo } from "@/hooks/domains/github/use-pr-info-by-url";
+import { unconnectedGitHubHost } from "@/lib/github/parse-url";
+import { useGitHubHosts } from "@/hooks/domains/github/use-github-hosts";
+import { GitHubHostNotConnectedNotice } from "@/components/github/github-host-not-connected-notice";
 import type { TaskRemoteRepoRow } from "@/components/task-create-dialog-types";
 import { useTaskCreateDialogPopoverContainer } from "@/hooks/use-task-create-dialog-popover-container";
 import {
@@ -116,6 +119,7 @@ export function RemoteRepoChip({
         data-remote-url={row.url}
       >
         <RemoteRepoPill
+          workspaceId={workspaceId}
           row={row}
           accessibleRepos={accessibleRepos}
           selectedRepositoryIdentities={selectedRepositoryIdentities}
@@ -243,15 +247,13 @@ function computeAutoSelectedBranch(prInfo: PRInfo | undefined, branches: Branch[
 // --- Repo pill ---------------------------------------------------------------
 
 function RemoteRepoPill({
+  workspaceId,
   row,
   accessibleRepos,
   selectedRepositoryIdentities,
   onURLChange,
-}: {
-  row: TaskRemoteRepoRow;
-  accessibleRepos: UseRemoteRepositoriesResult;
+}: Pick<RemoteRepoChipProps, "workspaceId" | "row" | "accessibleRepos" | "onURLChange"> & {
   selectedRepositoryIdentities: string[];
-  onURLChange: RemoteRepoChipProps["onURLChange"];
 }) {
   const [open, setOpen] = useState(false);
   const portalContainer = useTaskCreateDialogPopoverContainer();
@@ -280,6 +282,7 @@ function RemoteRepoPill({
         portalContainer={portalContainer}
       >
         <RemoteRepoPopoverContent
+          workspaceId={workspaceId}
           accessible={accessibleRepos}
           selectedRepositoryIdentities={selectedRepositoryIdentities}
           onPick={(repo) => {
@@ -342,11 +345,13 @@ function StagedRemoteUrlHint() {
 }
 
 function RemoteRepoPopoverContent({
+  workspaceId,
   accessible,
   selectedRepositoryIdentities,
   onPick,
   onPaste,
 }: {
+  workspaceId: RemoteRepoChipProps["workspaceId"];
   accessible: UseRemoteRepositoriesResult;
   selectedRepositoryIdentities: string[];
   onPick: (repo: RemoteRepository) => void;
@@ -357,14 +362,16 @@ function RemoteRepoPopoverContent({
   const [urlError, setUrlError] = useState<string | null>(null);
   const [activeProvider, setActiveProvider] = useState<RemoteRepositoryProvider | null>(null);
   const { search: triggerSearch } = accessible;
-  const matchesURL = accessible.matchesURL ?? looksLikeSupportedRemoteURL;
+  const githubHosts = useGitHubHosts(workspaceId ?? "");
+  const matchesURL =
+    accessible.matchesURL ?? ((url: string) => looksLikeSupportedRemoteURL(url, githubHosts));
   useEffect(() => {
     triggerSearch(value);
   }, [value, triggerSearch]);
   const commitURL = (candidate: string) => {
     const trimmed = candidate.trim();
-    if (!isSupportedRemoteURL(trimmed, matchesURL)) {
-      if (looksLikeURL(trimmed)) {
+    if (!isSupportedRemoteURL(trimmed, matchesURL, githubHosts)) {
+      if (looksLikeURL(trimmed) && !unconnectedGitHubHost(trimmed, githubHosts)) {
         setUrlError(t("task:enterRepositoryUrl"));
       }
       return false;
@@ -374,7 +381,8 @@ function RemoteRepoPopoverContent({
     return true;
   };
   const visibleUrlError = accessible.unavailable ? null : urlError;
-  const hasStagedURL = isSupportedRemoteURL(value.trim(), matchesURL);
+  const hasStagedURL = isSupportedRemoteURL(value.trim(), matchesURL, githubHosts);
+  const unconnectedHost = hasStagedURL ? null : unconnectedGitHubHost(value, githubHosts);
   const { showProviderTabs, selectedProvider, visibleRepos } = visibleProviderRepositories(
     accessible,
     activeProvider,
@@ -394,18 +402,7 @@ function RemoteRepoPopoverContent({
           setValue(pasted);
         }}
         onKeyDown={(event) => {
-          if (
-            event.key !== "Enter" ||
-            event.defaultPrevented ||
-            event.repeat ||
-            event.altKey ||
-            event.ctrlKey ||
-            event.metaKey ||
-            event.shiftKey ||
-            event.nativeEvent.isComposing ||
-            event.keyCode === 229
-          )
-            return;
+          if (!isPlainEnter(event)) return;
           const isURL = looksLikeURL(value.trim());
           if (commitURL(value) || isURL) event.preventDefault();
         }}
@@ -421,6 +418,11 @@ function RemoteRepoPopoverContent({
         )}
       />
       {hasStagedURL ? <StagedRemoteUrlHint /> : null}
+      {unconnectedHost ? (
+        <div className="mx-2 mt-1">
+          <GitHubHostNotConnectedNotice host={unconnectedHost} />
+        </div>
+      ) : null}
       <PickerList
         accessible={{ ...accessible, repos: visibleRepos }}
         selectedRepositoryIdentities={selectedRepositoryIdentities}
@@ -452,8 +454,26 @@ function visibleProviderRepositories(
     : accessible.repos;
   return { showProviderTabs, selectedProvider, visibleRepos };
 }
-function isSupportedRemoteURL(value: string, matchesURL: (url: string) => boolean): boolean {
-  return !!parseGitHubAnyUrl(value) || matchesURL(value);
+function isPlainEnter(event: React.KeyboardEvent<HTMLInputElement>): boolean {
+  return !(
+    event.key !== "Enter" ||
+    event.defaultPrevented ||
+    event.repeat ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    event.nativeEvent.isComposing ||
+    event.keyCode === 229
+  );
+}
+
+function isSupportedRemoteURL(
+  value: string,
+  matchesURL: (url: string) => boolean,
+  githubHosts: readonly string[],
+): boolean {
+  return !!parseGitHubAnyUrl(value, githubHosts) || matchesURL(value);
 }
 function PickerList({
   accessible,

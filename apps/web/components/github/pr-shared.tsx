@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { githubWebOrigin } from "@/lib/github/host";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -49,7 +50,15 @@ export function formatElapsed(startedAt: string): string {
   return formatMs(Date.now() - new Date(startedAt).getTime());
 }
 
-export function AuthorAvatar({ src, author }: { src: string; author: string }) {
+export function AuthorAvatar({
+  src,
+  author,
+  host,
+}: {
+  src: string;
+  author: string;
+  host?: string;
+}) {
   const inner = src ? (
     <img src={src} alt={author} className="h-5 w-5 rounded-full shrink-0" />
   ) : (
@@ -59,7 +68,7 @@ export function AuthorAvatar({ src, author }: { src: string; author: string }) {
   );
   return (
     <a
-      href={`https://github.com/${author}`}
+      href={`${githubWebOrigin(host)}/${author}`}
       target="_blank"
       rel="noopener noreferrer"
       className="shrink-0 cursor-pointer"
@@ -69,10 +78,10 @@ export function AuthorAvatar({ src, author }: { src: string; author: string }) {
   );
 }
 
-export function AuthorLink({ author }: { author: string }) {
+export function AuthorLink({ author, host }: { author: string; host?: string }) {
   return (
     <a
-      href={`https://github.com/${author}`}
+      href={`${githubWebOrigin(host)}/${author}`}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-block min-w-0 max-w-full truncate text-xs font-medium hover:underline cursor-pointer sm:max-w-none"
@@ -229,9 +238,12 @@ export function FeedbackItemRow({
   onAddAsContext,
   trailingAction,
   isReply,
+  host,
 }: {
   author: string;
   authorAvatar: string;
+  /** GitHub host of the pull request; absent means github.com. */
+  host?: string;
   body?: string;
   createdAt: string;
   metaBadge?: React.ReactNode;
@@ -243,8 +255,8 @@ export function FeedbackItemRow({
     <div className={isReply ? "ml-4 pl-2.5 border-l-2 border-border" : ""}>
       <div className="px-2.5 py-2 rounded-md border border-border bg-muted/30 space-y-1">
         <div className="block sm:flex sm:flex-nowrap sm:items-center sm:gap-2">
-          <AuthorAvatar src={authorAvatar} author={author} />
-          <AuthorLink author={author} />
+          <AuthorAvatar src={authorAvatar} author={author} host={host} />
+          <AuthorLink author={author} host={host} />
           {metaBadge}
           <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
             {formatTimeAgo(createdAt)}

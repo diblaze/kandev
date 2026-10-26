@@ -35,9 +35,11 @@ type RepoFilterSelectorProps = {
   onAllReposChange: (checked: boolean) => void;
   onSelectedReposChange: (repos: RepoFilter[]) => void;
   workspaceId?: string;
+  /** GitHub host whose organizations and repositories are listed; absent means github.com. */
+  host?: string;
 };
 
-function useGitHubOrgs(workspaceId: string | undefined) {
+function useGitHubOrgs(workspaceId: string | undefined, host: string | undefined) {
   const [orgs, setOrgs] = useState<GitHubOrg[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -48,7 +50,7 @@ function useGitHubOrgs(workspaceId: string | undefined) {
     }
     let cancelled = false;
     setLoading(true);
-    listUserOrgs(workspaceId)
+    listUserOrgs(workspaceId, { host })
       .then((r) => {
         if (!cancelled) setOrgs(r.orgs ?? []);
       })
@@ -61,12 +63,17 @@ function useGitHubOrgs(workspaceId: string | undefined) {
     return () => {
       cancelled = true;
     };
-  }, [workspaceId]);
+  }, [host, workspaceId]);
 
   return { orgs, loading };
 }
 
-function useRepoSearch(workspaceId: string | undefined, org: string, query: string) {
+function useRepoSearch(
+  workspaceId: string | undefined,
+  host: string | undefined,
+  org: string,
+  query: string,
+) {
   const [searchState, setSearchState] = useState<{
     results: GitHubRepoInfo[];
     loading: boolean;
@@ -80,7 +87,7 @@ function useRepoSearch(workspaceId: string | undefined, org: string, query: stri
     let cancelled = false;
     timerRef.current = setTimeout(() => {
       setSearchState((prev) => ({ ...prev, loading: true, org }));
-      searchOrgRepos(workspaceId, org, query || undefined)
+      searchOrgRepos(workspaceId, org, query || undefined, { host })
         .then((r) => {
           if (!cancelled) setSearchState({ results: r.repos ?? [], loading: false, org });
         })
@@ -92,7 +99,7 @@ function useRepoSearch(workspaceId: string | undefined, org: string, query: stri
       cancelled = true;
       clearTimeout(timerRef.current);
     };
-  }, [workspaceId, org, query]);
+  }, [workspaceId, host, org, query]);
 
   // Clear results when org becomes empty (derived, not in effect)
   const results = org ? searchState.results : [];
@@ -237,11 +244,13 @@ function OrgBadges({
 
 function RepoSearchCombobox({
   workspaceId,
+  host,
   disabled,
   scope,
   onAdd,
 }: {
   workspaceId: string | undefined;
+  host: string | undefined;
   disabled: boolean;
   scope: GitHubWorkspaceSettings | null;
   onAdd: (owner: string, name: string) => void;
@@ -253,7 +262,7 @@ function RepoSearchCombobox({
   const slashIdx = value.indexOf("/");
   const org = slashIdx > 0 ? value.slice(0, slashIdx) : "";
   const query = slashIdx > 0 ? value.slice(slashIdx + 1) : "";
-  const { results, loading: searchLoading } = useRepoSearch(workspaceId, org, query);
+  const { results, loading: searchLoading } = useRepoSearch(workspaceId, host, org, query);
   const filteredResults = useMemo(
     () => results.filter((repo) => repoAllowedByScope(scope, repo.owner, repo.name)).slice(0, 10),
     [results, scope],
@@ -336,9 +345,10 @@ export function RepoFilterSelector({
   onAllReposChange,
   onSelectedReposChange,
   workspaceId,
+  host,
 }: RepoFilterSelectorProps) {
   const { t } = useTranslation();
-  const { orgs, loading: orgsLoading } = useGitHubOrgs(workspaceId);
+  const { orgs, loading: orgsLoading } = useGitHubOrgs(workspaceId, host);
   const scope = useWorkspaceRepoScope(workspaceId);
   const scopedOrgs = useMemo(
     () => orgs.filter((org) => orgAllowedByScope(scope, org.login)),
@@ -417,6 +427,7 @@ export function RepoFilterSelector({
 
           <RepoSearchCombobox
             workspaceId={workspaceId}
+            host={host}
             disabled={allRepos}
             scope={scope}
             onAdd={addRepo}

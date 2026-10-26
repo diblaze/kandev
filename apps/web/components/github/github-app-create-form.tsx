@@ -12,6 +12,7 @@ import type { StartGitHubAppManifestResponse } from "@/lib/types/github";
 import {
   appRegistrationError,
   defaultVisibility,
+  normalizeAppGitHubHost,
   submitManifestToGitHub,
   validateRegistrationBasics,
   type AppSetupErrors,
@@ -20,6 +21,7 @@ import { GitHubAppPolicyDialog } from "./github-app-policy-dialog";
 import { GitHubAppVisibilityField } from "./github-app-visibility-field";
 import type { useGitHubAppRegistrations } from "@/hooks/domains/github/use-github-app-registrations";
 import { useTranslation } from "react-i18next";
+import { DEFAULT_GITHUB_HOST } from "@/lib/github/host";
 
 type RegistrationHook = ReturnType<typeof useGitHubAppRegistrations>;
 
@@ -31,6 +33,7 @@ export function GitHubAppCreateForm({
   registrations: RegistrationHook;
 }) {
   const { t } = useTranslation();
+  const [githubHost, setGitHubHost] = useState(DEFAULT_GITHUB_HOST);
   const [displayName, setDisplayName] = useState("");
   const [ownerType, setOwnerType] = useState<"user" | "organization">("organization");
   const [ownerLogin, setOwnerLogin] = useState("");
@@ -41,6 +44,7 @@ export function GitHubAppCreateForm({
   const { toast } = useToast();
 
   useEffect(() => {
+    setGitHubHost(DEFAULT_GITHUB_HOST);
     setDisplayName("");
     setOwnerType("organization");
     setOwnerLogin("");
@@ -58,11 +62,13 @@ export function GitHubAppCreateForm({
       ownerLogin,
       publicBaseUrl,
     });
+    const host = normalizeAppGitHubHost(githubHost, basics.errors);
     setErrors(basics.errors);
-    if (!basics.publicBaseUrl || Object.keys(basics.errors).length) return;
+    if (!basics.publicBaseUrl || !host || Object.keys(basics.errors).length) return;
     try {
       setHandoff(
         await registrations.startManifest({
+          github_host: host,
           display_name: basics.displayName,
           owner_type: ownerType,
           owner_login: basics.ownerLogin,
@@ -85,6 +91,8 @@ export function GitHubAppCreateForm({
 
   return (
     <CreateAppFields
+      githubHost={githubHost}
+      onGitHubHost={setGitHubHost}
       displayName={displayName}
       ownerType={ownerType}
       ownerLogin={ownerLogin}
@@ -135,6 +143,8 @@ function ManifestHandoff({
 }
 
 type CreateFieldsProps = {
+  githubHost: string;
+  onGitHubHost: (value: string) => void;
   displayName: string;
   ownerType: "user" | "organization";
   ownerLogin: string;
@@ -161,6 +171,14 @@ function CreateAppFields(props: CreateFieldsProps) {
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
+        <Field label={t("github:githubHost")} error={props.errors.githubHost}>
+          <Input
+            value={props.githubHost}
+            placeholder={DEFAULT_GITHUB_HOST}
+            spellCheck={false}
+            onChange={(event) => props.onGitHubHost(event.target.value)}
+          />
+        </Field>
         <Field label={t("github:nameInKandev")} error={props.errors.displayName}>
           <Input
             value={props.displayName}

@@ -4,15 +4,27 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 const fetchPRInfoMock = vi.fn();
 const fetchIssueInfoMock = vi.fn();
 
+const githubHosts = vi.hoisted(() => ({ current: ["github.com"] }));
+vi.mock("@/hooks/domains/github/use-github-hosts", () => ({
+  useGitHubHosts: () => githubHosts.current,
+}));
 vi.mock("@/lib/api/domains/github-api", () => ({
   fetchPRInfo: (...args: unknown[]) => fetchPRInfoMock(...args),
   fetchIssueInfo: (...args: unknown[]) => fetchIssueInfoMock(...args),
 }));
 
 // Import after mocks so the hook picks up the mocked module.
-import { usePRInfoByURL, parseGitHubIssueUrl, parseGitHubPrUrl } from "./use-pr-info-by-url";
+import {
+  usePRInfoByURL,
+  parseGitHubAnyUrl,
+  parseGitHubIssueUrl,
+  parseGitHubPrUrl,
+} from "./use-pr-info-by-url";
 import { pluginRegistry } from "@/lib/plugins/registry";
 import type { RepositoryInspection } from "@/lib/plugins/types";
+
+const GITHUB_COM = "github.com";
+const ENTERPRISE_HOST = "octo.ghe.com";
 
 afterEach(() => {
   cleanup();
@@ -22,6 +34,7 @@ afterEach(() => {
   fetchPRInfoMock.mockReset();
   fetchIssueInfoMock.mockReset();
   vi.useRealTimers();
+  githubHosts.current = [GITHUB_COM];
 });
 
 const PR_URL_A = "https://github.com/acme/site/pull/42";
@@ -70,6 +83,7 @@ function makeIssue(overrides: { number: number; title?: string; body?: string })
 describe("parseGitHubPrUrl", () => {
   it("returns owner/repo/prNumber for a canonical PR URL", () => {
     expect(parseGitHubPrUrl(PR_URL_A)).toEqual({
+      host: GITHUB_COM,
       owner: "acme",
       repo: "site",
       prNumber: 42,
@@ -77,6 +91,7 @@ describe("parseGitHubPrUrl", () => {
   });
   it("tolerates trailing path/hash (e.g. /files#diff-…)", () => {
     expect(parseGitHubPrUrl(`${PR_URL_A}/files#diff-abc`)).toEqual({
+      host: GITHUB_COM,
       owner: "acme",
       repo: "site",
       prNumber: 42,
@@ -92,6 +107,7 @@ describe("parseGitHubPrUrl", () => {
 describe("parseGitHubIssueUrl", () => {
   it("returns owner/repo/issueNumber for a canonical issue URL", () => {
     expect(parseGitHubIssueUrl(ISSUE_URL_A)).toEqual({
+      host: GITHUB_COM,
       owner: "acme",
       repo: "site",
       issueNumber: 1456,
@@ -100,6 +116,7 @@ describe("parseGitHubIssueUrl", () => {
 
   it("tolerates trailing path/hash", () => {
     expect(parseGitHubIssueUrl(`${ISSUE_URL_A}#issuecomment-1`)).toEqual({
+      host: GITHUB_COM,
       owner: "acme",
       repo: "site",
       issueNumber: 1456,
@@ -641,5 +658,51 @@ describe("usePRInfoByURL — workspace scope", () => {
     expect(result.current.info(PR_URL_A)?.suggestedTitle).toBe("PR #99: Workspace B");
     expect(result.current.error(PR_URL_A)).toBeUndefined();
     expect(result.current.loading(PR_URL_A)).toBe(false);
+  });
+});
+
+const ENTERPRISE_HOSTS = [GITHUB_COM, ENTERPRISE_HOST];
+
+describe("GitHub URL parsers on connected hosts", () => {
+  it("parses pull-request, issue, and repository URLs on a connected enterprise host", () => {
+    expect(parseGitHubPrUrl("https://octo.ghe.com/org/repo/pull/7", ENTERPRISE_HOSTS)).toEqual({
+      host: ENTERPRISE_HOST,
+      owner: "org",
+      repo: "repo",
+      prNumber: 7,
+    });
+    expect(parseGitHubIssueUrl("https://octo.ghe.com/org/repo/issues/8", ENTERPRISE_HOSTS)).toEqual(
+      { host: ENTERPRISE_HOST, owner: "org", repo: "repo", issueNumber: 8 },
+    );
+    expect(parseGitHubAnyUrl("https://octo.ghe.com/org/repo", ENTERPRISE_HOSTS)).toEqual({
+      host: ENTERPRISE_HOST,
+      owner: "org",
+      repo: "repo",
+    });
+  });
+
+  it("does not recognize URLs on a host that is not connected", () => {
+    expect(
+      parseGitHubPrUrl("https://ghe.example.com/org/repo/pull/7", ENTERPRISE_HOSTS),
+    ).toBeNull();
+    expect(parseGitHubAnyUrl("https://octo.ghe.com/org/repo/pull/7")).toBeNull();
+  });
+
+  it("loads pull-request metadata on the URL host", async () => {
+    fetchPRInfoMock.mockResolvedValue(makePR({ number: 7, head: "feature/ghe" }));
+    const url = "https://octo.ghe.com/org/repo/pull/7";
+    githubHosts.current = [...ENTERPRISE_HOSTS];
+    const { result } = renderHook(() => usePRInfoByURL(WORKSPACE_ID));
+
+    act(() => result.current.ensure(url));
+
+    await waitFor(() => expect(result.current.info(url)?.prHeadBranch).toBe("feature/ghe"));
+    expect(fetchPRInfoMock).toHaveBeenCalledWith(
+      WORKSPACE_ID,
+      "org",
+      "repo",
+      7,
+      expect.objectContaining({ host: ENTERPRISE_HOST }),
+    );
   });
 });

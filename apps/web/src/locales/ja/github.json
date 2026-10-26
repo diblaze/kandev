@@ -657,5 +657,15 @@
   "mergeAccessDeniedByActor": "{{actor}} は {{repository}} にマージできません。",
   "mergeAccessDenied": "このアカウントは {{repository}} にマージできません。",
   "checkMergeAccess": "再確認",
-  "mergeAsActor": "{{actor}} として"
+  "mergeAsActor": "{{actor}} として",
+  "githubHost": "GitHub ホスト",
+  "githubHostHelp": "github.com、octo.ghe.com などの GHE.com テナント、または GitHub Enterprise Server のホスト名を入力してください。",
+  "enterAValidGithubHost": "github.com や ghe.example.com のようなホスト名のみを入力してください。https:// やパスは含めないでください。",
+  "connectAnotherGithubHost": "別の GitHub ホストを接続",
+  "githubHostNotConnected": "{{host}} は接続されていません。",
+  "openGithubSettings": "GitHub 設定を開く",
+  "cliAccountConnectedSuffix": "（接続済み）",
+  "githubHostConnectionRemoved": "{{host}} の接続を削除しました",
+  "personalLoginOnHost": "個人: {{login}}",
+  "actionsForGithubHost": "{{host}} の操作"
 }

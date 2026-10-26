@@ -7,6 +7,9 @@ import type { GitHubAppRegistrationCatalogItem, GitHubStatus } from "@/lib/types
 import { GitHubAppConnectionPanel } from "./github-app-connection-panel";
 import { GitHubConnectionDialog } from "./github-connection-dialog";
 
+const GITHUB_COM = "github.com";
+const ENTERPRISE_HOST = "octo.ghe.com";
+
 const mocks = vi.hoisted(() => ({
   mobile: false,
   registrations: [] as GitHubAppRegistrationCatalogItem[],
@@ -67,7 +70,7 @@ const status: GitHubStatus = {
   automation: {
     workspace_id: WORKSPACE_ID,
     source: "pat",
-    github_host: "github.com",
+    github_host: GITHUB_COM,
     login: "octocat",
     status: "active",
     credential_generation: 1,
@@ -84,7 +87,7 @@ const registration: GitHubAppRegistrationCatalogItem = {
   id: "registration-1",
   source: "managed",
   display_name: registrationDisplayName,
-  github_host: "github.com",
+  github_host: GITHUB_COM,
   app_id: 42,
   client_id: "Iv1.test",
   slug: "work-automation",
@@ -169,6 +172,7 @@ describe("GitHubConnectionDialog task access", () => {
       expect(mocks.setConnection).toHaveBeenCalledWith(WORKSPACE_ID, {
         source: "pat",
         token: "ghp_replacement",
+        host: GITHUB_COM,
       }),
     );
     expect(save).toHaveBeenCalledWith("executor");
@@ -337,5 +341,89 @@ describe("GitHubConnectionDialog", () => {
       </ToastProvider>,
     );
     await waitFor(() => expect(screen.queryByTestId(DESKTOP_CONNECTION_TEST_ID)).toBeNull());
+  });
+});
+
+describe("GitHubConnectionDialog hosts", () => {
+  const hostLabel = "GitHub host";
+  const enterpriseStatus: GitHubStatus = {
+    ...status,
+    hosts: [
+      { github_host: GITHUB_COM, source: "pat", login: "octocat", status: "active" },
+      { github_host: ENTERPRISE_HOST, source: "pat", login: "octo-bot", status: "active" },
+    ],
+  };
+
+  function renderDialog(props: Partial<React.ComponentProps<typeof GitHubConnectionDialog>>) {
+    return render(
+      <ToastProvider>
+        <GitHubConnectionDialog
+          status={enterpriseStatus}
+          workspaceId={WORKSPACE_ID}
+          onSaved={vi.fn()}
+          taskAccess={taskAccess}
+          {...props}
+        />
+      </ToastProvider>,
+    );
+  }
+
+  it("asks for the token host, defaults it to github.com, and sends an enterprise host", async () => {
+    mocks.setConnection.mockResolvedValue({});
+    renderDialog({ addHost: true });
+    fireEvent.click(screen.getByRole("button", { name: "Connect another GitHub host" }));
+    const host = (await screen.findByLabelText(hostLabel)) as HTMLInputElement;
+    expect(host.value).toBe(GITHUB_COM);
+
+    fireEvent.change(host, { target: { value: "GHE.Example.com" } });
+    fireEvent.change(screen.getByLabelText(personalAccessTokenLabel), {
+      target: { value: "ghp_enterprise" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: saveChangesLabel }));
+
+    await waitFor(() =>
+      expect(mocks.setConnection).toHaveBeenCalledWith(WORKSPACE_ID, {
+        source: "pat",
+        token: "ghp_enterprise",
+        host: "ghe.example.com",
+      }),
+    );
+  });
+
+  it("blocks saving a token for a host that is not a bare hostname", async () => {
+    renderDialog({ addHost: true });
+    fireEvent.click(screen.getByRole("button", { name: "Connect another GitHub host" }));
+    fireEvent.change(await screen.findByLabelText(hostLabel), {
+      target: { value: "https://ghe.example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(personalAccessTokenLabel), {
+      target: { value: "ghp_enterprise" },
+    });
+
+    expect(screen.getByText(/bare hostname/)).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: saveChangesLabel }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("changes an enterprise connection on its own host", async () => {
+    mocks.setConnection.mockResolvedValue({});
+    renderDialog({ host: ENTERPRISE_HOST });
+    fireEvent.click(screen.getByRole("button", { name: changeConnectionLabel }));
+    const host = (await screen.findByLabelText(hostLabel)) as HTMLInputElement;
+    expect(host.value).toBe(ENTERPRISE_HOST);
+
+    fireEvent.change(screen.getByLabelText(personalAccessTokenLabel), {
+      target: { value: "ghp_rotated" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: saveChangesLabel }));
+
+    await waitFor(() =>
+      expect(mocks.setConnection).toHaveBeenCalledWith(WORKSPACE_ID, {
+        source: "pat",
+        token: "ghp_rotated",
+        host: ENTERPRISE_HOST,
+      }),
+    );
   });
 });

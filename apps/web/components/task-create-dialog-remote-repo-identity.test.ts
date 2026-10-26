@@ -40,6 +40,12 @@ describe("Remote repository identities", () => {
       "git@ssh.dev.azure.com:v3/acme/Platform/api",
       "https://dev.azure.com/acme/Platform/_git/api",
     ],
+    ["GHE.com tenant SSH", "octo@octo.ghe.com:acme/site.git", "https://octo.ghe.com/acme/site"],
+    [
+      "GitHub Enterprise Server SSH",
+      "git@ghe.example.com:acme/site.git",
+      "https://ghe.example.com/acme/site",
+    ],
   ])("equates %s fallback URLs with their picker repository", (_label, fallback, picker) => {
     expect(selectedRemoteRepositoryIdentity(row({ url: fallback }))).toBe(
       selectedRemoteRepositoryIdentity(row({ url: picker })),

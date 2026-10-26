@@ -47,17 +47,18 @@ export function usePRFeedback(
   owner: string | null,
   repo: string | null,
   prNumber: number | null,
+  host?: string,
 ) {
   const scope = usePRFeedbackResourceScope();
   const key =
     workspaceId && owner && repo && prNumber
-      ? scope.key({ workspaceId, owner, repo, prNumber })
+      ? scope.key({ workspaceId, owner, repo, prNumber, host })
       : null;
   const snapshot = usePRFeedbackResourceSnapshot(scope, key);
   const fetch = useCallback(() => {
     if (!workspaceId || !owner || !repo || !prNumber) return Promise.reject();
-    return getPRFeedback(workspaceId, owner, repo, prNumber, { cache: "no-store" });
-  }, [owner, prNumber, repo, workspaceId]);
+    return getPRFeedback(workspaceId, owner, repo, prNumber, { cache: "no-store", host });
+  }, [host, owner, prNumber, repo, workspaceId]);
 
   useEffect(() => {
     if (key) void scope.ensure(key, fetch);

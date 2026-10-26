@@ -9,10 +9,13 @@ import {
   type WorkspaceSourceRow,
 } from "@/components/workspace-source-picker/workspace-source-state";
 
-export function useWorkspaceSourceRows(executorType?: string | null) {
+export function useWorkspaceSourceRows(
+  executorType?: string | null,
+  githubHosts?: readonly string[],
+) {
   const [rows, setRows] = useState<WorkspaceSourceRow[]>([]);
   const [validatedRowKeys, setValidatedRowKeys] = useState<Set<string>>(() => new Set());
-  const errors = getWorkspaceSourceValidation(rows);
+  const errors = getWorkspaceSourceValidation(rows, githubHosts);
   const visibleErrors = Object.fromEntries(
     Object.entries(errors).filter(([key]) => validatedRowKeys.has(key)),
   );

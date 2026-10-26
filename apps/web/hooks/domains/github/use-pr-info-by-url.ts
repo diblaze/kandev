@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchIssueInfo, fetchPRInfo } from "@/lib/api/domains/github-api";
-import { parseGitHubRepoUrl } from "@/lib/github/parse-url";
+import { useGitHubHosts } from "@/hooks/domains/github/use-github-hosts";
+import {
+  DEFAULT_GITHUB_HOSTS,
+  parseGitHubItemUrl,
+  parseGitHubRepoUrl,
+} from "@/lib/github/parse-url";
 import { usePluginRegistry } from "@/lib/plugins/registry";
 import {
   hasRegisteredRepositoryProviderCandidate,
@@ -58,33 +63,25 @@ export type UsePRInfoByURLResult = {
   clear: (url: string) => void;
 };
 
-/** Parse a GitHub URL and return the owner/repo/prNumber when it's a PR URL.
- * Returns null for non-PR URLs (plain repos, invalid input). The Remote-tab
+/** Parse a GitHub PR URL on github.com or one of `hosts`. Returns null for
+ * non-PR URLs (plain repos, invalid input, unlisted hosts). The Remote-tab
  * flow uses this to decide whether to attempt a PR-info fetch at all. */
 export function parseGitHubPrUrl(
   url: string,
-): { owner: string; repo: string; prNumber: number } | null {
-  const trimmed = url.trim();
-  if (!trimmed) return null;
-  const prMatch = trimmed.match(
-    /^(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pull\/(\d+)(?:[/?#].*)?$/,
-  );
-  if (!prMatch) return null;
-  return { owner: prMatch[1], repo: prMatch[2], prNumber: parseInt(prMatch[3], 10) };
+  hosts: readonly string[] = DEFAULT_GITHUB_HOSTS,
+): { host: string; owner: string; repo: string; prNumber: number } | null {
+  const item = parseGitHubItemUrl(url, "pull", hosts);
+  return item && { host: item.host, owner: item.owner, repo: item.repo, prNumber: item.number };
 }
 
-/** Parse a GitHub URL and return the owner/repo/issueNumber when it's an
- * issue URL. Returns null for PR URLs, plain repos, invalid input. */
+/** Parse a GitHub issue URL on github.com or one of `hosts`. Returns null for
+ * PR URLs, plain repos, invalid input, unlisted hosts. */
 export function parseGitHubIssueUrl(
   url: string,
-): { owner: string; repo: string; issueNumber: number } | null {
-  const trimmed = url.trim();
-  if (!trimmed) return null;
-  const issueMatch = trimmed.match(
-    /^(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/issues\/(\d+)(?:[/?#].*)?$/,
-  );
-  if (!issueMatch) return null;
-  return { owner: issueMatch[1], repo: issueMatch[2], issueNumber: parseInt(issueMatch[3], 10) };
+  hosts: readonly string[] = DEFAULT_GITHUB_HOSTS,
+): { host: string; owner: string; repo: string; issueNumber: number } | null {
+  const item = parseGitHubItemUrl(url, "issues", hosts);
+  return item && { host: item.host, owner: item.owner, repo: item.repo, issueNumber: item.number };
 }
 
 /** Parse a GitHub URL as a PR URL, issue URL, or plain repo URL. Re-exported
@@ -92,12 +89,13 @@ export function parseGitHubIssueUrl(
  * has a single canonical implementation. */
 export function parseGitHubAnyUrl(
   url: string,
-): { owner: string; repo: string; prNumber?: number; issueNumber?: number } | null {
-  const pr = parseGitHubPrUrl(url);
-  if (pr) return pr;
-  const issue = parseGitHubIssueUrl(url);
-  if (issue) return issue;
-  return parseGitHubRepoUrl(url);
+  hosts: readonly string[] = DEFAULT_GITHUB_HOSTS,
+): { host: string; owner: string; repo: string; prNumber?: number; issueNumber?: number } | null {
+  return (
+    parseGitHubPrUrl(url, hosts) ??
+    parseGitHubIssueUrl(url, hosts) ??
+    parseGitHubRepoUrl(url, hosts)
+  );
 }
 
 /** Shared ref bag passed to the extracted handlers. Bundling the refs into
@@ -236,6 +234,7 @@ function runGitHubInfoRequest(args: {
   let pendingRequest: Promise<void>;
   if (pr) {
     pendingRequest = fetchPRInfo(workspaceId, pr.owner, pr.repo, pr.prNumber, {
+      host: pr.host,
       init: { signal },
     }).then((res) =>
       handleSuccess({
@@ -254,6 +253,7 @@ function runGitHubInfoRequest(args: {
     );
   } else if (issue) {
     pendingRequest = fetchIssueInfo(workspaceId, issue.owner, issue.repo, issue.issueNumber, {
+      host: issue.host,
       init: { signal },
     }).then((res) =>
       handleSuccess({
@@ -387,6 +387,7 @@ function useRequestCleanup(refs: Refs): void {
 }
 
 export function usePRInfoByURL(workspaceId: string | null): UsePRInfoByURLResult {
+  const hosts = useGitHubHosts(workspaceId);
   const registryVersion = usePluginRegistry().getVersion();
   const registryVersionRef = useRef(registryVersion);
   const [state, setState] = useState<Record<string, URLState>>({});
@@ -426,8 +427,8 @@ export function usePRInfoByURL(workspaceId: string | null): UsePRInfoByURLResult
         registryVersionRef.current = registryVersion;
       }
       if (inFlightRef.current.has(url) || loadedRef.current.has(url)) return;
-      const pr = parseGitHubPrUrl(url);
-      const issue = pr ? null : parseGitHubIssueUrl(url);
+      const pr = parseGitHubPrUrl(url, hosts);
+      const issue = pr ? null : parseGitHubIssueUrl(url, hosts);
       if (hasRegisteredRepositoryProviderCandidate(url)) {
         const refs = refsRef.current;
         const { request: requestIdentity, signal } = initRequest(refs, setState, url);
@@ -464,7 +465,7 @@ export function usePRInfoByURL(workspaceId: string | null): UsePRInfoByURLResult
         issue,
       });
     },
-    [registryVersion, workspaceId],
+    [hosts, registryVersion, workspaceId],
   );
 
   const { info, loading, settled, error, inspection } = useURLStateAccessors(state);

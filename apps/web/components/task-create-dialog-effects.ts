@@ -545,7 +545,7 @@ export function useDefaultSelectionsEffect(
  * in sync with the first row's URL.
  */
 export function useGitHubUrlErrorEffect(fs: DialogFormState, open: boolean) {
-  const { useRemote, setGitHubUrlError } = fs;
+  const { useRemote, setGitHubUrlError, githubHosts } = fs;
   const firstUrl = fs.remoteRepos[0]?.url ?? "";
   useEffect(() => {
     if (!open) return;
@@ -564,13 +564,13 @@ export function useGitHubUrlErrorEffect(fs: DialogFormState, open: boolean) {
       setGitHubUrlError(null);
       return;
     }
-    const parsed = parseGitHubAnyUrl(trimmed);
+    const parsed = parseGitHubAnyUrl(trimmed, githubHosts);
     if (!parsed) {
       setGitHubUrlError(t("task:invalidGitHubUrl"));
       return;
     }
     setGitHubUrlError(null);
-  }, [open, useRemote, firstUrl, setGitHubUrlError]);
+  }, [open, useRemote, firstUrl, setGitHubUrlError, githubHosts]);
 }
 
 export function useTaskCreateDialogEffects(fs: DialogFormState, args: TaskCreateEffectsArgs) {

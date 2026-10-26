@@ -26,6 +26,7 @@ import { PRMergeabilityNotice, buildConflictResolutionMessage } from "./pr-merge
 import { hasActiveMergeQueueEntry, PRMergeQueueStatus } from "./pr-merge-queue-status";
 import { PRWorkflowAttentionNotice } from "./pr-workflow-attention-notice";
 import { usePRScopedReviewRequest } from "./use-pr-scoped-review-request";
+import { githubWebOrigin, hostFromUrl } from "@/lib/github/host";
 
 // --- Dockview panel wrapper ---
 
@@ -213,7 +214,12 @@ function ApproveButton({
     try {
       await submitPRReview(
         workspaceId,
-        { owner: taskPR.owner, repo: taskPR.repo, number: taskPR.pr_number },
+        {
+          owner: taskPR.owner,
+          repo: taskPR.repo,
+          number: taskPR.pr_number,
+          host: taskPR.github_host,
+        },
         "APPROVE",
       );
       toast({ description: t("github:prApproved"), variant: "success" });
@@ -245,10 +251,15 @@ function ApproveButton({
   );
 }
 
-function githubPerson(login: string, avatarUrl?: string, isBot?: boolean) {
+/** Web host of a task pull request: its stored host, else the host of its URL. */
+function taskPRWebHost(taskPR: Pick<TaskPR, "github_host" | "pr_url">): string | undefined {
+  return taskPR.github_host || hostFromUrl(taskPR.pr_url) || undefined;
+}
+
+function githubPerson(login: string, host?: string, avatarUrl?: string, isBot?: boolean) {
   return {
     name: login,
-    url: login ? `https://github.com/${login}` : undefined,
+    url: login ? `${githubWebOrigin(host)}/${login}` : undefined,
     avatarUrl: avatarUrl || undefined,
     isBot,
   };
@@ -261,7 +272,7 @@ function mapGitHubIdentity(taskPR: TaskPR, feedback: PRFeedback | null) {
     url: live?.html_url || taskPR.pr_url,
     state: live?.state ?? taskPR.state,
     draft: live?.draft,
-    author: githubPerson(live?.author_login ?? taskPR.author_login),
+    author: githubPerson(live?.author_login ?? taskPR.author_login, taskPRWebHost(taskPR)),
     description: live?.body,
   };
 }
@@ -295,7 +306,7 @@ function mapGitHubReviews(
   const state = feedback?.pr.state ?? taskPR.state;
   return (feedback?.reviews ?? []).map((review) => ({
     id: String(review.id),
-    author: githubPerson(review.author, review.author_avatar),
+    author: githubPerson(review.author, taskPRWebHost(taskPR), review.author_avatar),
     state: review.state,
     body: review.body || undefined,
     createdAt: review.created_at,
@@ -327,13 +338,13 @@ function mapGitHubChecks(feedback: PRFeedback | null) {
   }));
 }
 
-export function mapGitHubComments(feedback: PRFeedback | null) {
+export function mapGitHubComments(feedback: PRFeedback | null, host?: string) {
   return (feedback?.comments ?? []).map((comment) => {
     const url = comment.html_url?.trim();
     return {
       id: String(comment.id),
       parentId: comment.in_reply_to ? String(comment.in_reply_to) : undefined,
-      author: githubPerson(comment.author, comment.author_avatar, comment.author_is_bot),
+      author: githubPerson(comment.author, host, comment.author_avatar, comment.author_is_bot),
       body: comment.body,
       createdAt: comment.created_at,
       ...(url ? { url } : {}),
@@ -364,11 +375,11 @@ function mapGitHubDetail(
     pendingReviewCount: metrics.pendingReviewCount,
     reviews: mapGitHubReviews(taskPR, feedback, review.requestingReviewers, review.labels),
     requestedReviewers: review.requestedReviewers.map((reviewer) => ({
-      ...githubPerson(reviewer.login),
+      ...githubPerson(reviewer.login, taskPRWebHost(taskPR)),
       kind: reviewer.type,
     })),
     checks: mapGitHubChecks(feedback),
-    comments: mapGitHubComments(feedback),
+    comments: mapGitHubComments(feedback, taskPRWebHost(taskPR)),
     lastSyncedAt: taskPR.last_synced_at ?? undefined,
   };
 }
@@ -437,6 +448,7 @@ export function PRDetailContent({ taskPR, sessionId }: { taskPR: TaskPR; session
     taskPR.owner,
     taskPR.repo,
     taskPR.pr_number,
+    taskPR.github_host,
   );
   const { addAsContext } = useAddPRFeedbackAsContext(sessionId, taskPR.pr_number);
   const { toast } = useToast();

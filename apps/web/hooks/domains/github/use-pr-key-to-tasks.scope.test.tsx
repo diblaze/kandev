@@ -28,7 +28,7 @@ const WORKSPACE_A = "workspace-a";
 const WORKSPACE_B = "workspace-b";
 const TASK_A_TITLE = "Task from workspace A";
 const EMPTY_INDICATOR = "pr-row-task-indicator-empty";
-const PR_KEY = "owner/repo#7";
+const PR_KEY = "github.com/owner/repo#7";
 
 const requests: ReturnType<typeof deferredResponse>[] = [];
 
@@ -384,8 +384,8 @@ describe("GitHub reverse association identity and grouping", () => {
     expect(map.get(PR_KEY)).toHaveLength(2);
     expect(map.get(PR_KEY)?.[0]).toBe(a);
     expect(map.get(PR_KEY)?.[1]).toBe(b);
-    expect(map.get("owner/repo#8")?.[0]).toBe(secondPR);
-    expect(map.get("owner/other#7")?.[0]).toBe(secondRepo);
+    expect(map.get("github.com/owner/repo#8")?.[0]).toBe(secondPR);
+    expect(map.get("github.com/owner/other#7")?.[0]).toBe(secondRepo);
     const row = renderRow(initialState);
     expect(row.getByTestId("pr-row-task-indicator-multi").tagName).toBe("BUTTON");
     expect(row.getByRole("button", { name: "Tasks 2" })).toBeTruthy();

@@ -14,6 +14,9 @@ import { usePluginRegistry } from "@/lib/plugins/registry";
 import type { PluginRepositoryProviderRegistration } from "@/lib/plugins/registry";
 import { repositoryProviderMatchesURL } from "@/lib/plugins/repository-provider-url-resolution";
 import { looksLikeSupportedRemoteURL } from "@/components/workspace-source-picker/remote-url";
+import { useGitHubHosts } from "@/hooks/domains/github/use-github-hosts";
+import { DEFAULT_GITHUB_HOST, githubWebOrigin } from "@/lib/github/host";
+import type { GitHubStatus } from "@/lib/types/github";
 
 export const REMOTE_REPOSITORY_PROVIDERS = ["github", "gitlab", "azure_devops"] as const;
 
@@ -84,6 +87,8 @@ type RepositoryRequest = {
 
 type BuiltInRepositoryEligibility = {
   providers: ReadonlySet<RemoteRepositoryProvider>;
+  /** GitHub hosts with a usable connection, listed for repository browsing. */
+  browsableGitHubHosts: readonly string[];
   loading: boolean;
 };
 
@@ -101,13 +106,25 @@ function hasProviderConnection(status: ProviderConnectionStatus | null | undefin
   return Boolean(status?.authenticated || status?.token_configured);
 }
 
+function browsableGitHubHosts(status: GitHubStatus | null): string[] {
+  const enterprise = (status?.hosts ?? [])
+    .filter((entry) => entry.status === "active" && entry.github_host !== DEFAULT_GITHUB_HOST)
+    .map((entry) => entry.github_host);
+  return hasProviderConnection(status) ? [DEFAULT_GITHUB_HOST, ...enterprise] : enterprise;
+}
+
 function useBuiltInRepositoryAccess(workspaceId: string): BuiltInRepositoryAccess {
   const githubStatus = useGitHubStatus(workspaceId);
   const gitlabStatus = useGitLabStatus(workspaceId);
   const azureDevOpsConnection = useAzureDevOpsConnection(workspaceId || undefined);
+  const browsableHostsKey = browsableGitHubHosts(githubStatus.status).join(",");
+  const browsableHosts = useMemo(
+    () => (browsableHostsKey ? browsableHostsKey.split(",") : []),
+    [browsableHostsKey],
+  );
   const providers = useMemo(() => {
     const eligible = new Set<RemoteRepositoryProvider>();
-    if (hasProviderConnection(githubStatus.status)) eligible.add("github");
+    if (browsableHosts.length > 0) eligible.add("github");
     if (hasProviderConnection(gitlabStatus.status)) eligible.add("gitlab");
     if (azureDevOpsConnection.data?.hasSecret && azureDevOpsConnection.data.lastOk) {
       eligible.add("azure_devops");
@@ -116,14 +133,14 @@ function useBuiltInRepositoryAccess(workspaceId: string): BuiltInRepositoryAcces
   }, [
     azureDevOpsConnection.data?.hasSecret,
     azureDevOpsConnection.data?.lastOk,
-    githubStatus.status?.authenticated,
-    githubStatus.status?.token_configured,
+    browsableHosts,
     gitlabStatus.status?.authenticated,
     gitlabStatus.status?.token_configured,
   ]);
   const eligibility = useMemo(
     () => ({
       providers,
+      browsableGitHubHosts: browsableHosts,
       loading:
         Boolean(workspaceId) &&
         (githubStatus.loading ||
@@ -134,6 +151,7 @@ function useBuiltInRepositoryAccess(workspaceId: string): BuiltInRepositoryAcces
     [
       azureDevOpsConnection.loading,
       gitlabStatus.loading,
+      browsableHosts,
       githubStatus.loaded,
       githubStatus.loading,
       providers,
@@ -148,29 +166,35 @@ function useBuiltInRepositoryAccess(workspaceId: string): BuiltInRepositoryAcces
   return { eligibility, refresh };
 }
 
+function githubRepositoryRequest(workspaceId: string, host: string): RepositoryRequest {
+  const enterprise = host !== DEFAULT_GITHUB_HOST;
+  return {
+    provider: "github",
+    load: fetchAccessibleRepos({ workspaceId, limit: 100, host }).then((repos) =>
+      repos.map((repo) => ({
+        provider: "github" as const,
+        id: enterprise ? `${host}/${repo.full_name}` : repo.full_name,
+        owner: repo.owner,
+        name: repo.name,
+        fullName: repo.full_name,
+        url: `${githubWebOrigin(host)}/${repo.owner}/${repo.name}`,
+        ...(enterprise ? { providerHost: githubWebOrigin(host) } : {}),
+        defaultBranch: repo.default_branch,
+        private: repo.private,
+      })),
+    ),
+  };
+}
+
 async function loadBuiltInRepositories(
   workspaceId: string,
-  eligibleProviders: ReadonlySet<RemoteRepositoryProvider>,
+  eligibility: Pick<BuiltInRepositoryEligibility, "providers" | "browsableGitHubHosts">,
 ): Promise<RemoteRepositoryLoad> {
   if (!workspaceId) return { repos: [], availableProviders: [], sourceErrors: [] };
-  const requests: RepositoryRequest[] = [];
-  if (eligibleProviders.has("github")) {
-    requests.push({
-      provider: "github",
-      load: fetchAccessibleRepos({ workspaceId, limit: 100 }).then((repos) =>
-        repos.map((repo) => ({
-          provider: "github" as const,
-          id: repo.full_name,
-          owner: repo.owner,
-          name: repo.name,
-          fullName: repo.full_name,
-          url: `https://github.com/${repo.owner}/${repo.name}`,
-          defaultBranch: repo.default_branch,
-          private: repo.private,
-        })),
-      ),
-    });
-  }
+  const eligibleProviders = eligibility.providers;
+  const requests: RepositoryRequest[] = eligibleProviders.has("github")
+    ? eligibility.browsableGitHubHosts.map((host) => githubRepositoryRequest(workspaceId, host))
+    : [];
   if (eligibleProviders.has("gitlab")) {
     requests.push({
       provider: "gitlab",
@@ -213,9 +237,13 @@ async function settleRepositoryRequests(
   requests: RepositoryRequest[],
 ): Promise<RemoteRepositoryLoad> {
   const results = await Promise.allSettled(requests.map((request) => request.load));
-  const availableProviders = results.flatMap((result, index) =>
-    result.status === "fulfilled" ? [requests[index]!.provider] : [],
-  );
+  const availableProviders = [
+    ...new Set(
+      results.flatMap((result, index) =>
+        result.status === "fulfilled" ? [requests[index]!.provider] : [],
+      ),
+    ),
+  ];
   const sourceErrors = results.flatMap((result, index) =>
     result.status === "rejected"
       ? [{ provider: requests[index]!.provider, error: toError(result.reason) }]
@@ -324,7 +352,7 @@ function useBuiltInRepositorySource(
         cancelled = true;
       };
     }
-    loadBuiltInRepositories(workspaceId, eligibility.providers)
+    loadBuiltInRepositories(workspaceId, eligibility)
       .then((result) => {
         if (cancelled) return;
         setRepos(result.repos);
@@ -399,6 +427,7 @@ export function useRemoteRepositories(workspaceId: string): UseRemoteRepositorie
     [registry, registryVersion],
   );
   const { eligibility, refresh: refreshBuiltIns } = useBuiltInRepositoryAccess(workspaceId);
+  const githubHosts = useGitHubHosts(workspaceId);
   const builtInSource = useBuiltInRepositorySource(workspaceId, refreshVersion, eligibility);
   const pluginSource = usePluginRepositorySource(
     workspaceId,
@@ -434,9 +463,9 @@ export function useRemoteRepositories(workspaceId: string): UseRemoteRepositorie
   }, [refreshBuiltIns]);
   const matchesURL = useCallback(
     (url: string) =>
-      looksLikeSupportedRemoteURL(url) ||
+      looksLikeSupportedRemoteURL(url, githubHosts) ||
       pluginProviders.some((provider) => repositoryProviderMatchesURL(provider, url)),
-    [pluginProviders],
+    [githubHosts, pluginProviders],
   );
   return {
     repos,

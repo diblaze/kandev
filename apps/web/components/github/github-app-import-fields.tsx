@@ -5,8 +5,10 @@ import { Textarea } from "@kandev/ui/textarea";
 import type { GitHubAppOwnerType, GitHubAppVisibility } from "@/lib/types/github";
 import type { AppSetupErrors } from "./github-app-onboarding-model";
 import { useTranslation } from "react-i18next";
+import { DEFAULT_GITHUB_HOST } from "@/lib/github/host";
 
 export type GitHubAppImportValues = {
+  githubHost: string;
   displayName: string;
   ownerLogin: string;
   ownerType: GitHubAppOwnerType;
@@ -35,6 +37,14 @@ export function GitHubAppImportIdentityFields({
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2">
+        <Field label={t("github:githubHost")} error={errors.githubHost}>
+          <Input
+            value={values.githubHost}
+            placeholder={DEFAULT_GITHUB_HOST}
+            spellCheck={false}
+            onChange={(e) => update("githubHost", e.target.value)}
+          />
+        </Field>
         <Field label={t("github:nameInKandev")} error={errors.displayName}>
           <Input
             value={values.displayName}

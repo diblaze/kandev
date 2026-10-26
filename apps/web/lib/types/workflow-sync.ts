@@ -17,6 +17,8 @@ export type WorkflowSyncProvider = "github" | "gitlab";
 export interface WorkflowSyncConfig {
   workspace_id: string;
   provider: WorkflowSyncProvider;
+  /** GitHub host of the repository; absent on configs that predate hosts (github.com). */
+  github_host?: string;
   repo_owner: string;
   repo_name: string;
   project_path: string;
@@ -43,6 +45,7 @@ export interface WorkflowSyncConfig {
  */
 export interface WorkflowSyncSetConfigRequest {
   provider?: WorkflowSyncProvider;
+  github_host?: string;
   repo_owner?: string;
   repo_name?: string;
   project_path?: string;

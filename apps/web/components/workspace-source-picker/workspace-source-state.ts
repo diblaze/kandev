@@ -61,12 +61,14 @@ export function updateWorkspaceSourceRow(
   );
 }
 
-export function getWorkspaceSourceValidation(rows: WorkspaceSourceRow[]): Record<string, string> {
+export function getWorkspaceSourceValidation(
+  rows: WorkspaceSourceRow[],
+  githubHosts?: readonly string[],
+): Record<string, string> {
   const errors: Record<string, string> = {};
-  const repositoryKeys = new Set<string>();
-  const folderPaths = new Set<string>();
+  const seen = { repositoryKeys: new Set<string>(), folderPaths: new Set<string>() };
   for (const row of rows) {
-    const error = validateRow(row, repositoryKeys, folderPaths);
+    const error = validateRow(row, seen, githubHosts);
     if (error) errors[row.key] = error;
   }
   return errors;
@@ -80,8 +82,8 @@ export function buildWorkspaceSourcesPayload(
 
 function validateRow(
   row: WorkspaceSourceRow,
-  repositoryKeys: Set<string>,
-  folderPaths: Set<string>,
+  { repositoryKeys, folderPaths }: { repositoryKeys: Set<string>; folderPaths: Set<string> },
+  githubHosts?: readonly string[],
 ): string | null {
   if (row.kind === "folder") {
     const path = canonicalPath(row.localPath);
@@ -91,7 +93,11 @@ function validateRow(
     return null;
   }
   const locator = repositoryLocator(row);
-  if (row.remoteUrl && !row.provider && !isValidRemoteUrl(row.remoteUrl)) {
+  if (
+    row.remoteUrl &&
+    !row.provider &&
+    !looksLikeSupportedRemoteURL(row.remoteUrl.trim(), githubHosts)
+  ) {
     return t("workspaces:sourceEnterValidRemoteUrl");
   }
   if (!locator || !row.baseBranch?.trim()) return t("workspaces:sourceChooseRepoAndBranch");
@@ -107,10 +113,6 @@ function repositoryLocator(row: WorkspaceSourceRow): string {
 
 function canonicalPath(path: string | undefined): string {
   return path?.trim().replace(/\/+$/, "") ?? "";
-}
-
-function isValidRemoteUrl(value: string): boolean {
-  return looksLikeSupportedRemoteURL(value.trim());
 }
 
 function toRequestSource(row: WorkspaceSourceRow): WorkspaceSourceRequest {

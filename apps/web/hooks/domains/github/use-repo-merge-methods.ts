@@ -3,6 +3,7 @@
 import { useEffect, useReducer } from "react";
 import { getRepoMergeMethods } from "@/lib/api/domains/github-api";
 import type { RepoMergeMethods } from "@/lib/types/github";
+import { DEFAULT_GITHUB_HOST } from "@/lib/github/host";
 
 // Module-level cache: merge settings are repo-scoped and rarely change, and
 // the backend already TTL-caches them. Coalescing concurrent fetches here
@@ -20,8 +21,9 @@ const completed = new Map<string, CachedEntry>();
 // no unhandled-rejection warnings in the browser console).
 const pending = new Map<string, Promise<void>>();
 
-function repoKey(workspaceId: string, owner: string, repo: string) {
-  return `${workspaceId}:${owner}/${repo}`;
+function repoKey(workspaceId: string, owner: string, repo: string, host?: string) {
+  const hostPrefix = host && host !== DEFAULT_GITHUB_HOST ? `${host}/` : "";
+  return `${workspaceId}:${hostPrefix}${owner}/${repo}`;
 }
 
 function readFresh(key: string): RepoMergeMethods | null {
@@ -48,19 +50,20 @@ export function useRepoMergeMethods(
   workspaceId: string | null,
   owner: string | null,
   repo: string | null,
+  host?: string,
 ): RepoMergeMethods | null {
   const [, rerender] = useReducer((c: number) => c + 1, 0);
 
   useEffect(() => {
     if (!workspaceId || !owner || !repo) return;
-    const key = repoKey(workspaceId, owner, repo);
+    const key = repoKey(workspaceId, owner, repo, host);
     if (readFresh(key)) return;
     const existing = pending.get(key);
     if (existing) {
       void existing.then(rerender);
       return;
     }
-    const promise = getRepoMergeMethods(workspaceId, owner, repo)
+    const promise = getRepoMergeMethods(workspaceId, owner, repo, { host })
       .then((result) => {
         completed.set(key, { value: result, expiresAt: Date.now() + CACHE_TTL_MS });
         pending.delete(key);
@@ -76,8 +79,8 @@ export function useRepoMergeMethods(
         rerender();
       });
     pending.set(key, promise);
-  }, [workspaceId, owner, repo]);
+  }, [workspaceId, owner, repo, host]);
 
   if (!workspaceId || !owner || !repo) return null;
-  return readFresh(repoKey(workspaceId, owner, repo));
+  return readFresh(repoKey(workspaceId, owner, repo, host));
 }

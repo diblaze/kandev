@@ -1,4 +1,5 @@
 import { fetchJson, type ApiRequestOptions } from "../client";
+import { githubWorkspaceQuery, setGitHubHostParam } from "@/lib/github/host";
 import type {
   GitHubAutomationConnection,
   GitHubAppRegistration,
@@ -16,9 +17,11 @@ export async function fetchGitHubStatus(
   workspaceId: string,
   options?: ApiRequestOptions,
   refreshRateLimit = false,
+  host?: string,
 ) {
   const query = new URLSearchParams({ workspace_id: workspaceId });
   if (refreshRateLimit) query.set("refresh_rate_limit", "true");
+  setGitHubHostParam(query, host);
   return fetchJson<GitHubStatusResponse>(`/api/v1/github/status?${query}`, options);
 }
 
@@ -48,8 +51,8 @@ export async function setGitHubWorkspaceConnection(
   });
 }
 
-export async function disconnectGitHubWorkspace(workspaceId: string) {
-  const query = new URLSearchParams({ workspace_id: workspaceId });
+export async function disconnectGitHubWorkspace(workspaceId: string, host?: string) {
+  const query = githubWorkspaceQuery(workspaceId, host);
   return fetchJson<{ disconnected: boolean }>(`/api/v1/github/workspace-connection?${query}`, {
     init: { method: "DELETE" },
   });
@@ -69,14 +72,16 @@ export async function startGitHubAppInstall(workspaceId: string, appRegistration
   });
 }
 
-export async function startGitHubPersonalConnect(workspaceId: string) {
-  return fetchJson<GitHubAuthStartResponse>("/api/v1/github/personal-connection/start", {
+export async function startGitHubPersonalConnect(workspaceId: string, host?: string) {
+  const query = setGitHubHostParam(new URLSearchParams(), host).toString();
+  const path = `/api/v1/github/personal-connection/start${query ? `?${query}` : ""}`;
+  return fetchJson<GitHubAuthStartResponse>(path, {
     init: { method: "POST", body: JSON.stringify({ workspace_id: workspaceId }) },
   });
 }
 
-export async function disconnectGitHubPersonal(workspaceId: string) {
-  const query = new URLSearchParams({ workspace_id: workspaceId });
+export async function disconnectGitHubPersonal(workspaceId: string, host?: string) {
+  const query = githubWorkspaceQuery(workspaceId, host);
   return fetchJson<{ disconnected: boolean }>(`/api/v1/github/personal-connection?${query}`, {
     init: { method: "DELETE" },
   });

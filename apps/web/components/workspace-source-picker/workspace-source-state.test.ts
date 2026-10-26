@@ -169,3 +169,29 @@ describe("workspace source state row creation", () => {
     expect(getWorkspaceSourceValidation(rows)).toEqual({});
   });
 });
+
+describe("workspace source state GitHub hosts", () => {
+  const row = (key: string, remoteUrl: string) => ({
+    key,
+    kind: "repository" as const,
+    remoteUrl,
+    baseBranch: "main",
+  });
+
+  it("accepts remotes on a connected enterprise GitHub host", () => {
+    const rows = [
+      row("https", "https://octo.ghe.com/org/api.git"),
+      row("scp", "octo@octo.ghe.com:org/api.git"),
+    ];
+    expect(getWorkspaceSourceValidation(rows, ["github.com", "octo.ghe.com"])).toEqual({});
+  });
+
+  it("rejects remotes on a GitHub host that is not connected", () => {
+    expect(
+      getWorkspaceSourceValidation(
+        [row("other", "https://ghe.example.com/org/api.git")],
+        ["github.com", "octo.ghe.com"],
+      ),
+    ).toEqual({ other: "Enter a valid remote repository URL and base branch." });
+  });
+});

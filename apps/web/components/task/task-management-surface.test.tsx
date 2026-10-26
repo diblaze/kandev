@@ -20,6 +20,7 @@ let flow: ReturnType<typeof useTaskManagementFlow>;
 vi.mock("@/components/state-provider", () => ({
   useAppStoreApi: () => store,
   useAppStore: (selector: (state: AppState) => unknown) => useStore(store, selector),
+  useOptionalAppStore: (selector: (state: AppState) => unknown) => useStore(store, selector),
 }));
 vi.mock("@/components/toast-provider", () => ({ useToast: () => ({ toast: api.toast }) }));
 vi.mock("@/hooks/use-responsive-breakpoint", () => ({

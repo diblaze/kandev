@@ -27,6 +27,7 @@ export function useRepoMergeAccess(
   owner: string,
   repo: string,
   enabled = true,
+  host?: string,
 ) {
   const { status } = useGitHubStatus(workspaceId);
   const auth = useAppStore((state) => state.auth);
@@ -34,6 +35,7 @@ export function useRepoMergeAccess(
     workspaceId,
     owner,
     repo,
+    host,
     enabled,
     auth.user?.id,
     auth.mode,
@@ -56,7 +58,7 @@ export function useRepoMergeAccess(
     controller.current = abort;
     setSnapshot({ key, state: "loading", actor: null });
     const isCurrent = () => request === generation.current && currentKey.current === key;
-    void getRepoMergeAccess(workspaceId, owner, repo, { init: { signal: abort.signal } })
+    void getRepoMergeAccess(workspaceId, owner, repo, { host, init: { signal: abort.signal } })
       .then((access) => {
         if (!isCurrent()) return;
         if (!access.actor || access.actor.workspace_id !== workspaceId) {

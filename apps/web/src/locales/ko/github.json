@@ -657,5 +657,15 @@
   "mergeAccessDeniedByActor": "{{actor}} 님은 {{repository}}에 병합할 수 없습니다.",
   "mergeAccessDenied": "이 계정은 {{repository}}에 병합할 수 없습니다.",
   "checkMergeAccess": "다시 확인",
-  "mergeAsActor": "{{actor}} 계정으로"
+  "mergeAsActor": "{{actor}} 계정으로",
+  "githubHost": "GitHub 호스트",
+  "githubHostHelp": "github.com, octo.ghe.com 같은 GHE.com 테넌트 또는 GitHub Enterprise Server 호스트 이름을 입력하세요.",
+  "enterAValidGithubHost": "github.com 또는 ghe.example.com처럼 호스트 이름만 입력하세요. https:// 나 경로는 포함하지 마세요.",
+  "connectAnotherGithubHost": "다른 GitHub 호스트 연결",
+  "githubHostNotConnected": "{{host}}이(가) 연결되어 있지 않습니다.",
+  "openGithubSettings": "GitHub 설정 열기",
+  "cliAccountConnectedSuffix": " (연결됨)",
+  "githubHostConnectionRemoved": "{{host}} 연결을 제거했습니다",
+  "personalLoginOnHost": "개인: {{login}}",
+  "actionsForGithubHost": "{{host}} 작업"
 }

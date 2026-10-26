@@ -338,3 +338,44 @@ describe("resolveExternalVcsFileURL SSH identity validation", () => {
     ).toBeNull();
   });
 });
+
+describe("resolveExternalVcsFileURL GitHub Enterprise hosts", () => {
+  const tenant = {
+    provider: "github",
+    provider_host: "https://octo.ghe.com",
+    provider_owner: "acme",
+    provider_name: "web",
+    remote_url: "https://octo.ghe.com/acme/web.git",
+  };
+  const server = {
+    ...tenant,
+    provider_host: "https://ghe.example.com",
+    remote_url: "git@ghe.example.com:acme/web.git",
+  };
+
+  it.each([
+    ["an HTTPS tenant remote", tenant, "https://octo.ghe.com/acme/web/blob/main/src/app.ts"],
+    [
+      "a tenant SSH remote with the tenant user",
+      { ...tenant, remote_url: "octo@octo.ghe.com:acme/web.git" },
+      "https://octo.ghe.com/acme/web/blob/main/src/app.ts",
+    ],
+    ["a server SSH remote", server, "https://ghe.example.com/acme/web/blob/main/src/app.ts"],
+  ])("builds the file URL on the repository host for %s", (_name, repository, expected) => {
+    expect(resolve({ repository })?.url).toBe(expected);
+  });
+
+  it.each([
+    ["a remote on another host", { ...tenant, remote_url: "https://ghe.example.com/acme/web.git" }],
+    [
+      "a tenant SSH remote with the git user",
+      { ...tenant, remote_url: "git@octo.ghe.com:acme/web.git" },
+    ],
+    [
+      "a server SSH remote with another user",
+      { ...server, remote_url: "alice@ghe.example.com:acme/web.git" },
+    ],
+  ])("rejects %s", (_name, repository) => {
+    expect(resolve({ repository })).toBeNull();
+  });
+});

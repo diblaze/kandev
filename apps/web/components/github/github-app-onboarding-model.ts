@@ -6,6 +6,7 @@ import type {
   GitHubAppVisibility,
 } from "@/lib/types/github";
 import { t } from "@/lib/i18n";
+import { githubWebOrigin, normalizeGitHubHost } from "@/lib/github/host";
 
 const ownerPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const slugPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,98}[A-Za-z0-9])?$/;
@@ -20,7 +21,8 @@ export type AppSetupErrors = Partial<
     | "clientSecret"
     | "privateKey"
     | "webhookSecret"
-    | "slug",
+    | "slug"
+    | "githubHost",
     string
   >
 >;
@@ -140,11 +142,24 @@ export function appRegistrationError(error: unknown) {
   return error.body as GitHubAppRegistrationErrorBody;
 }
 
-export function githubAppSettingsURL(ownerType: GitHubAppOwnerType, owner: string, slug: string) {
-  if (!owner || !slug) return "https://github.com/settings/apps";
+/** The bare GitHub host an App is registered on; an invalid value records an error. */
+export function normalizeAppGitHubHost(rawValue: string, errors: AppSetupErrors) {
+  const host = normalizeGitHubHost(rawValue);
+  if (!host) errors.githubHost = t("github:enterAValidGithubHost");
+  return host;
+}
+
+export function githubAppSettingsURL(
+  ownerType: GitHubAppOwnerType,
+  owner: string,
+  slug: string,
+  host?: string,
+) {
+  const origin = githubWebOrigin(host);
+  if (!owner || !slug) return `${origin}/settings/apps`;
   return ownerType === "Organization"
-    ? `https://github.com/organizations/${encodeURIComponent(owner)}/settings/apps/${encodeURIComponent(slug)}`
-    : `https://github.com/settings/apps/${encodeURIComponent(slug)}`;
+    ? `${origin}/organizations/${encodeURIComponent(owner)}/settings/apps/${encodeURIComponent(slug)}`
+    : `${origin}/settings/apps/${encodeURIComponent(slug)}`;
 }
 
 export const defaultVisibility: GitHubAppVisibility = "private";

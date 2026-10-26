@@ -398,13 +398,16 @@ export function validateCreateInputs(inputs: {
  * casing) of the first duplicate found, or `null` when every parseable row is
  * a distinct repo.
  */
-export function findDuplicateRemoteRepo(remoteRepos: TaskRemoteRepoRow[]): string | null {
+export function findDuplicateRemoteRepo(
+  remoteRepos: TaskRemoteRepoRow[],
+  githubHosts?: readonly string[],
+): string | null {
   const seen = new Map<string, string>();
   for (const row of remoteRepos) {
-    const parsed = parseGitHubAnyUrl(row.url ?? "");
+    const parsed = parseGitHubAnyUrl(row.url ?? "", githubHosts);
     if (!parsed) continue;
     const label = `${parsed.owner}/${parsed.repo}`;
-    const key = `${label.toLowerCase()}\u0000${row.branch}`;
+    const key = `${parsed.host}/${label.toLowerCase()}\u0000${row.branch}`;
     const existing = seen.get(key);
     if (existing) return existing;
     seen.set(key, label);

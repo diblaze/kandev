@@ -45,13 +45,46 @@ function accountPlaceholder(t: TFunction, loading: boolean, loadError: string | 
   return t("github:noGhAccountsFound");
 }
 
+/**
+ * An account on a host that already has a connection is taken, except on the
+ * host being changed, so choosing it cannot silently replace another host.
+ */
+function cliAccountTaken(
+  account: GitHubCLIAccount,
+  connectedHosts: readonly string[],
+  editedHost: string | undefined,
+): boolean {
+  return account.host !== editedHost && connectedHosts.includes(account.host);
+}
+
+function preferredAccount(
+  items: GitHubCLIAccount[],
+  connectedHosts: readonly string[],
+  editedHost: string | undefined,
+) {
+  const available = items.filter((item) => !cliAccountTaken(item, connectedHosts, editedHost));
+  return (
+    available.find((item) => editedHost && item.host === editedHost && item.selected) ??
+    available.find((item) => editedHost && item.host === editedHost && item.active) ??
+    available.find((item) => item.selected) ??
+    available.find((item) => item.active) ??
+    available[0]
+  );
+}
+
 export function GitHubCLIForm({
   workspaceId,
   onAccountChange,
+  editedHost,
+  connectedHosts = [],
   disabled,
 }: {
   workspaceId: string;
   onAccountChange: (account: GitHubCLIAccount | null) => void;
+  /** Host whose connection is being changed; absent when connecting a new host. */
+  editedHost?: string;
+  /** Hosts that already have a connection. */
+  connectedHosts?: readonly string[];
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
@@ -61,6 +94,8 @@ export function GitHubCLIForm({
   const [loading, setLoading] = useState(true);
   const onAccountChangeRef = useRef(onAccountChange);
   onAccountChangeRef.current = onAccountChange;
+  const connectedHostsRef = useRef(connectedHosts);
+  connectedHostsRef.current = connectedHosts;
 
   useEffect(() => {
     let current = true;
@@ -73,8 +108,7 @@ export function GitHubCLIForm({
       .then((items) => {
         if (!current) return;
         setAccounts(items);
-        const preferred =
-          items.find((item) => item.selected) ?? items.find((item) => item.active) ?? items[0];
+        const preferred = preferredAccount(items, connectedHostsRef.current, editedHost);
         setSelected(preferred ? `${preferred.host}\n${preferred.login}` : "");
       })
       .catch((error) => {
@@ -88,7 +122,7 @@ export function GitHubCLIForm({
     return () => {
       current = false;
     };
-  }, [workspaceId]);
+  }, [editedHost, workspaceId]);
 
   const account = useMemo(() => {
     const [host, login] = selected.split("\n");
@@ -118,8 +152,15 @@ export function GitHubCLIForm({
           </SelectTrigger>
           <SelectContent>
             {accounts.map((item) => (
-              <SelectItem key={`${item.host}:${item.login}`} value={`${item.host}\n${item.login}`}>
+              <SelectItem
+                key={`${item.host}:${item.login}`}
+                value={`${item.host}\n${item.login}`}
+                disabled={cliAccountTaken(item, connectedHosts, editedHost)}
+              >
                 {item.login} ({item.host}){item.active ? t("github:cliAccountActiveSuffix") : ""}
+                {cliAccountTaken(item, connectedHosts, editedHost)
+                  ? t("github:cliAccountConnectedSuffix")
+                  : ""}
               </SelectItem>
             ))}
           </SelectContent>

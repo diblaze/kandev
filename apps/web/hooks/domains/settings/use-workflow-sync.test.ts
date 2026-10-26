@@ -12,6 +12,11 @@ const setWorkflowSyncConfigMock = vi.fn<(payload: unknown, opts?: unknown) => Pr
 const deleteWorkflowSyncConfigMock = vi.fn<(opts?: unknown) => Promise<unknown>>();
 const forceWorkflowSyncMock = vi.fn<(opts?: unknown) => Promise<unknown>>();
 
+const githubHosts = vi.hoisted(() => ({ current: ["github.com"] }));
+const GITHUB_COM_ONLY = githubHosts.current;
+vi.mock("@/hooks/domains/github/use-github-hosts", () => ({
+  useGitHubHosts: () => githubHosts.current,
+}));
 vi.mock("@/lib/api/domains/workflow-sync-api", () => ({
   getWorkflowSyncConfig: (opts?: unknown) => getWorkflowSyncConfigMock(opts),
   setWorkflowSyncConfig: (payload: unknown, opts?: unknown) =>
@@ -21,6 +26,8 @@ vi.mock("@/lib/api/domains/workflow-sync-api", () => ({
 }));
 
 import { useWorkflowSync } from "./use-workflow-sync";
+
+const ENTERPRISE_HOST = "octo.ghe.com";
 
 function makeConfig(overrides: Partial<WorkflowSyncConfig> = {}): WorkflowSyncConfig {
   return {
@@ -263,5 +270,56 @@ describe("useWorkflowSync — GitLab form paths", () => {
     const payload = setWorkflowSyncConfigMock.mock.calls[0][0] as Record<string, unknown>;
     expect(payload).not.toHaveProperty("repo_owner");
     expect(payload).not.toHaveProperty("repo_name");
+  });
+});
+
+describe("useWorkflowSync GitHub hosts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    githubHosts.current = GITHUB_COM_ONLY;
+  });
+
+  it("saves a repository link on a connected enterprise host with its host", async () => {
+    getWorkflowSyncConfigMock.mockResolvedValue(null);
+    setWorkflowSyncConfigMock.mockResolvedValue(makeConfig({ github_host: ENTERPRISE_HOST }));
+    githubHosts.current = [...GITHUB_COM_ONLY, ENTERPRISE_HOST];
+    const { result } = renderHook(() => useWorkflowSync("ws-1"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => result.current.setUrlInput("https://octo.ghe.com/org/flows"));
+    expect(result.current.urlInvalid).toBe(false);
+    await act(async () => {
+      await result.current.handleSave();
+    });
+
+    expect(setWorkflowSyncConfigMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        github_host: ENTERPRISE_HOST,
+        repo_owner: "org",
+        repo_name: "flows",
+      }),
+      { workspaceId: "ws-1" },
+    );
+  });
+
+  it("redisplays a stored enterprise repository on its host", async () => {
+    getWorkflowSyncConfigMock.mockResolvedValue(
+      makeConfig({ github_host: ENTERPRISE_HOST, repo_owner: "org", repo_name: "flows" }),
+    );
+    githubHosts.current = [...GITHUB_COM_ONLY, ENTERPRISE_HOST];
+    const { result } = renderHook(() => useWorkflowSync("ws-1"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.url).toBe("https://octo.ghe.com/org/flows");
+  });
+
+  it("rejects a link on a host that is not connected", async () => {
+    getWorkflowSyncConfigMock.mockResolvedValue(null);
+    const { result } = renderHook(() => useWorkflowSync("ws-1"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => result.current.setUrlInput("https://octo.ghe.com/org/flows"));
+    expect(result.current.urlInvalid).toBe(true);
   });
 });

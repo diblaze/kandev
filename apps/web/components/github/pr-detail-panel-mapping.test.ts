@@ -98,3 +98,34 @@ describe("mapGitHubComments", () => {
     });
   });
 });
+
+describe("mapGitHubComments GitHub hosts", () => {
+  const comment = {
+    id: 1,
+    html_url: "https://octo.ghe.com/acme/widget/pull/42#issuecomment-1",
+    author: "alice",
+    author_avatar: "",
+    author_is_bot: false,
+    body: "Note",
+    path: "",
+    line: 0,
+    side: "",
+    comment_type: "issue",
+    created_at: ISSUE_TIMESTAMP,
+    updated_at: ISSUE_TIMESTAMP,
+    in_reply_to: null,
+  } as PRComment;
+
+  it("links comment authors on the pull request host", () => {
+    expect(
+      mapGitHubComments({ comments: [comment] } as unknown as PRFeedback, "octo.ghe.com")[0]?.author
+        .url,
+    ).toBe("https://octo.ghe.com/alice");
+  });
+
+  it("links comment authors on github.com without a host", () => {
+    expect(mapGitHubComments({ comments: [comment] } as unknown as PRFeedback)[0]?.author.url).toBe(
+      "https://github.com/alice",
+    );
+  });
+});

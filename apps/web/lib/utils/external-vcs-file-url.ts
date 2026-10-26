@@ -1,3 +1,5 @@
+import { DEFAULT_GITHUB_HOST, githubSSHUser, githubWebOrigin } from "@/lib/github/host";
+
 export type ExternalVcsProvider = "github" | "gitlab" | "azure_devops";
 
 export type ExternalVcsRepository = {
@@ -25,7 +27,9 @@ export type ExternalVcsFileURL = {
 };
 
 type ResolvedTarget = { path: string; revision: string };
-type SSHCloneIdentity = { hostname: string; parts: string[] };
+type SSHCloneIdentity = { user: string; hostname: string; parts: string[] };
+
+const GITHUB_ORIGIN = githubWebOrigin(DEFAULT_GITHUB_HOST);
 
 function cleanValue(value: string | null | undefined): string {
   return value?.trim() ?? "";
@@ -130,17 +134,17 @@ function hasValidSSHPort(value: string): boolean {
 function parseSSHCloneIdentity(rawRemoteURL: string | undefined): SSHCloneIdentity | null {
   if (!rawRemoteURL || /[\u0000-\u001f\u007f]/.test(rawRemoteURL)) return null;
   const value = cleanValue(rawRemoteURL);
-  const scpMatch = /^git@([A-Za-z0-9.-]+):([^?#]+)$/.exec(value);
+  const scpMatch = /^([A-Za-z0-9_.-]+)@([A-Za-z0-9.-]+):([^?#]+)$/.exec(value);
   if (scpMatch) {
-    const parts = decodeSSHPath(scpMatch[2]);
-    return parts ? { hostname: scpMatch[1].toLowerCase(), parts } : null;
+    const parts = decodeSSHPath(scpMatch[3]);
+    return parts ? { user: scpMatch[1], hostname: scpMatch[2].toLowerCase(), parts } : null;
   }
 
   try {
     const remote = new URL(value);
     if (
       remote.protocol !== "ssh:" ||
-      remote.username !== "git" ||
+      !remote.username ||
       remote.password ||
       remote.search ||
       remote.hash ||
@@ -149,7 +153,7 @@ function parseSSHCloneIdentity(rawRemoteURL: string | undefined): SSHCloneIdenti
       return null;
     }
     const parts = decodeSSHPath(remote.pathname);
-    return parts ? { hostname: remote.hostname.toLowerCase(), parts } : null;
+    return parts ? { user: remote.username, hostname: remote.hostname.toLowerCase(), parts } : null;
   } catch {
     return null;
   }
@@ -203,20 +207,31 @@ function repositoryPathMatches(parts: string[], owner: string, name: string): bo
   );
 }
 
+function githubSSHRemote(
+  identity: SSHCloneIdentity,
+  repository: ExternalVcsRepository,
+): URL | null {
+  const origin = parseProviderOrigin(repository.provider_host) ?? GITHUB_ORIGIN;
+  const hostname = new URL(origin).hostname;
+  if (
+    identity.hostname !== hostname ||
+    identity.user !== githubSSHUser(hostname) ||
+    !repositoryPathMatches(identity.parts, repository.provider_owner, repository.provider_name)
+  ) {
+    return null;
+  }
+  return new URL(
+    `${origin}/${encodeRepositoryPath(repository.provider_owner, repository.provider_name)}`,
+  );
+}
+
 function sshRemoteForRepository(repository: ExternalVcsRepository): URL | null {
   const identity = parseSSHCloneIdentity(repository.remote_url);
   if (!identity) return null;
   const provider = repository.provider.toLowerCase();
 
-  if (
-    provider === "github" &&
-    identity.hostname === "github.com" &&
-    repositoryPathMatches(identity.parts, repository.provider_owner, repository.provider_name)
-  ) {
-    return new URL(
-      `https://github.com/${encodeRepositoryPath(repository.provider_owner, repository.provider_name)}`,
-    );
-  }
+  if (provider === "github") return githubSSHRemote(identity, repository);
+  if (identity.user !== "git") return null;
 
   if (provider === "gitlab") {
     const origin = parseProviderOrigin(repository.provider_host);
@@ -256,10 +271,10 @@ function githubRemoteMatches(
   remote: URL,
   parts: string[],
 ): boolean {
-  const origin = parseProviderOrigin(repository.provider_host) ?? "https://github.com";
+  const origin = parseProviderOrigin(repository.provider_host) ?? GITHUB_ORIGIN;
   return (
     remote.origin === origin &&
-    origin === "https://github.com" &&
+    !new URL(origin).port &&
     repositoryPathMatches(parts, repository.provider_owner, repository.provider_name)
   );
 }

@@ -250,4 +250,47 @@ test.describe("GitHub workspace settings on mobile", () => {
       "including My GitHub results and review and issue watches",
     );
   });
+
+  test("stacks one card per GitHub host with a row menu for the enterprise host", async ({
+    testPage,
+    apiClient,
+    seedData,
+  }) => {
+    await apiClient.mockGitHubReset();
+    await apiClient.mockGitHubSetWorkspaceConnection(seedData.workspaceId, {
+      source: "gh_cli",
+      status: "active",
+      login: "alice",
+    });
+    await apiClient.mockGitHubSetWorkspaceConnection(
+      seedData.workspaceId,
+      { source: "pat", status: "active", login: "octo-bot" },
+      "octo.ghe.com",
+    );
+    await testPage.goto(`/settings/workspaces/${seedData.workspaceId}/integrations/github`);
+
+    const cards = testPage.getByTestId("github-host-card");
+    await expect(cards).toHaveCount(2);
+    const enterprise = cards.nth(1);
+    await expect(enterprise).toHaveAttribute("data-host", "octo.ghe.com");
+    await expect(enterprise.getByRole("button", { name: "Disconnect" })).toHaveCount(0);
+    const [first, second] = await Promise.all([
+      cards.nth(0).boundingBox(),
+      enterprise.boundingBox(),
+    ]);
+    expect(first && second && second.y >= first.y + first.height).toBe(true);
+
+    const menu = enterprise.getByRole("button", { name: "Actions for octo.ghe.com" });
+    const menuBox = await menu.boundingBox();
+    expect(menuBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+    await menu.tap();
+    await testPage.getByRole("menuitem", { name: "Disconnect" }).tap();
+    await expect(cards).toHaveCount(1);
+    await expect(testPage.getByTestId("github-connect-another-host")).toBeVisible();
+    expect(
+      await testPage.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+  });
 });

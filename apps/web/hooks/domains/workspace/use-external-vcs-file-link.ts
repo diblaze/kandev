@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_GITHUB_HOST, hostFromProviderHost } from "@/lib/github/host";
 import { useMemo } from "react";
 import { useAppStore } from "@/components/state-provider";
 import type { Repository, Task } from "@/lib/types/http";
@@ -179,10 +180,11 @@ function normalizeOrigin(value: string | undefined): string {
   }
 }
 
-function githubPRMatches(pr: TaskPR, repository: Repository): boolean {
+export function githubPRMatches(pr: TaskPR, repository: Repository): boolean {
   if (pr.repository_id) return pr.repository_id === repository.id;
   return (
     repository.provider === "github" &&
+    (pr.github_host || DEFAULT_GITHUB_HOST) === hostFromProviderHost(repository.provider_host) &&
     pr.owner === repository.provider_owner &&
     pr.repo === repository.provider_name
   );

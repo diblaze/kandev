@@ -215,7 +215,9 @@ function PollFields({ form, update }: FieldsProps) {
   );
 }
 
-function resolvedTarget(t: TFunction, form: WorkflowSyncFormState): string {
+type WorkflowSyncTarget = Omit<WorkflowSyncFormState, "github_host">;
+
+function resolvedTarget(t: TFunction, form: WorkflowSyncTarget): string {
   const directory = form.path || t("workflows:repositoryRoot");
   // `main` is git's default branch name, not copy.
   const branch = form.branch || "main";
@@ -511,7 +513,7 @@ export function WorkflowSyncDialog({ open, onOpenChange, sync }: WorkflowSyncDia
 }
 
 function workflowSyncConfirmationTarget(sync: WorkflowSyncController) {
-  const fields = (config: WorkflowSyncFormState | null) =>
+  const fields = (config: WorkflowSyncTarget | null) =>
     config && [
       config.provider,
       config.repo_owner,

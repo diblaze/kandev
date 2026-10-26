@@ -127,11 +127,15 @@ describe("PRMergeButton", () => {
         </ToastProvider>
       </StateProvider>,
     );
-    expect(accessMock).toHaveBeenCalledWith("beta", "acme", "site", true);
-    expect(methodsMock).toHaveBeenCalledWith("beta", "acme", "site");
+    expect(accessMock).toHaveBeenCalledWith("beta", "acme", "site", true, undefined);
+    expect(methodsMock).toHaveBeenCalledWith("beta", "acme", "site", undefined);
     fireEvent.click(screen.getByTestId(MERGE_BUTTON_TEST_ID));
     await waitFor(() =>
-      expect(mergePRMock).toHaveBeenCalledWith("beta", "acme", "site", 42, undefined),
+      expect(mergePRMock).toHaveBeenCalledWith(
+        "beta",
+        { owner: "acme", repo: "site", number: 42, host: undefined },
+        undefined,
+      ),
     );
   });
 

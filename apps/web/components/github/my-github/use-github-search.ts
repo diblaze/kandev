@@ -34,6 +34,8 @@ type UseGitHubSearchOptions = {
   customQuery: string;
   repoFilter?: string;
   workspaceId?: string | null;
+  /** GitHub host to search; absent means github.com. */
+  host?: string;
 };
 
 export function buildParams(
@@ -60,6 +62,7 @@ export function useGitHubSearch<T extends GitHubPR | GitHubIssue>({
   customQuery,
   repoFilter = "",
   workspaceId = null,
+  host,
 }: UseGitHubSearchOptions) {
   const [state, setState] = useState<SearchState<T>>({
     items: [],
@@ -82,7 +85,7 @@ export function useGitHubSearch<T extends GitHubPR | GitHubIssue>({
   // Reset to page 1 whenever the filter inputs change.
   useEffect(() => {
     setPage(1);
-  }, [preset, customQuery, repoFilter, workspaceId, kind]);
+  }, [preset, customQuery, repoFilter, workspaceId, kind, host]);
 
   const fetchData = useCallback(
     async ({
@@ -96,7 +99,7 @@ export function useGitHubSearch<T extends GitHubPR | GitHubIssue>({
       setState((s) => ({ ...s, loading: true, error: null }));
       try {
         const base = buildParams(presets, ep, ec, er);
-        const params = { ...base, page: epage, perPage: SEARCH_PAGE_SIZE, workspaceId: ews };
+        const params = { ...base, page: epage, perPage: SEARCH_PAGE_SIZE, workspaceId: ews, host };
         const response =
           kind === "pr" ? await searchUserPRs(params) : await searchUserIssues(params);
         if (seq !== requestSeq.current || ews !== workspaceRef.current) return;
@@ -121,7 +124,7 @@ export function useGitHubSearch<T extends GitHubPR | GitHubIssue>({
         }));
       }
     },
-    [kind, presets],
+    [host, kind, presets],
   );
 
   useEffect(() => {

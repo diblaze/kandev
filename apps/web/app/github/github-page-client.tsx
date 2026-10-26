@@ -50,6 +50,8 @@ import {
 import { useGitHubActionPresets } from "@/hooks/domains/github/use-github-action-presets";
 import { useAllWorkflowSnapshots } from "@/hooks/domains/kanban/use-all-workflow-snapshots";
 import { hasGitHubPersonalActor } from "@/lib/github-auth";
+import { DEFAULT_GITHUB_HOST } from "@/lib/github/host";
+import { useGitHubHosts } from "@/hooks/domains/github/use-github-hosts";
 import { Trans, useTranslation } from "react-i18next";
 
 type GitHubPageClientProps = {
@@ -246,6 +248,14 @@ function useSaveQueryDialog(canSaveCurrent: boolean) {
   return { saveDialogOpen, setSaveDialogOpen, saveDialogFocusRef, onOpenSaveDialog };
 }
 
+/** Selected search host; falls back to github.com when the host is no longer connected. */
+function useGitHubHostSelection(workspaceId: string | null) {
+  const githubHosts = useGitHubHosts(workspaceId);
+  const [selectedHost, setGitHubHost] = useState<string>(DEFAULT_GITHUB_HOST);
+  const githubHost = githubHosts.includes(selectedHost) ? selectedHost : DEFAULT_GITHUB_HOST;
+  return { githubHosts, githubHost, setGitHubHost };
+}
+
 function useGitHubPageState(workspaceId: string | null, enabled: boolean) {
   const { t } = useTranslation();
   const { pr: resolvedPrPresets, issue: resolvedIssuePresets } =
@@ -287,8 +297,10 @@ function useGitHubPageState(workspaceId: string | null, enabled: boolean) {
     savedPresetStore,
     markSearchInteracted,
   });
+  const hostSelection = useGitHubHostSelection(workspaceId);
   const search = useGitHubSearch<GitHubPR | GitHubIssue>({
     enabled,
+    host: hostSelection.githubHost,
     kind: selection.kind,
     presets: selection.kind === "pr" ? resolvedPrPresets : resolvedIssuePresets,
     preset: selection.source === "preset" ? selection.id : "",
@@ -345,6 +357,7 @@ function useGitHubPageState(workspaceId: string | null, enabled: boolean) {
     defaultMutationPendingId,
     resolvedPrPresets,
     resolvedIssuePresets,
+    ...hostSelection,
   };
 }
 
@@ -418,6 +431,9 @@ function AuthenticatedLayout({
         repoFilter={state.repoFilter}
         onRepoFilterChange={state.setRepoFilter}
         repoOptions={repoOptions}
+        githubHosts={state.githubHosts}
+        githubHost={state.githubHost}
+        onGitHubHostChange={state.setGitHubHost}
         onRefresh={search.refresh}
       />
       {!workspaceId && <NoWorkspaceNotice />}
