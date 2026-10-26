@@ -28,7 +28,7 @@ They do **not** provide every credential a task needs. Keep these paths distinct
 - Git or SSH credentials in an executor let the task fetch and push a repository;
 - an agent login or API key lets the coding CLI call its model provider.
 
-GitHub is the important exception. Kandev first resolves explicit profile remote-auth secrets; a resulting `GITHUB_TOKEN` or `GH_TOKEN` is an unmanaged override. Otherwise, for each repository identified as GitHub, the task receives an opaque, task/repository-scoped credential lease instead of an ambient token. Git resolves the matching lease against the workspace automation connection when it runs, so an App installation token can be renewed during a long task. The App private key and personal user tokens are never sent to an executor. Repository and credential-generation checks are repeated when a lease is resolved, and disconnecting or replacing the connection invalidates old leases.
+GitHub is the important exception. Kandev first resolves explicit profile remote-auth secrets; a resulting `GITHUB_TOKEN` or `GH_TOKEN` is an unmanaged override for the host it is [bound to](#profile-tokens-and-github-hosts). Otherwise, for each repository identified as GitHub, the task receives an opaque, task/repository-scoped credential lease instead of an ambient token. Git resolves the matching lease against the workspace automation connection for the repository's host when it runs, so an App installation token can be renewed during a long task. The App private key and personal user tokens are never sent to an executor. Repository and credential-generation checks are repeated when a lease is resolved, and disconnecting or replacing the connection invalidates old leases.
 
 For GitLab, Kandev resolves only the active task workspace's connection. It provides that connection's token as `GITLAB_TOKEN` and its normalized host as `GITLAB_HOST`/`KANDEV_GITLAB_HOST` to the execution path, and configures HTTP Git authentication only for the matching host. It does not reuse another workspace's GitLab credential or silently fall back from a self-managed host to `gitlab.com`. SSH remotes still require usable SSH credentials in the executor.
 
@@ -51,7 +51,7 @@ Compatibility routes under **Settings > Integrations** use the active workspace 
 
 The **Enabled** badge in Settings navigation appears only when the integration is connected and its saved workspace toggle is on. After changing a toggle, select **Save changes** to update the badge. With **Hide disabled integrations from left panel navigation** off, a disabled integration stays listed without the badge.
 
-GitHub, GitLab, Azure DevOps, Jira, and Linear configuration are workspace-specific. GitHub supports one automation connection per workspace and, for App-backed workspaces, one personal identity per Kandev user and workspace. The current GitHub integration targets `github.com`; GitLab supports `gitlab.com` and self-managed origins. Sentry supports multiple named instances per workspace. Do not assume that configuring one workspace gives another the same provider scope.
+GitHub, GitLab, Azure DevOps, Jira, and Linear configuration are workspace-specific. GitHub supports one automation connection per GitHub host in each workspace and, for App-backed connections, one personal identity per Kandev user, workspace, and host. A host can be `github.com`, a GitHub Enterprise Cloud tenant with data residency (`<subdomain>.ghe.com`), or a GitHub Enterprise Server instance; see [GitHub hosts](#github-hosts). GitLab supports `gitlab.com` and self-managed origins. Sentry supports multiple named instances per workspace. Do not assume that configuring one workspace gives another the same provider scope.
 
 Provider secrets saved by these forms use Kandev's encrypted secret store. The backend must still decrypt them to make API requests. Limit access to settings and the Kandev data directory, and use the narrowest provider scope that works.
 
@@ -81,15 +81,15 @@ Use GitHub for pull requests, issues, reviews, checks, repository discovery, tas
 Open the workspace GitHub settings. **Workspace automation** offers three connection types:
 
 - **Personal access token (PAT):** Kandev validates the token before replacing the current connection and stores it in the encrypted secret store. A classic PAT needs `repo` and `read:org` for full behavior. Scope a fine-grained token to only the repositories and operations the workspace needs.
-- **GitHub CLI:** first run `gh auth login` as the operating-system user that runs the Kandev backend. Kandev lists every authenticated host/login pair and stores the selected `github.com` login, not its token. On current CLI releases it resolves that exact account with `gh auth token --hostname github.com --user <login>` and never changes the host's active account with `gh auth switch`. Older releases without structured status or `--user` remain supported when the selected account is active; make the account active or upgrade `gh` before selecting a different stored login.
+- **GitHub CLI:** first run `gh auth login` as the operating-system user that runs the Kandev backend. Kandev lists every authenticated host/login pair and stores the selected pair, not its token. On current CLI releases it resolves that exact account with `gh auth token --hostname <host> --user <login>` and never changes the host's active account with `gh auth switch`. Older releases without structured status or `--user` remain supported when the selected account is active; make the account active or upgrade `gh` before selecting a different stored login.
 - **GitHub App:** recommended for organization-managed or unattended automation. From the
   workspace, select a known registration, add an App you already own, or create one through
   GitHub's App Manifest flow, then install it on the intended account. Kandev keeps root App
   credentials server-side and mints short-lived installation tokens as needed.
 
-A workspace has one active automation connection at a time. Replacing it changes the identity used by repository discovery, watches, background work, and task GitHub access in that workspace only. Disconnecting a CLI connection does not sign the host out of `gh`; disconnecting an App connection removes only the workspace binding and does not uninstall the App from GitHub.
+A workspace has one active automation connection per GitHub host. Replacing a host's connection changes the identity used by repository discovery, watches, background work, and task GitHub access for that host in that workspace only; connections for other hosts stay as they are. Disconnecting a CLI connection does not sign the host out of `gh`; disconnecting an App connection removes only the workspace binding and does not uninstall the App from GitHub.
 
-New workspaces created by an operator or an internal trusted flow start with **Inherit executor Git credentials** for task Git access when the settings write succeeds. When the backend host has an authenticated active `gh` account, the new workspace also snapshots that exact host/login as its named GitHub CLI automation connection; Kandev stores the selection, never the CLI token. If `gh` is unavailable or unauthenticated, creation still succeeds with executor inheritance and no automation connection. If the settings write itself fails, workspace creation remains available but the existing managed compatibility fallback applies until the workspace is configured or retried. Authenticated non-admin members receive the executor default but never the operator's host identity.
+New workspaces created by an operator or an internal trusted flow start with **Inherit executor Git credentials** for task Git access when the settings write succeeds. For each GitHub host where the backend host has an authenticated active `gh` account, the new workspace also snapshots that exact host/login as the named GitHub CLI automation connection for the host; Kandev stores the selection, never the CLI token. If `gh` is unavailable or unauthenticated, creation still succeeds with executor inheritance and no automation connection. If the settings write itself fails, workspace creation remains available but the existing managed compatibility fallback applies until the workspace is configured or retried. Authenticated non-admin members receive the executor default but never the operator's host identity.
 
 Workspaces migrated from an older Kandev release may temporarily use a compatibility connection
 named `legacy_shared`. It continues using the deployment's existing authenticated `gh` account,
@@ -99,6 +99,42 @@ matching GitHub CLI behavior. Its token remains in memory during use. Choosing a
 connection leaves compatibility mode permanently.
 
 The status panel identifies the selected source, verified actor, connection state, and any missing App capabilities. When GitHub has reported quota data, use **Show GitHub API limits** to inspect the remaining API requests, GraphQL query points, Search requests, and reset times for that workspace connection. The disclosure appears as a tooltip on desktop and a tap-accessible drawer on touch devices. A failed PAT or CLI validation leaves the previous connection intact. An unknown CLI login, revoked PAT, suspended/deleted installation, or missing App permission affects only the bound workspace and displays a reconnect or capability-specific error.
+
+#### GitHub hosts
+
+Each GitHub host has its own card under **Workspace GitHub access**. Select **Connect another GitHub host** to add one. PAT, GitHub CLI, and GitHub App connections work on every host:
+
+- The token form has a **GitHub host** field that defaults to `github.com`. Enter a bare hostname such as `octo.ghe.com` or `ghe.example.com`, without `https://`, a path, or a port. Kandev rejects any other value before it contacts a host or runs `gh`.
+- The CLI picker lists accounts on every host and marks hosts that already have a connection.
+- The App create and import forms ask for the host; see [Use a GitHub App](#use-a-github-app).
+
+On a phone, the cards stack and the actions of an enterprise host card move into a row menu. An enterprise host card shows the connection source, account, status, last error, and personal login, with **Change** and **Disconnect** for that host. API limit details and personal identity management in Settings cover the `github.com` connection only.
+
+Kandev derives each host's endpoints from its name:
+
+| Host | Web | REST API | GraphQL API |
+|---|---|---|---|
+| `github.com` | `https://github.com` | `https://api.github.com` | `https://api.github.com/graphql` |
+| GHE.com tenant (`<subdomain>.ghe.com`) | `https://<subdomain>.ghe.com` | `https://api.<subdomain>.ghe.com` | `https://api.<subdomain>.ghe.com/graphql` |
+| GitHub Enterprise Server (any other host) | `https://<host>` | `https://<host>/api/v3` | `https://<host>/api/graphql` |
+
+Hosts on a non-default port are not supported. Automated tests cover GitHub Enterprise Server through this endpoint mapping; Kandev has not been tested against a live Server instance.
+
+Every GitHub item uses the connection for its own host, so the same owner and repository name on two hosts never share a credential:
+
+- A repository uses the host of its origin, and a pull request or issue URL uses the host in the URL.
+- Review watches, issue watches, automation triggers, Workflow Sync, and Office config sync each store one host and poll or read only that host.
+- Pull-request, issue, profile, and file links point at the item's host, and pull-request prompts contain the URL on that host.
+- Creating a pull request from a task whose origin is on a connected enterprise host runs `gh pr create` against that host.
+- A request without a host means `github.com`. API routes and WebSocket actions that name an owner and repository accept an optional `host` parameter.
+
+An item on a host without a connection fails closed. Kandev sends no request to any host and never falls back to another host's connection. A pasted pull-request or issue URL on such a host shows "_host_ is not connected." with a link to the GitHub settings, and the API keeps its `github_not_configured` error code with a `host` field that names the host. A watch whose host loses its connection records that error and keeps its configuration.
+
+Kandev treats a repository as GitHub when its origin is on `github.com` or on a host that has a connection in the same workspace. Connecting a host also classifies the workspace's existing repositories that have no provider and whose origin is on that host. SSH origins with any user name are recognized. On a GHE.com tenant the SSH user is the tenant name, as in `octo@octo.ghe.com:org/repo.git`, and Kandev builds SSH clone URLs in that form; a GitHub Enterprise Server origin uses `git@ghe.example.com:org/repo.git`.
+
+With two or more hosts connected, the `/github` page shows a host selector, and searches return results from the selected host only. The review and issue watch dialogs then show a host field.
+
+The migration-only `legacy_shared` connection, Gist sharing, and Kandev's own release and update downloads stay on `github.com`.
 
 #### Troubleshoot PR discovery
 
@@ -141,7 +177,10 @@ Kandev routes credentials as follows:
 An App-only workspace continues automation without a personal connection, but **My GitHub** remains unavailable. A personal connection cannot widen access: Kandev intersects the workspace repository scope, the App installation's repositories, and the user's GitHub access. Personal access and refresh tokens are never exposed to agents or executors.
 
 For task processes, Git's credential helper selects among all attached repository leases. The
-broker-aware `gh` shim uses the primary repository lease for each invocation. With App automation,
+broker-aware `gh` shim uses the primary repository lease for each invocation. It sets `GH_HOST` to
+the lease's host, passes only that host's token variable (`GH_TOKEN` for `github.com` and GHE.com
+tenants, `GH_ENTERPRISE_TOKEN` for GitHub Enterprise Server), and refuses a `--hostname` for any
+other host. With App automation,
 that makes agent-issued `gh` commands primary-repository scoped; use Kandev's workspace-aware
 backend actions for another attached repository. PAT/CLI `gh` commands still receive the broader
 bearer grant described above. Explicit executor-profile tokens bypass these managed guarantees and
@@ -165,17 +204,17 @@ path on desktop hover or focus and in a touch-accessible drawer on mobile.
   GitHub** when it does not. Both entry points show **Task Git access**.
 - **Managed workspace credentials** use the selected PAT, named GitHub CLI account, or GitHub App
   through Kandev's task/repository-scoped broker. Kandev provides a short-lived Git helper and `gh`
-  shim; stored PATs and App private keys are not exposed to the task. An executor-profile
-  `GH_TOKEN` or `GITHUB_TOKEN` takes precedence.
+  shim; stored PATs and App private keys are not exposed to the task. An executor-profile token
+  takes precedence for the host it is [bound to](#profile-tokens-and-github-hosts).
 - **Inherit executor Git credentials** does not install Kandev's helper or `gh` shim. Local and
   Worktree tasks use host Git credentials. For GitHub HTTPS remotes, Kandev checks the host
   account's `gh` login for each attached GitHub host. When `gh auth token` succeeds, Kandev adds a
   temporary HTTPS helper to the task environment. The helper uses the GitHub CLI configuration
   visible to the Kandev backend service account. Run `gh auth login` as the OS account that runs
   the backend; a login in another desktop terminal is not enough. The host bridge does not write
-  global Git configuration or persist helper or token state. An explicit `GH_TOKEN` or
-  `GITHUB_TOKEN` takes precedence over stored CLI credentials. For GitHub Enterprise hosts,
-  `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` have the same effect. If `gh` is unavailable
+  global Git configuration or persist helper or token state. An explicit profile token takes
+  precedence over stored CLI credentials only for the host it is
+  [bound to](#profile-tokens-and-github-hosts); other attached hosts keep the bridge. If `gh` is unavailable
   or not authenticated for a host, the task keeps its other inherited Git and SSH credentials.
   Docker, SSH, and cloud tasks use credentials configured in the executor. A CLI login authenticates
   that account, but it does not grant repository permissions.
@@ -208,6 +247,30 @@ the explicit inheritance mode when that is the intended boundary. The Changes pa
 details show the non-secret identity and delivery route captured for a successfully launched
 session.
 
+#### Profile tokens and GitHub hosts
+
+The GitHub CLI reads `GH_TOKEN` and `GITHUB_TOKEN` for `github.com` and every GHE.com tenant, and
+`GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` for GitHub Enterprise Server hosts. Kandev
+cannot tell which host an executor-profile token was issued for, so it binds each profile token to
+the host that the profile's `GH_HOST` names:
+
+- `GH_TOKEN` and `GITHUB_TOKEN` answer only the `GH_HOST` host, or `github.com` when `GH_HOST` is
+  unset.
+- `GH_ENTERPRISE_TOKEN` and `GITHUB_ENTERPRISE_TOKEN` answer GitHub Enterprise Server hosts: only
+  the `GH_HOST` host when it names a Server instance, otherwise every Server host.
+- A malformed `GH_HOST`, or one set from a secret, binds the profile tokens to no host.
+
+The binding decides which repositories skip the managed lease or the host `gh` bridge, and where
+Kandev configures Git credential helpers, clone URL tokens, and prepare-script helpers. Every other
+attached host keeps the credential from its own connection. Docker tasks also rewrite SSH remotes
+on a bound enterprise host to HTTPS. The default SSH and Sprites prepare scripts rewrite only
+`github.com` SSH remotes, so an SSH-form enterprise remote there needs SSH credentials in the
+executor.
+
+An agent that runs `gh` itself with these variables in its environment still follows the GitHub
+CLI rule, so a profile `GH_TOKEN` can reach `github.com` and any GHE.com tenant from such a
+command. Scope profile tokens to the hosts and repositories the task needs.
+
 ### Use a GitHub App
 
 Choose a GitHub App when automation should not depend on one person's long-lived credential, when
@@ -230,18 +293,22 @@ Reuse is appropriate for related workspaces that deliberately share one organiza
 identity. Create separate registrations for work and personal accounts, unrelated organizations,
 or any boundary where rotating or deleting one App must not affect the other.
 
-This feature targets `github.com`, not GitHub Enterprise Server. Before creating or importing an
-App, give Kandev a stable public HTTPS origin. GitHub must reach the callback and webhook routes
-from the public internet. Guided setup rejects private, loopback, split-horizon, and plain HTTP
-origins. A local deployment needs a trusted HTTPS tunnel or reverse proxy whose hostname remains
-stable for the life of the registration.
+GitHub Apps work on every [GitHub host](#github-hosts). A registration belongs to the host it was
+created or imported on, so each host, including each GitHub Enterprise Server instance, needs its
+own App registration. Installation, personal authorization, and webhook delivery use the
+registration's host, and a completed installation becomes the connection for that host.
+
+Before creating or importing an App on any host, give Kandev a stable public HTTPS origin. GitHub
+must reach the callback and webhook routes from the public internet. Guided setup rejects private,
+loopback, split-horizon, and plain HTTP origins. A local deployment needs a trusted HTTPS tunnel or
+reverse proxy whose hostname remains stable for the life of the registration.
 
 #### Create a new App
 
 1. Open the workspace's GitHub integration settings, choose **Change connection**, then choose
    **GitHub App** and **Create new App**.
-2. Choose the GitHub user or organization that will own the App, enter a registration label and
-   the public Kandev origin, and review the requested permissions.
+2. Enter the GitHub host, choose the GitHub user or organization that will own the App, enter a
+   registration label and the public Kandev origin, and review the requested permissions.
 3. Keep **Private** unless the same App must be installable outside its owner. **Public** means
    other GitHub accounts can install it. It does not publish the App to Marketplace, reveal its
    credentials, or grant any repository without an approved installation.
@@ -261,8 +328,8 @@ Use **Add existing App** when you own a GitHub App that should follow the same c
 a Kandev-created App. The preparation step allocates a registration ID and displays exact,
 copyable settings for that pending import. It is short-lived and single-use.
 
-1. Start **Add existing App** from the workspace GitHub connection flow. Enter its owner, label,
-   visibility, and the public Kandev origin.
+1. Start **Add existing App** from the workspace GitHub connection flow. Enter its host, owner,
+   label, visibility, and the public Kandev origin. Kandev verifies the App against that host.
 2. Open the App under the owning user's or organization's **Settings > Developer settings > GitHub
    Apps**, then apply every URL, permission, and event shown by Kandev. Add the workspace
    installation callback as the first user authorization callback and the personal identity
@@ -715,10 +782,11 @@ Workspace automations are never copied by this action. Review the target workspa
 Issue bodies, pull-request comments, commit messages, and incident details are untrusted prompt input. Use read-only credentials for triage, restrict repositories/projects/channels, and keep a human workflow gate before merge, release, deployment, or sensitive transitions.
 
 - **Connection test fails:** verify the base URL, deployment type, token format, expiration, scopes, and network/DNS access from the backend host.
+- **_host_ is not connected:** the item is on a GitHub host without a connection in this workspace. Connect that host under **Workspace GitHub access**, or check the host in the URL or repository origin.
 - **Cleared token but connection remains:** for GitHub, a higher-priority CLI or environment credential may still be active. Clearing GitLab from its workspace settings removes that workspace connection.
 - **Repository, project, or team is missing:** confirm the connected identity can see it and check workspace filters/defaults.
 - **Kandev can read but cannot write:** add only the specific provider write scope needed, then repeat the test.
-- **Task cannot fetch or push:** inspect the selected executor's Git/SSH credentials and repository remote. For GitHub, inspect any explicit profile `GITHUB_TOKEN`/`GH_TOKEN`; otherwise verify the workspace automation connection, repository scope, broker reachability, and App Contents permission. For GitLab HTTP remotes, confirm the task workspace connection host exactly matches the remote and its token can access the project. The Azure PAT can authenticate the backend's initial managed clone/fetch but is not exposed to the task for later pushes. Jira, Linear, and Sentry integration credentials are not task Git credentials.
+- **Task cannot fetch or push:** inspect the selected executor's Git/SSH credentials and repository remote. For GitHub, inspect any explicit profile `GITHUB_TOKEN`/`GH_TOKEN` and the `GH_HOST` it is bound to; otherwise verify the workspace automation connection for the repository's host, repository scope, broker reachability, and App Contents permission. For GitLab HTTP remotes, confirm the task workspace connection host exactly matches the remote and its token can access the project. The Azure PAT can authenticate the backend's initial managed clone/fetch but is not exposed to the task for later pushes. Jira, Linear, and Sentry integration credentials are not task Git credentials.
 - **A watch still runs after disabling the provider:** the Enabled switch is browser-local. Pause/delete the watch, or remove the backend configuration.
 - **Unexpected work is created:** pause the watch or automation, inspect its query, last-polled/status fields, and created-task list, then narrow provider filters before resetting or polling again. Watch tables do not provide a separate run/import history.
 

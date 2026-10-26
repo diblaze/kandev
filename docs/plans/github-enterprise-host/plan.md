@@ -1,6 +1,6 @@
 ---
 created: 2026-10-22
-status: draft
+status: in_progress
 requirements:
   - REQ-INTEGRATIONS-GITHUB-ENTERPRISE-HOST-001
   - REQ-INTEGRATIONS-GITHUB-ENTERPRISE-HOST-002
@@ -367,3 +367,31 @@ widens host validation, clone URLs, and credential helper keys.
 **Reopen when:** a user reports a GitHub Enterprise Server instance reachable
 only on a custom port.
 **Source:** host validation design.
+
+## Results
+
+Work orders 01 to 08 are `done`; each records its own verification and
+deviations under `## Results`. The plan stays `in_progress` until the live
+end-to-end run below passes, and the requirement and system-design files stay
+`draft` until then, as task 08 specifies.
+
+Automated verification is recorded per work order: backend packages, SQLite
+and PostgreSQL migration and store conformance (task 02), web typecheck, unit
+tests, lint, i18n checks, and the multi-host E2E specs (task 07). Known
+environmental failures in `internal/orchestrator`, `internal/orchestrator/executor`,
+`internal/task/service`, and `internal/worktree` reproduce on an untouched
+export and are listed in tasks 03 to 06.
+
+Live end-to-end checks (Verification steps 1 to 5): not run yet. No GHE.com
+tenant or GitHub Enterprise Server instance has been exercised live, so the
+GHE.com App install path (risk above) is still unconfirmed. The public guide
+states that GitHub Enterprise Server is covered by automated tests and the
+endpoint mapping only.
+
+| Check | Host kinds | Outcome |
+| --- | --- | --- |
+| 1. CLI connections on two hosts, then PAT replacement | not run | pending |
+| 2. Enterprise SCP origin and remote URL classification | not run | pending |
+| 3. Worktree and managed-mode task push, `gh pr view`, PR creation | not run | pending |
+| 4. Enterprise issue and PR links, unconnected-host URL | not run | pending |
+| 5. App create and install over a public HTTPS origin, personal identity, webhook | not run | pending |
